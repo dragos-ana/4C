@@ -2980,6 +2980,34 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Global::v
   }
 
   /*----------------------------------------------------------------------*/
+  {
+    auto m = std::make_shared<Mat::MaterialDefinition>("MAT_ViscoplasticLawAnand",
+        "Anand viscoplastic law (comprising flow rule and hardening "
+        "law), as shown in Anand et al. (J. Electrochem. Soc. 166, 2019)",
+        Core::Materials::mvl_Anand);
+
+
+    m->add_component(entry<double>("STRAIN_RATE_PREFAC",
+        {.description = "plastic strain rate prefactor $A \\exp( - Q / R / T)$"}));
+    m->add_component(entry<double>("STRAIN_RATE_SENS",
+        {.description = "sensitivity of the plastic strain rate w.r.t. stress factor $ m $"}));
+    m->add_component(
+        entry<double>("INIT_FLOW_RES", {.description = "initial flow resistance $ S(t_0) $"}));
+    m->add_component(
+        entry<double>("HARDEN_RATE_SENS", {.description = "hardening rate sensitivity $ a $"}));
+    m->add_component(
+        entry<double>("HARDEN_RATE_PREFAC", {.description = "hardening rate prefactor $ H_0 $"}));
+    m->add_component(entry<double>("FLOW_RES_SAT_FAC",
+        {.description = "prefactor of the flow resistance saturation $ S_* $"}));
+    m->add_component(entry<double>(
+        "FLOW_RES_SAT_EXP", {.description = "exponent of the flow resistance saturation $ N $"}));
+
+    Mat::append_material_definition(matlist, m);
+  }
+
+
+
+  /*----------------------------------------------------------------------*/
   // integration point based and scalar dependent interpolation between to materials
   {
     auto mm = std::make_shared<Mat::MaterialDefinition>("MAT_ScDepInterp",
