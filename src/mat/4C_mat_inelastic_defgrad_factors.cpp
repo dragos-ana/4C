@@ -32,6 +32,8 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -42,8 +44,6 @@
 FOUR_C_NAMESPACE_OPEN
 namespace
 {
-
-
   // struct: constant non-material tensors
   struct ConstNonMatTensors
   {
@@ -2963,7 +2963,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
   // initialize substep parameters
   SubstepParams substep_params = {
-      .t = 0,                // t = 0 (time parameter)
+      .t = 0.0,              // t = 0 (time parameter)
       .substep_counter = 1,  // substep_counter = 1 (evaluation of first substep)
       .curr_dt =
           time_step_settings_

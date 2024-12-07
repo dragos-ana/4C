@@ -46,6 +46,12 @@ namespace Mat
                        // analytical evaluation of the linearization
     FailedSolAnalytLinearization,  // solution of the linear system in the analytical linearization
                                    // failed
+    FailedComputationFlowResistance,  // failed in the computation of the flow resistance via time
+                                      // integration of the hardening-rate equation (e.g., Anand
+                                      // model)
+    FailedComputationFlowResistanceDerivs,  // failed in the computation of the flow resistance
+                                            // derivatives (e.g., Anand model)
+
   };
 
   /// enum class for error management actions in InelasticDefgradTransvIsotropElastViscoplast
@@ -80,12 +86,23 @@ namespace Mat
         return "Error in InelasticDefgradTransvIsotropElastViscoplast: Local Newton Loop did not "
                "converge for the given loop settings!";
       case Mat::ViscoplastErrorType::SingularJacobian:
-        return "Error in InelasticDefgradTransvIsotropElastViscoplast: singular Jacobian after  "
-               "converged Local Newton Loop, which does not allow for the analytical evaluation of "
+        return "Error in InelasticDefgradTransvIsotropElastViscoplast: singular Jacobian after "
+               "converged Local Newton Loop, which does not allow for the analytical evaluation "
+               "of "
                "the linearization!";
       case Mat::ViscoplastErrorType::FailedSolAnalytLinearization:
         return "Error in InelasticDefgradTransvIsotropElastViscoplast: solution of the linear "
-               "system  in the analytical linearization failed";
+               "system "
+               "in the analytical linearization failed";
+        break;
+      case Mat::ViscoplastErrorType::FailedComputationFlowResistance:
+        return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed while computing the "
+               "flow resistance of the viscoplasticity law";
+        break;
+      case Mat::ViscoplastErrorType::FailedComputationFlowResistanceDerivs:
+        return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed while computing the "
+               "derivatives of the flow resistance of the viscoplasticity law";
+        break;
       default:
         FOUR_C_THROW("to_string(Mat::ViscoplastErrorType): You should not be here!");
     }
