@@ -2989,6 +2989,15 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Global::v
                 "\\varepsilon^{\\text{p}}, "
                 "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow errors",
             .default_value = std::exp(30.0)}));
+    m->add_component(entry<bool>(
+        "ANALYZE_TIMINT", {.description = "boolean: analyze the time integration scheme in regards "
+                                          "to the implemented features "
+                                          "(predictor adaptation, line search, substepping) by "
+                                          "writing key performance factors (e.g. "
+                                          "number of iterations, number of substeps, ...) to a csv "
+                                          "file? If true: yes, false: no",
+                              .default_value = false}));
+
 
     Mat::append_material_definition(matlist, m);
   }
