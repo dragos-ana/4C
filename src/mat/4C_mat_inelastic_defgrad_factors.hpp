@@ -330,29 +330,11 @@ namespace Mat
       [[nodiscard]] Mat::ViscoplastTimIntType timint_type() const { return timint_type_; };
       //! get maximum, numerically evaluable plastic strain increment
       [[nodiscard]] double max_plastic_strain_incr() const { return max_plastic_strain_incr_; };
-      //! get maximum, numerically evaluable value for the plastic strain derivatives
-      [[nodiscard]] double max_plastic_strain_deriv_value() const
+      //! get maximum, numerically evaluable value for the increment of
+      //! the plastic strain derivatives (dt * derivative)
+      [[nodiscard]] double max_plastic_strain_deriv_incr() const
       {
-        return max_plastic_strain_deriv_value_;
-      }
-
-      //! constructor method to set the maximum, numerically evaluable plastic strain increment
-      double construct_max_plastic_strain_incr()
-      {
-        if (timint_type_ == Mat::ViscoplastTimIntType::Standard) return 30.0;
-        if (timint_type_ == Mat::ViscoplastTimIntType::Logarithmic) return std::pow(2.0, 30.0);
-
-        return 0.0;
-      }
-
-      //! constructor method to set the maximum, numerically evaluable value of the plastic strain
-      //! derivatives
-      double construct_max_plastic_strain_deriv_value()
-      {
-        if (timint_type_ == Mat::ViscoplastTimIntType::Standard) return 30.0;
-        if (timint_type_ == Mat::ViscoplastTimIntType::Logarithmic) return std::pow(2.0, 30.0);
-
-        return 0.0;
+        return max_plastic_strain_deriv_incr_;
       }
 
       //! read anisotropy type (true: transversely-isotropic, false: isotropic)
@@ -406,8 +388,9 @@ namespace Mat
       //! maximum, numerically evaluable plastic strain increment
       const double max_plastic_strain_incr_;
 
-      //! maximum, numerically evaluable value for the plastic strain derivatives
-      const double max_plastic_strain_deriv_value_;
+      //! maximum, numerically evaluable increment of
+      //! plastic strain derivatives (time_step * derivative)
+      const double max_plastic_strain_deriv_incr_;
 
       //! boolean: use predictor adaptation? (true: yes, false: no)
       const bool bool_pred_adapt_;
@@ -1423,10 +1406,14 @@ namespace Mat
      * @param[in] plastic_strain plastic strain  \f$ \varepsilon_{\text{p}} \f$
      * @param[out] err_status error status
      * @param[in] dt time step (or substep) length used for time integration
+     * @param[in] eval_type evaluation type: full evaluation or only
+     * partial evaluation, e.g. stop once the plastic strain rate has
+     * been evaluated
      */
     StateQuantities evaluate_state_quantities(const Core::LinAlg::Matrix<3, 3>& CM,
         const Core::LinAlg::Matrix<3, 3>& iFinM, const double plastic_strain,
-        Mat::ViscoplastErrorType& err_status, const double dt);
+        Mat::ViscoplastErrorType& err_status, const double dt,
+        const Mat::ViscoplastStateQuantityEvalType& eval_type);
 
     /*! @brief Evaluate the current state variable derivatives with respect to the right
      * Cauchy-Green deformation tensor, the inverse plastic deformation gradient and the equivalent
@@ -1440,12 +1427,16 @@ namespace Mat
      * @param[in] dt time step length  \f$ \Delta t
      * \f$ (used for the integration)
      * @param[in] eval_state boolean: do we want to also evaluate the current state first (true)
-     *                       or is this already available from the current state variables (false)
+     *                       or is this already available from the
+     *                       current state variables (false)
+     * @param[in] eval_type evaluation type: full evaluation or only
+     * partial evaluation, e.g. stop once the derivatives of the plastic strain rate have
+     * been evaluated
      */
     StateQuantityDerivatives evaluate_state_quantity_derivatives(
         const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<3, 3>& iFinM,
         const double plastic_strain, Mat::ViscoplastErrorType& err_status, const double dt,
-        const bool eval_state = false);
+        const Mat::ViscoplastStateQuantityDerivEvalType& eval_type, const bool eval_state = false);
 
     //! return the fiber direction of transverse isotropy for the considered element
     Core::LinAlg::Matrix<3, 1> get_fiber_direction() { return m_; }
@@ -1602,7 +1593,7 @@ namespace Mat
             xi_(xi_user),
             xi_l_(0.0),
             xi_u_(1.0),
-            max_num_of_pred_adapt_(max_num_of_pred_adapt) {};
+            max_num_of_pred_adapt_(max_num_of_pred_adapt){};
 
       //! method to reset the non-const variables of the class
       void reset_non_const_vars()

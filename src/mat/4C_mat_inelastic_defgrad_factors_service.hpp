@@ -92,6 +92,30 @@ namespace Mat
   ViscoplastTimIntType get_time_integration_type(std::string timint_string);
 
 
+  /// enum class for state quantity evaluations in
+  /// InelasticDefgradTransvIsotropElastViscoplast: what is the aim of
+  /// the evaluation? (full evaluation, or only partial, e.g. only the
+  /// plastic strain rate,...)
+  enum class ViscoplastStateQuantityEvalType
+  {
+    FullEval,               // full evaluation (full call of the evaluate_state_quantities method)
+    PlasticStrainRateOnly,  // return in evaluate_state_quantities once the plastic strain rate has
+                            // been evaluated
+  };
+
+  /// enum class for evaluations of the state quantity derivatives in
+  /// InelasticDefgradTransvIsotropElastViscoplast: what is the aim of
+  /// the evaluation? (full evaluation, or only partial, e.g. only the
+  /// derivatives of the plastic strain rate,...)
+  enum class ViscoplastStateQuantityDerivEvalType
+  {
+    FullEval,  // full evaluation (full call of the evaluate_state_quantity_derivatives method)
+    PlasticStrainRateDerivsOnly,  // return in evaluate_state_quantity_derivatives once the
+                                  // derivatives of the plastic strain rate have been evaluated
+  };
+
+
+
 }  // namespace Mat
 
 
