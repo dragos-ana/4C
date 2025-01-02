@@ -15,6 +15,7 @@
 #include "4C_io_linecomponent.hpp"
 #include "4C_mat_materialdefinition.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <string>
 
@@ -2936,6 +2937,18 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Input::va
         "MAX_HALVE_NUM_SUBSTEP", {.description = "maximum number of times the global time step can "
                                                  "be halved in the substepping procedure",
                                      .default_value = 10}));
+    m->add_component(entry<double>(
+        "MAX_PLASTIC_STRAIN_INCR", {.description = "maximum evaluable plastic strain increment, "
+                                                   "used for checking possible overflow errors",
+                                       .default_value = std::exp(30.0)}));
+    m->add_component(entry<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
+        {.description =
+                "maximum evaluable increment of the plastic strain derivatives, i.e. $ \\Delta t "
+                "\\frac{\\partial \\dot{\\varepsilon}^{\\text{p}}}{\\partial s}, ~ s \\in "
+                "\\left\\{ "
+                "\\varepsilon^{\\text{p}}, "
+                "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow errors",
+            .default_value = std::exp(30.0)}));
 
     Mat::append_material_definition(matlist, m);
   }

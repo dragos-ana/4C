@@ -13,6 +13,7 @@
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_electrode.hpp"
 #include "4C_mat_inelastic_defgrad_factors.hpp"
+#include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_vplast_law.hpp"
 #include "4C_mat_vplast_reform_johnsoncook.hpp"
@@ -291,6 +292,10 @@ namespace
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add(
+          "MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add(
+          "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
 
       // get pointer to parameter class
       params_transv_isotrop_elast_viscoplast_ =
@@ -313,6 +318,10 @@ namespace
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add(
+          "MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add(
+          "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       params_isotrop_elast_viscoplast_ =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
               std::shared_ptr(Mat::make_parameter(1,
@@ -1560,11 +1569,13 @@ namespace
         computed_state_quantities_transv_isotrop =
             transv_isotrop_elast_viscoplast_->evaluate_state_quantities(CM,
                 iFin_transv_isotrop_elast_viscoplast_solution_,
-                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0);
+                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0,
+                Mat::ViscoplastStateQuantityEvalType::FullEval);
     Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
         computed_state_quantities_isotrop = isotrop_elast_viscoplast_->evaluate_state_quantities(CM,
             iFin_transv_isotrop_elast_viscoplast_solution_,
-            plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0);
+            plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0,
+            Mat::ViscoplastStateQuantityEvalType::FullEval);
     if (err_status != Mat::ViscoplastErrorType::NoErrors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
@@ -1624,13 +1635,15 @@ namespace
         computed_state_quantity_derivatives_transv_isotrop =
             transv_isotrop_elast_viscoplast_->evaluate_state_quantity_derivatives(CM,
                 iFin_transv_isotrop_elast_viscoplast_solution_,
-                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0, true);
+                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0,
+                Mat::ViscoplastStateQuantityDerivEvalType::FullEval, true);
 
     Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
         computed_state_quantity_derivatives_isotrop =
             isotrop_elast_viscoplast_->evaluate_state_quantity_derivatives(CM,
                 iFin_transv_isotrop_elast_viscoplast_solution_,
-                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0, true);
+                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0,
+                Mat::ViscoplastStateQuantityDerivEvalType::FullEval, true);
 
     if (err_status != Mat::ViscoplastErrorType::NoErrors)
     {

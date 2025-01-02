@@ -106,7 +106,7 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
 Core::LinAlg::Matrix<2, 1>
 Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_strain_rate(
     const double equiv_stress, const double equiv_plastic_strain, const double dt,
-    const double max_plastic_strain_deriv_value, Mat::ViscoplastErrorType& err_status,
+    const double max_plastic_strain_deriv_incr, Mat::ViscoplastErrorType& err_status,
     const bool update_hist_var)
 {
   // first set error status to "no errors"
@@ -162,7 +162,7 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
                            (const_pars_.N - 1.0) * log_equiv_plastic_strain;
 
     // check overflow error using these logarithms
-    double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_value);
+    double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
     if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) &&
         (log_dt + log_deriv_eps > log_max_plastic_strain_deriv_value))
     {
