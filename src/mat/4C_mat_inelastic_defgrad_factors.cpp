@@ -3606,6 +3606,9 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
         equiv_stress, plastic_strain, dt, parameter()->max_plastic_strain_deriv_incr(), err_status);
     deriv_plastic_strain_rate = temp2x1(1);
 
+    // throw error
+    FOUR_C_ASSERT_ALWAYS(err_status == Mat::ViscoplastErrorType::NoErrors, to_string(err_status));
+
     // compute jacobian
     jacobian = 1.0 - dt * deriv_plastic_strain_rate;
 
