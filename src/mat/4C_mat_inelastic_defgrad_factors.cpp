@@ -3421,15 +3421,17 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     plastic_strain_adapt_pred = integrate_plastic_strain(state_quantities_.curr_equiv_stress_,
         time_step_quantities_.last_plastic_strain_[gp_], time_step_settings_.dt_, err_status);
 
-    // reevaluate the current state with the adapted predictor
-    state_quantities_ =
-        evaluate_state_quantities(CM, iFin_adapt_pred, plastic_strain_adapt_pred, err_status,
-            time_step_settings_.dt_, Mat::ViscoplastStateQuantityEvalType::PlasticStrainRateOnly);
     if (err_status == Mat::ViscoplastErrorType::NoErrors)
-      state_quantity_derivatives_ = evaluate_state_quantity_derivatives(CM, iFin_adapt_pred,
-          plastic_strain_adapt_pred, err_status, time_step_settings_.dt_,
-          Mat::ViscoplastStateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
-
+    {
+      // reevaluate the current state with the adapted predictor
+      state_quantities_ =
+          evaluate_state_quantities(CM, iFin_adapt_pred, plastic_strain_adapt_pred, err_status,
+              time_step_settings_.dt_, Mat::ViscoplastStateQuantityEvalType::PlasticStrainRateOnly);
+      if (err_status == Mat::ViscoplastErrorType::NoErrors)
+        state_quantity_derivatives_ = evaluate_state_quantity_derivatives(CM, iFin_adapt_pred,
+            plastic_strain_adapt_pred, err_status, time_step_settings_.dt_,
+            Mat::ViscoplastStateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
+    }
     // if there was an evaluation error: set \f$ \xi_{\text{curr}}
     // \leftarrow  \xi_{\text{curr}} \xi_{\text{user}}\f$
     if (err_status != Mat::ViscoplastErrorType::NoErrors)
@@ -3606,8 +3608,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
         equiv_stress, plastic_strain, dt, parameter()->max_plastic_strain_deriv_incr(), err_status);
     deriv_plastic_strain_rate = temp2x1(1);
 
-    // throw error
-    FOUR_C_ASSERT_ALWAYS(err_status == Mat::ViscoplastErrorType::NoErrors, to_string(err_status));
+    // return directily when encountering error
+    if (err_status != Mat::ViscoplastErrorType::NoErrors) return plastic_strain;
 
     // compute jacobian
     jacobian = 1.0 - dt * deriv_plastic_strain_rate;
