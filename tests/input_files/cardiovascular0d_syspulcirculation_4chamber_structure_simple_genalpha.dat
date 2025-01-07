@@ -90,8 +90,8 @@ M_DAMP                          0.0
 NLNSOL                          newtonlinuzawa
 NUMSTEP                         3
 PREDICT                         ConstDis
-RESTARTEVRY                     5
-RESULTSEVRY                     5
+RESTARTEVERY                     5
+RESULTSEVERY                     5
 STC_LAYER                       1
 TIMESTEP                        0.005
 TOLCONSTR                       1e-08
