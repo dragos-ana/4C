@@ -162,10 +162,10 @@ STRUCTURE DIS structure NODE 3450 QUANTITY dispx VALUE -3.03430446932194137e-03 
 STRUCTURE DIS structure NODE 673 QUANTITY dispy VALUE 2.21852429268185186e-02 TOLERANCE 1e-6
 --------------------------------------------DESIGN SURFACE VOLUME MONITOR 3D
 DSURF                           4
-E 6 - 0
-E 7 - 1
-E 1 - 2
-E 3 - 3
+E 6 - ConditionID 0
+E 7 - ConditionID 1
+E 1 - ConditionID 2
+E 3 - ConditionID 3
 -----------DESIGN SURF CARDIOVASCULAR 0D SYS-PUL CIRCULATION CONDITIONS
 DSURF                           4
 E 6 - id 0 TYPE ventricle_left
