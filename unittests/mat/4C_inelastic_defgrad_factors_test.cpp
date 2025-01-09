@@ -285,8 +285,12 @@ namespace
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("YIELD_COND_F", 2.5);
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add(
           "ANISOTROPY", std::string("transvisotrop"));
-      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("LOG_SUBSTEP", true);
-      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 10);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add(
+          "TIME_INTEGRATION_HIST_VARS", std::string("log"));
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_LINE_SEARCH", true);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
 
       // get pointer to parameter class
       params_transv_isotrop_elast_viscoplast_ =
@@ -303,8 +307,12 @@ namespace
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("YIELD_COND_B", 2.0);
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("YIELD_COND_F", 2.5);
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("ANISOTROPY", std::string("isotrop"));
-      inelastic_defgrad_isotrop_elast_viscoplast_data.add("LOG_SUBSTEP", true);
-      inelastic_defgrad_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 10);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add(
+          "TIME_INTEGRATION_HIST_VARS", std::string("log"));
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_LINE_SEARCH", true);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
       params_isotrop_elast_viscoplast_ =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
               std::shared_ptr(Mat::make_parameter(1,
@@ -1552,11 +1560,11 @@ namespace
         computed_state_quantities_transv_isotrop =
             transv_isotrop_elast_viscoplast_->evaluate_state_quantities(CM,
                 iFin_transv_isotrop_elast_viscoplast_solution_,
-                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 10.0, 0.0);
+                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0);
     Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
         computed_state_quantities_isotrop = isotrop_elast_viscoplast_->evaluate_state_quantities(CM,
             iFin_transv_isotrop_elast_viscoplast_solution_,
-            plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 10.0, 0.0);
+            plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0);
     if (err_status != Mat::ViscoplastErrorType::NoErrors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
@@ -1616,15 +1624,13 @@ namespace
         computed_state_quantity_derivatives_transv_isotrop =
             transv_isotrop_elast_viscoplast_->evaluate_state_quantity_derivatives(CM,
                 iFin_transv_isotrop_elast_viscoplast_solution_,
-                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0e100, 0.0,
-                true);
+                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0, true);
 
     Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
         computed_state_quantity_derivatives_isotrop =
             isotrop_elast_viscoplast_->evaluate_state_quantity_derivatives(CM,
                 iFin_transv_isotrop_elast_viscoplast_solution_,
-                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0e100, 0.0,
-                true);
+                plastic_strain_transv_isotrop_elast_viscoplast_solution_, err_status, 1.0, true);
 
     if (err_status != Mat::ViscoplastErrorType::NoErrors)
     {

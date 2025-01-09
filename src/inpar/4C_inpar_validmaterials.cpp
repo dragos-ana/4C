@@ -2914,13 +2914,28 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Input::va
         {.description =
                 "Anisotropy type: transversely isotropic (transvisotrop; transverseisotropic; "
                 "transverselyisotropic) | isotropic (isotrop; isotropic; Default)"}));
+    m->add_component(entry<std::string>("TIME_INTEGRATION_HIST_VARS",
+        {.description = "time integration of internal variables: standard | log (logarithmic "
+                        "transformation of the "
+                        "evolution equation for the plastic deformation gradient)",
+            .default_value = "log"}));
     m->add_component(entry<bool>(
-        "LOG_SUBSTEP", {.description = "boolean: time integration of internal variables using "
-                                       "logarithmic substepping (True) or "
-                                       "standard substepping (False)?"}));
+        "USE_PRED_ADAPT", {.description = "boolean: use predictor adaptation before and in the "
+                                          "Local Newton Loop? (true: yes, false: "
+                                          "no)",
+                              .default_value = true}));
+    m->add_component(entry<bool>(
+        "USE_LINE_SEARCH", {.description = "boolean: use line search in the Local Newton Loop to "
+                                           "avoid negative plastic strains? "
+                                           "(true: yes, false: no)",
+                               .default_value = true}));
+    m->add_component(entry<bool>("USE_SUBSTEPPING",
+        {.description = "boolean: use substepping in the Local Newton Loop? (true: yes, false: no)",
+            .default_value = false}));
     m->add_component(entry<int>(
         "MAX_HALVE_NUM_SUBSTEP", {.description = "maximum number of times the global time step can "
-                                                 "be halved in the substepping procedure"}));
+                                                 "be halved in the substepping procedure",
+                                     .default_value = 10}));
 
     Mat::append_material_definition(matlist, m);
   }
