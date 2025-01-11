@@ -31,11 +31,13 @@ namespace Mat
                     // \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t \dot{\varepsilon}^{\text{p}}
                     // \mathsymbol{N}^{\text{p}}) \f$) checked in the standard substepping procedure
     NoPlasticIncompressibility,  // no plastic incompressibility, meaning that our determinant
-                                 // of the inelastic defgrad is far from 1
+                                 // of the inelastic defgrad is far from
+                                 // 1
     FailedSolLinSystLNL,  // solution of the linear system in the Local Newton-Raphson Loop failed
-    NoConvergenceLNL,     // the Local Newton Loop did not converge for the given loop settings
-    SingularJacobian,     // singular Jacobian after converged LNL, which does not enable our
-                          // analytical evaluation of the linearization
+    FailedDetermLineSearchParam,  // the computation of a suitable line search parameter failed
+    NoConvergenceLNL,  // the Local Newton Loop did not converge for the given loop settings
+    SingularJacobian,  // singular Jacobian after converged LNL, which does not enable our
+                       // analytical evaluation of the linearization
     FailedSolAnalytLinearization,  // solution of the linear system in the analytical linearization
                                    // failed
   };
@@ -56,6 +58,9 @@ namespace Mat
       case Mat::ViscoplastErrorType::FailedSolLinSystLNL:
         return "Error in InelasticDefgradTransvIsotropElastViscoplast: solution of the linear "
                "system in the Local Newton Loop failed!";
+      case Mat::ViscoplastErrorType::FailedDetermLineSearchParam:
+        return "Error in InelasticDefgradTransvIsotropElastViscoplast: could not determine a "
+               "suitable line search parameter!";
       case Mat::ViscoplastErrorType::NoConvergenceLNL:
         return "Error in InelasticDefgradTransvIsotropElastViscoplast: Local Newton Loop did not "
                "converge for the given loop settings!";
@@ -70,6 +75,22 @@ namespace Mat
         FOUR_C_THROW("to_string(Mat::ViscoplastErrorType): You should not be here!");
     }
   }
+
+
+  /// enum class for time integration types (integration of internal
+  /// variables in the Local Newton Loop of InelasticDefgradTransvIsotropElastViscoplast)
+  enum class ViscoplastTimIntType
+  {
+    Standard,     // standard time integration,
+    Logarithmic,  // time integration with logarithmically transformed residual equation for the
+                  // evolution of the plastic deformation gradient
+  };
+
+  /// get the time integration type (Local Newton Loop of
+  /// InelasticDefgradTransvIsotropElastViscoplast) from the
+  /// user-specified string in the input file
+  ViscoplastTimIntType get_time_integration_type(std::string timint_string);
+
 
 }  // namespace Mat
 

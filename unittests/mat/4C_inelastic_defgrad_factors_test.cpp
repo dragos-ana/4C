@@ -285,8 +285,12 @@ namespace
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("YIELD_COND_F", 2.5);
       inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add(
           "ANISOTROPY", std::string("transvisotrop"));
-      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("LOG_SUBSTEP", true);
-      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 10);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add(
+          "TIME_INTEGRATION_HIST_VARS", std::string("log"));
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_LINE_SEARCH", true);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_transv_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
 
       // get pointer to parameter class
       params_transv_isotrop_elast_viscoplast_ =
@@ -303,8 +307,12 @@ namespace
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("YIELD_COND_B", 2.0);
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("YIELD_COND_F", 2.5);
       inelastic_defgrad_isotrop_elast_viscoplast_data.add("ANISOTROPY", std::string("isotrop"));
-      inelastic_defgrad_isotrop_elast_viscoplast_data.add("LOG_SUBSTEP", true);
-      inelastic_defgrad_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 10);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add(
+          "TIME_INTEGRATION_HIST_VARS", std::string("log"));
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_LINE_SEARCH", true);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_isotrop_elast_viscoplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
       params_isotrop_elast_viscoplast_ =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
               std::shared_ptr(Mat::make_parameter(1,
