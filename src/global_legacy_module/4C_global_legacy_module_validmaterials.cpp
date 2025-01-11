@@ -13,12 +13,16 @@
 #include "4C_io_input_field.hpp"
 #include "4C_io_input_spec_builders.hpp"
 #include "4C_io_input_spec_validators.hpp"
+#include "4C_legacy_enum_definitions_materials.hpp"
+#include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_mat_electrode.hpp"
 #include "4C_mat_fluidporo_singlephase.hpp"
+#include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_mat_micromaterial.hpp"
 #include "4C_mat_muscle_combo.hpp"
 #include "4C_porofluid_pressure_based_elast_scatra_input.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <string>
 
@@ -2733,28 +2737,122 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<int>(
                 "FIBER_READER_ID", {.description = "MAT ID of the used fiber direction reader for "
                                                    "transversely isotropic behavior"}),
-            parameter<double>("YIELD_COND_A",
-                {.description = "transversely isotropic version of the Hill(1948) yield condition: "
-                                "parameter A, following the notation in Dafalias 1989, "
-                                "International Journal of Plasticity, Vol. 5"}),
-            parameter<double>("YIELD_COND_B",
-                {.description = "transversely isotropic version of the Hill(1948) yield condition: "
-                                "parameter B, following the notation in Dafalias 1989, "
-                                "International Journal of Plasticity, Vol. 5"}),
-            parameter<double>("YIELD_COND_F",
-                {.description = "transversely isotropic version of the Hill(1948) yield condition: "
-                                "parameter F, following the notation in Dafalias 1989, "
-                                "International Journal of Plasticity, Vol. 5"}),
-            parameter<std::string>("ANISOTROPY",
-                {.description = "Anisotropy type: transversely isotropic (transvisotrop; "
-                                "transverseisotropic; transverselyisotropic) | isotropic (isotrop; "
-                                "isotropic; Default)"}),
-            parameter<bool>("LOG_SUBSTEP",
-                {.description = "boolean: time integration of internal variables using logarithmic "
-                                "substepping (True) or standard substepping (False)?"}),
+            parameter<double>(
+                "YIELD_COND_A", {.description = "transversely isotropic version of the Hill(1948) "
+                                                "yield condition: parameter A, "
+                                                "following "
+                                                "the notation in Dafalias 1989, International "
+                                                "Journal of Plasticity, Vol. 5"}),
+            parameter<double>(
+                "YIELD_COND_B", {.description = "transversely isotropic version of the Hill(1948) "
+                                                "yield condition: parameter B, "
+                                                "following "
+                                                "the notation in Dafalias 1989, International "
+                                                "Journal of Plasticity, Vol. 5"}),
+            parameter<double>(
+                "YIELD_COND_F", {.description = "transversely isotropic version of the Hill(1948) "
+                                                "yield condition: parameter F, "
+                                                "following "
+                                                "the notation in Dafalias 1989, International "
+                                                "Journal of Plasticity, Vol. 5"}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior>(
+                "MAT_BEHAVIOR", {.description = "Material behavior / anisotropy type: transversely "
+                                                "isotropic | isotropic (default)"}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType>(
+                "TIME_INTEGRATION_HIST_VARS",
+                {.description =
+                        "time integration of internal variables: standard | log (logarithmic "
+                        "transformation of the "
+                        "evolution equation for the plastic deformation gradient)",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        TimIntType::logarithmic}),
+            parameter<bool>("USE_PRED_ADAPT",
+                {.description = "boolean: use predictor adaptation before and in the "
+                                "Local Newton Loop? (true: yes, false: "
+                                "no)",
+                    .default_value = true}),
+            parameter<bool>("USE_LINE_SEARCH",
+                {.description = "boolean: use line search in the Local Newton Loop to "
+                                "avoid negative plastic strains? "
+                                "(true: yes, false: no)",
+                    .default_value = true}),
+            parameter<bool>("USE_SUBSTEPPING",
+                {.description =
+                        "boolean: use substepping in the Local Newton Loop? (true: yes, false: no)",
+                    .default_value = false}),
             parameter<int>("MAX_HALVE_NUM_SUBSTEP",
-                {.description = "maximum number of times the global time step can be halved in the "
-                                "substepping procedure"}),
+                {.description = "maximum number of times the global time step can "
+                                "be halved in the substepping procedure",
+                    .default_value = 10}),
+            parameter<double>("MAX_PLASTIC_STRAIN_INCR",
+                {.description = "maximum evaluable plastic strain increment, "
+                                "used for checking possible overflow errors",
+                    .default_value = std::exp(30.0)}),
+            parameter<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
+                {.description =
+                        "maximum evaluable increment of the plastic strain derivatives, i.e. $ "
+                        "\\Delta t "
+                        "\\frac{\\partial \\dot{\\varepsilon}^{\\text{p}}}{\\partial s}, ~ s \\in "
+                        "\\left\\{ "
+                        "\\varepsilon^{\\text{p}}, "
+                        "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow "
+                        "errors",
+                    .default_value = std::exp(30.0)}),
+            parameter<double>("INTERP_FACT_PRED_ADAPT",
+                {.description =
+                        "interpolation factor $ \\xi_{\\text{user}}$ utilized in the predictor "
+                        "adaptation (default: 0.5)",
+                    .default_value = 0.5}),
+            parameter<int>("MAX_NUM_PRED_ADAPT",
+                {.description =
+                        "maximum number of predictor adaptations and repredictorizations allowed "
+                        "in a single Local Newton Loop"
+                        "until error is thrown (default: 10)",
+                    .default_value = 10}),
+            parameter<bool>("USE_LAST_PRED_ADAPT_FACT",
+                {.description =
+                        "utilize the predictor interpolation factor from the predictor adaptation "
+                        "of the "
+                        "previous time step at each GP to boost the performance? (default: true)",
+                    .default_value = true}),
+            parameter<bool>("ANALYZE_TIMINT",
+                {.description = "boolean: analyze the time integration scheme in regards "
+                                "to the implemented features "
+                                "(predictor adaptation, line search, substepping) by "
+                                "writing key performance factors (e.g. "
+                                "number of iterations, number of substeps, ...) to a csv "
+                                "file? If true: yes, false: no",
+                    .default_value = false}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType>(
+                "LINEARIZATION",
+                {.description =
+                        "utilized material linearization: analytic | perturb_based (based on "
+                        "perturbations of the current state)",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        LinearizationType::analytic}),
+            parameter<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD",
+                {.description =
+                        "chosen computation method for matrix exponential (default | taylor_series "
+                        "| spectral_decomp )",
+                    .default_value = Core::LinAlg::MatrixExpCalcMethod::default_method}),
+            parameter<Core::LinAlg::MatrixLogCalcMethod>("MATRIX_LOG_CALC_METHOD",
+                {.description = "chosen computation method for matrix logarithm (default_series | "
+                                "taylor_series "
+                                "| gregory_series | spectral_decomp | inv_scal_square )",
+                    .default_value = Core::LinAlg::MatrixLogCalcMethod::inv_scal_square}),
+            parameter<Core::LinAlg::GenMatrixExpFirstDerivCalcMethod>(
+                "MATRIX_EXP_DERIV_CALC_METHOD",
+                {.description = "chosen computation method for the first derivative of the matrix "
+                                "exponential (default | taylor_series)",
+                    .default_value =
+                        Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::default_method}),
+            parameter<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
+                "MATRIX_LOG_DERIV_CALC_METHOD",
+                {.description = "chosen computation method for the first derivative of the matrix "
+                                "logarithm (default_series | taylor_series | gregory_series | "
+                                "pade_part_fract)",
+                    .default_value =
+                        Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract}),
         },
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
@@ -2784,6 +2882,32 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
   }
 
   /*----------------------------------------------------------------------*/
+  {
+    known_materials[Core::Materials::mvl_Anand] = group("MAT_ViscoplasticLawAnand",
+        {
+            parameter<double>("STRAIN_RATE_PREFAC",
+                {.description = "plastic strain rate prefactor $A \\exp( - Q / R / T)$"}),
+            parameter<double>("STRAIN_RATE_SENS",
+                {.description =
+                        "sensitivity of the plastic strain rate w.r.t. stress factor $ m $"}),
+
+            parameter<double>(
+                "INIT_FLOW_RES", {.description = "initial flow resistance $ S(t_0) $"}),
+
+            parameter<double>(
+                "HARDEN_RATE_SENS", {.description = "hardening rate sensitivity $ a $"}),
+            parameter<double>(
+                "HARDEN_RATE_PREFAC", {.description = "hardening rate prefactor $ H_0 $"}),
+            parameter<double>("FLOW_RES_SAT_FAC",
+                {.description = "prefactor of the flow resistance saturation $ S_* $"}),
+            parameter<double>("FLOW_RES_SAT_EXP",
+                {.description = "exponent of the flow resistance saturation $ N $"}),
+        },
+        {.description = "Anand viscoplastic law (comprising flow rule and hardening "
+                        "law), as shown in Anand et al. (J. Electrochem. Soc. 166, 2019)"});
+  }
+
+  /*----------------------------------------------------------------------*/
   // integration point based and scalar dependent interpolation between to materials
   {
     known_materials[Core::Materials::m_sc_dep_interp] = group("MAT_ScDepInterp",
@@ -2791,8 +2915,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<int>("IDMATZEROSC", {.description = "material for lambda equal to zero"}),
             parameter<int>("IDMATUNITSC", {.description = "material for lambda equal to one"}),
         },
-        {.description =
-                "integration point based and scalar dependent interpolation between to materials"});
+        {.description = "integration point based and scalar dependent interpolation between to "
+                        "materials"});
   }
 
   /*----------------------------------------------------------------------*/
@@ -3006,9 +3130,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<int>("MATID", {.description = "ID of structure material"}),
             parameter<int>("POROLAWID", {.description = "ID of porosity law"}),
             parameter<double>("INITPOROSITY", {.description = "initial porosity of porous medium"}),
-            parameter<int>("DOFIDREACSCALAR",
-                {.description =
-                        "Id of DOF within scalar transport problem, which controls the reaction"}),
+            parameter<int>(
+                "DOFIDREACSCALAR", {.description = "Id of DOF within scalar transport problem, "
+                                                   "which controls the reaction"}),
         },
         {.description = "wrapper for structure porelastic material with reaction"});
   }
@@ -3022,9 +3146,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<int>("POROLAWID", {.description = "ID of porosity law"}),
             parameter<double>("INITPOROSITY", {.description = "initial porosity of porous medium"}),
             parameter<double>("DENSCOLLAGEN", {.description = "density of collagen"}),
-            parameter<int>("DOFIDREACSCALAR",
-                {.description =
-                        "Id of DOF within scalar transport problem, which controls the reaction"}),
+            parameter<int>(
+                "DOFIDREACSCALAR", {.description = "Id of DOF within scalar transport problem, "
+                                                   "which controls the reaction"}),
         },
         {.description = "wrapper for structure porelastic material with reaction"});
   }
@@ -3380,7 +3504,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
@@ -3440,7 +3565,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
@@ -3491,7 +3617,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
@@ -3538,16 +3665,17 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
                                 "evaluate interactions such as contact, potentials, ...",
                     .default_value = -1.0}),
         },
-        {.description =
-                "material parameters for a Kirchhoff-Love type beam element based on hyperelastic "
-                "stored energy function"});
+        {.description = "material parameters for a Kirchhoff-Love type beam element based on "
+                        "hyperelastic "
+                        "stored energy function"});
   }
 
   /*--------------------------------------------------------------------*/
@@ -3586,16 +3714,17 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
                                 "evaluate interactions such as contact, potentials, ...",
                     .default_value = -1.0}),
         },
-        {.description =
-                "material parameters for a Kirchhoff-Love type beam element based on hyperelastic "
-                "stored energy function, specified for individual deformation modes"});
+        {.description = "material parameters for a Kirchhoff-Love type beam element based on "
+                        "hyperelastic "
+                        "stored energy function, specified for individual deformation modes"});
   }
 
   /*--------------------------------------------------------------------*/
@@ -3621,7 +3750,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
@@ -3656,7 +3786,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
              * For now, we always assume a circular cross-section if interactions are considered.
              *
              * This should be generalized to a type of cross-section shape (circular, rectangular,
-             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if needed.
+             * elliptic, ...) and corresponding necessary dimensions (radius, sizes, ...) if
+             * needed.
              */
             parameter<double>("INTERACTIONRADIUS",
                 {.description = "radius of a circular cross-section which is EXCLUSIVELY used to "
@@ -4060,8 +4191,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<double>(
                 "DEPOSITION_STRETCH", {.description = "Stretch at which the fiber is deposited"}),
             parameter<int>("INITIAL_DEPOSITION_STRETCH_TIMEFUNCT",
-                {.description =
-                        "Id of the time function to scale the deposition stretch (Default: 0=None)",
+                {.description = "Id of the time function to scale the deposition stretch "
+                                "(Default: 0=None)",
                     .default_value = 0}),
             parameter<int>("INIT",
                 {.description =
@@ -4095,8 +4226,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<double>(
                 "DEPOSITION_STRETCH", {.description = "Stretch at with the fiber is deposited"}),
             parameter<int>("DEPOSITION_STRETCH_TIMEFUNCT",
-                {.description =
-                        "Id of the time function to scale the deposition stretch (Default: 0=None)",
+                {.description = "Id of the time function to scale the deposition stretch "
+                                "(Default: 0=None)",
                     .default_value = 0}),
             parameter<bool>("INELASTIC_GROWTH",
                 {.description = "Mixture rule has inelastic growth (default false)",
@@ -4129,8 +4260,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<double>(
                 "DEPOSITION_STRETCH", {.description = "Stretch at with the fiber is deposited"}),
             parameter<int>("DEPOSITION_STRETCH_TIMEFUNCT",
-                {.description =
-                        "Id of the time function to scale the deposition stretch (Default: 0=None)",
+                {.description = "Id of the time function to scale the deposition stretch "
+                                "(Default: 0=None)",
                     .default_value = 0}),
             parameter<int>("INIT",
                 {.description =
@@ -4250,10 +4381,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description =
                         "vector containing NUMSLIPSETS entries for the reference slip shear rate",
                     .size = from_parameter<int>("NUMSLIPSETS")}),
-            parameter<std::vector<double>>("DISDENSINIT",
-                {.description =
-                        "vector containing NUMSLIPSETS entries for the initial dislocation density",
-                    .size = from_parameter<int>("NUMSLIPSETS")}),
+            parameter<std::vector<double>>(
+                "DISDENSINIT", {.description = "vector containing NUMSLIPSETS entries for the "
+                                               "initial dislocation density",
+                                   .size = from_parameter<int>("NUMSLIPSETS")}),
             parameter<std::vector<double>>(
                 "DISGENCOEFF", {.description = "vector containing NUMSLIPSETS entries for the "
                                                "dislocation generation coefficients",
@@ -4307,7 +4438,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                              .size = from_parameter<int>("NUMTWINSETS")}),
             parameter<std::vector<double>>("MFPTWIN",
                 {.description =
-                        "(optional) vector containing NUMTWINSETS microstructural parameters that "
+                        "(optional) vector containing NUMTWINSETS microstructural parameters "
+                        "that "
                         "are relevant for Hall-Petch strengthening of twins, e.g., grain size",
                     .default_value = std::vector{0.},
                     .size = from_parameter<int>("NUMTWINSETS")}),
