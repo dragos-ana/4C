@@ -13,116 +13,209 @@
 #include "4C_fem_general_utils_polynomial.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_serialdensematrix.hpp"
+#include "4C_utils_exceptions.hpp"
+
+#include <Teuchos_ParameterList.hpp>
 
 FOUR_C_NAMESPACE_OPEN
 
 namespace Core::LinAlg
 {
-  /*!
-   * \class SecondOrderTensorInterpolator
-   *
-   * Interpolation of invertible second-order tensors (3x3), preserving tensor
-   * characteristics.
-   *
-   * The class provides the capability to interpolate a second-order tensor \f$
-   * \boldsymbol{T}_{\text{p}}
-   * \f$ at the specified location  \f$ \boldsymbol{x}_\text{p} \f$, given a set of tensors \f$
-   * \boldsymbol{T}_j \f$ (second-order, 3x3) at the spatial positions \f$ \boldsymbol{x}_j \f$. The
-   * interpolation scheme, using a combined polar and spectral decomposition, preserves several
-   * tensor characteristics, such as positive definiteness and monotonicity of invariants. For
-   * further information on the interpolation scheme, refer to:
-   * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-   * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
-   *
-   * @tparam loc_dim dimension of the location vectors \f$ \boldsymbol{x}_j \f$
-   */
-
-  template <unsigned int loc_dim>
-  class SecondOrderTensorInterpolator
+  namespace TensorInterpolation
   {
-   public:
-    /*! @brief Constructor of the second-order tensor interpolator class
-     *
-     *  @param[in] order polynomial order (1:linear, 2: quadratic, ...) used for interpolating
-     * the rotation vectors at the specified location
-     */
-    SecondOrderTensorInterpolator(unsigned int order)
-        : polynomial_space_(create_polynomial_space(order))
+    /// enum class for the error types of the tensor interpolator
+    enum class TensorInterpErrorType
     {
+      NoErrors,
+      LinSystFailQMatrix,  // the solution of the linear system of equations for the rotation matrix
+                           // Q failed
+      LinSystFailRMatrix,  // the solution of the linear system of equations for the rotation matrix
+                           // R failed
+    };
+
+    /// enum class for the interpolation type of the relative rotation matrices
+    enum class RotInterpType
+    {
+      RInterp,  // interpolation of relative rotation vectors,
+      QInterp,  // interpolation of relative quaternions,
+    };
+
+    /// conversion method from rotation interpolation type string to the
+    /// corresponding enum type
+    RotInterpType rot_interp_string_to_type(std::string rot_interp_type_string);
+
+    /// conversion method from rotation interpolation enum type to the
+    /// corresponding string
+    std::string rot_interp_type_to_string(RotInterpType rot_interp_type);
+
+    /// enum class for the interpolation type of the eigenvalue matrix
+    enum class EigenvalInterpType
+    {
+      LOG,     // logarithmic weighted average,
+      MLS,     // moving least squares,
+      LOGMLS,  // logarithmic moving least squares,
+    };
+
+    /// conversion method from eigenvalue interpolation type string to the
+    /// corresponding enum type
+    EigenvalInterpType eigenval_interp_string_to_type(std::string eigenval_interp_type_string);
+
+    /// conversion method from eigenvalue interpolation enum type to the
+    /// corresponding string
+    std::string eigenval_interp_type_to_string(EigenvalInterpType eigenval_interp_type);
+
+
+    /// to_string: error types to error message for the tensor interpolator
+    inline std::string to_string(const TensorInterpErrorType err_type)
+    {
+      switch (err_type)
+      {
+        case TensorInterpErrorType::NoErrors:
+          return "No Errors";
+        case TensorInterpErrorType::LinSystFailQMatrix:
+          return "The solution of the linear system of equations for the rotation matrix Q "
+                 "(second-order tensor interpolation) has failed!";
+        case TensorInterpErrorType::LinSystFailRMatrix:
+          return "The solution of the linear system of equations for the rotation matrix R "
+                 "(second-order tensor interpolation) has failed!";
+        default:
+          FOUR_C_THROW("to_string(Core::LinAlg::TensorInterpErrorType): you should not be here!");
+      }
     }
 
-    /*! @brief Helper function to define the polynomial space
+    /*!
+     * \class SecondOrderTensorInterpolator
      *
-     *  @param[in] order polynomial order (1:linear, 2: quadratic, ...) used for interpolating
-     * the rotation vectors at the specified location
-     *  @returns polynomial space(monomials) with desired polynomial order and dimensionality
+     * Interpolation of invertible second-order tensors (3x3), preserving tensor
+     * characteristics.
+     *
+     * The class provides the capability to interpolate a second-order tensor \f$
+     * \boldsymbol{T}_{\text{p}}
+     * \f$ at the specified location  \f$ \boldsymbol{x}_\text{p} \f$, given a set of tensors \f$
+     * \boldsymbol{T}_j \f$ (second-order, 3x3) at the spatial positions \f$ \boldsymbol{x}_j \f$.
+     * The interpolation scheme, using a combined polar and spectral decomposition, preserves
+     * several tensor characteristics, such as positive definiteness and monotonicity of
+     * invariants. For further information on the interpolation scheme, refer to:
+     * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
+     * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
+     *
+     * @tparam loc_dim dimension of the location vectors \f$ \boldsymbol{x}_j \f$
      */
-    Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial> create_polynomial_space(
-        unsigned int order)
-    {
-      std::vector<double> coeffs(order + 1, 0.0);
-      std::vector<Core::FE::Polynomial> poly_space_1d;
 
-      for (unsigned int i = 0; i <= order; ++i)
+    template <unsigned int loc_dim>
+    class SecondOrderTensorInterpolator
+    {
+     public:
+      /*! @brief Constructor of the second-order tensor interpolator class
+       *
+       *  @param[in] order polynomial order (1:linear, 2: quadratic, ...) used for interpolating
+       * the rotation vectors at the specified location
+       */
+      SecondOrderTensorInterpolator(unsigned int order, const RotInterpType rot_interp_type,
+          const EigenvalInterpType eigenval_interp_type,
+          const Teuchos::ParameterList interp_param_list)
+          : polynomial_space_(create_polynomial_space(order)),
+            err_type_(TensorInterpErrorType::NoErrors),
+            rot_interp_type_(rot_interp_type),
+            eigenval_interp_type_(eigenval_interp_type),
+            interp_param_list_(interp_param_list)
       {
-        coeffs[i] = 1.0;
-        poly_space_1d.emplace_back(Core::FE::Polynomial(coeffs));
-        coeffs[i] = 0.0;
       }
 
-      return Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial>(poly_space_1d);
-    }
+      /*! @brief Helper function to define the polynomial space
+       *
+       *  @param[in] order polynomial order (1:linear, 2: quadratic, ...) used for interpolating
+       * the rotation vectors at the specified location
+       *  @returns polynomial space(monomials) with desired polynomial order and dimensionality
+       */
+      Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial> create_polynomial_space(
+          unsigned int order)
+      {
+        std::vector<double> coeffs(order + 1, 0.0);
+        std::vector<Core::FE::Polynomial> poly_space_1d;
 
-    /*!
-     * @brief Interpolate matrix (second-order 3x3 tensor) from a set of defined reference matrices
-     * at specified locations.
-     *
-     * This method performs tensor interpolation based on a given set of tensors \f$
-     * \boldsymbol{T}_j \f$ (second-order, 3x3) at the spatial positions/locations \f$
-     * \boldsymbol{x}_j \f$. Concretely, the tensor is interpolated at the specified location \f$
-     * \boldsymbol{x}_{\text{p}} \f$. Specifically, the R-LOG method from the paper below is
-     * currently implemented (rotation vector interpolation + logarithmic weighted average method
-     * for eigenvalues):
-     * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-     * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
-     * @param[in]  ref_matrices  reference 3x3 matrices \f$ \boldsymbol{T}_j \f$ used as basis for
-     *                            interpolation
-     * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
-     * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated tensor
-     * @returns interpolated 3x3 matrix
-     */
-    Core::LinAlg::Matrix<3, 3> get_interpolated_matrix(
-        const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
-        const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
-        const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc);
+        for (unsigned int i = 0; i <= order; ++i)
+        {
+          coeffs[i] = 1.0;
+          poly_space_1d.emplace_back(Core::FE::Polynomial(coeffs));
+          coeffs[i] = 0.0;
+        }
 
-    /*!
-     * @brief Interpolate matrix (second-order 3x3 tensor) from a set of defined reference matrices
-     * at specified locations.
-     *
-     * This method performs tensor interpolation based on a given set of tensors \f$
-     * \boldsymbol{T}_j \f$ (second-order, 3x3) at the spatial positions/locations \f$
-     * \boldsymbol{x}_j \f$. Concretely, the tensor is interpolated at the specified location \f$
-     * \boldsymbol{x}_{\text{p}} \f$. Specifically, the R-LOG method from the paper below is
-     * currently implemented (rotation vector interpolation + logarithmic weighted average method
-     * for eigenvalues):
-     * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-     * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
-     * @param[in]  ref_matrices  reference 3x3 matrices \f$ \boldsymbol{T}_j \f$ used as basis for
-     *                            interpolation
-     * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
-     * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated tensor
-     * @returns interpolated 3x3 matrix
-     */
-    Core::LinAlg::Matrix<3, 3> get_interpolated_matrix(
-        const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
-        const std::vector<double>& ref_locs, const double interp_loc);
+        return Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial>(poly_space_1d);
+      }
 
-   private:
-    // polynomial space used for the interpolation of rotation vectors depending
-    // on the desired order (created in constructor call)
-    Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial> polynomial_space_;
-  };
+      /*!
+       * @brief Interpolate matrix (second-order 3x3 tensor) from a set of defined reference
+       * matrices at specified locations.
+       *
+       * This method performs tensor interpolation based on a given set of tensors \f$
+       * \boldsymbol{T}_j \f$ (second-order, 3x3) at the spatial positions/locations \f$
+       * \boldsymbol{x}_j \f$. Concretely, the tensor is interpolated at the specified location \f$
+       * \boldsymbol{x}_{\text{p}} \f$. Specifically, the R-LOG method from the paper below is
+       * currently implemented (rotation vector interpolation + logarithmic weighted average method
+       * for eigenvalues):
+       * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
+       * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
+       * @param[in]  ref_matrices  reference 3x3 matrices \f$ \boldsymbol{T}_j \f$ used as basis for
+       *                            interpolation
+       * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
+       * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated
+       * tensor
+       * @returns interpolated 3x3 matrix
+       */
+      Core::LinAlg::Matrix<3, 3> get_interpolated_matrix(
+          const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
+          const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
+          const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc);
+
+      /*!
+       * @brief Interpolate matrix (second-order 3x3 tensor) from a set of defined reference
+       * matrices at specified locations.
+       *
+       * This method performs tensor interpolation based on a given set of tensors \f$
+       * \boldsymbol{T}_j \f$ (second-order, 3x3) at the spatial positions/locations \f$
+       * \boldsymbol{x}_j \f$. Concretely, the tensor is interpolated at the specified location \f$
+       * \boldsymbol{x}_{\text{p}} \f$. Specifically, the R-LOG method from the paper below is
+       * currently implemented (rotation vector interpolation + logarithmic weighted average method
+       * for eigenvalues):
+       * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
+       * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
+       * @param[in]  ref_matrices  reference 3x3 matrices \f$ \boldsymbol{T}_j \f$ used as basis for
+       *                            interpolation
+       * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
+       * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated
+       * tensor
+       * @returns interpolated 3x3 matrix
+       */
+      Core::LinAlg::Matrix<3, 3> get_interpolated_matrix(
+          const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
+          const std::vector<double>& ref_locs, const double interp_loc);
+
+      /// get current error type of the tensor interpolator
+      TensorInterpErrorType get_err_type() { return err_type_; }
+
+      /// reset error type to NoErrors
+      void reset_err_type() { err_type_ = TensorInterpErrorType::NoErrors; }
+
+     private:
+      /// polynomial space used for the interpolation of rotation vectors depending
+      /// on the desired order (created in constructor call)
+      Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial> polynomial_space_;
+
+      /// error type of the tensor interpolator
+      TensorInterpErrorType err_type_;
+
+      /// rotation interpolation type
+      const RotInterpType rot_interp_type_;
+
+      /// eigenvalue interpolation type
+      const EigenvalInterpType eigenval_interp_type_;
+
+      /// interpolation parameter list
+      const Teuchos::ParameterList interp_param_list_;
+    };
+
+  }  // namespace TensorInterpolation
 
   /*!
    * @brief Perform polar decomposition \f$ \boldsymbol{T} = \boldsymbol{R} \boldsymbol{U} \f$ of
@@ -150,6 +243,30 @@ namespace Core::LinAlg
       Core::LinAlg::Matrix<3, 3>& R_matrix, Core::LinAlg::Matrix<3, 3>& U_matrix,
       Core::LinAlg::Matrix<3, 3>& eigenval_matrix,
       std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>& spectral_pairs);
+
+  /*!
+   * @brief Compute the symmetric, positive-definite material stretch $\boldsymbol{U}$ from the
+   * invertible matrix \f$ \boldsymbol{T} = \boldsymbol{R}
+   * \boldsymbol{U} \f$
+   *
+   * @param[in]  inp_matrix  input matrix \boldsymbol{T} to be decomposed
+   * @return  material stretch \boldsymbol{U}
+   */
+  Core::LinAlg::Matrix<3, 3> matrix_3x3_material_stretch(
+      const Core::LinAlg::Matrix<3, 3>& inp_matrix);
+
+  /*!
+   * @brief Compute the symmetric, positive-definite spatial stretch $\boldsymbol{v}$ from the
+   * invertible matrix \f$ \boldsymbol{T} = \boldsymbol{v}
+   * \boldsymbol{R} \f$
+   *
+   * @param[in]  inp_matrix  input matrix \boldsymbol{T} to be decomposed
+   * @return  spatial stretch \boldsymbol{v}
+   */
+  Core::LinAlg::Matrix<3, 3> matrix_3x3_spatial_stretch(
+      const Core::LinAlg::Matrix<3, 3>& inp_matrix);
+
+
 
   /*!
    * @brief Calculate the rotation vector from a given rotation matrix, using Spurrier's algorithm
