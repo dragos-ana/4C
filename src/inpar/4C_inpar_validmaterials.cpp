@@ -2951,18 +2951,28 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Input::va
         "MAX_HALVE_NUM_SUBSTEP", {.description = "maximum number of times the global time step can "
                                                  "be halved in the substepping procedure",
                                      .default_value = 10}));
-    m->add_component(entry<double>(
-        "MAX_PLASTIC_STRAIN_INCR", {.description = "maximum evaluable plastic strain increment, "
-                                                   "used for checking possible overflow errors",
-                                       .default_value = std::exp(30.0)}));
+    m->add_component(entry<double>("MAX_PLASTIC_STRAIN_INCR",
+        {.description = "maximum evaluable plastic strain increment, "
+                        "used for checking possible overflow errors (default: exp(30))",
+            .default_value = std::exp(30.0)}));
     m->add_component(entry<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
         {.description =
                 "maximum evaluable increment of the plastic strain derivatives, i.e. $ \\Delta t "
                 "\\frac{\\partial \\dot{\\varepsilon}^{\\text{p}}}{\\partial s}, ~ s \\in "
                 "\\left\\{ "
                 "\\varepsilon^{\\text{p}}, "
-                "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow errors",
+                "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow errors "
+                "(default: exp(30))",
             .default_value = std::exp(30.0)}));
+    m->add_component(entry<double>("INTERP_FACT_PRED_ADAPT",
+        {.description = "interpolation factor $ \\xi_{\\texŧ{user}}$ utilized in the predictor "
+                        "adaptation (default: 0.5)",
+            .default_value = 0.5}));
+    m->add_component(entry<int>("MAX_NUM_PRED_ADAPT",
+        {.description = "maximum number of predictor adaptations and repredictorizations allowed "
+                        "in a single Local Newton Loop"
+                        "until error is thrown (default: 10)",
+            .default_value = 10}));
     m->add_component(entry<bool>(
         "ANALYZE_TIMINT", {.description = "boolean: analyze the time integration scheme in regards "
                                           "to the implemented features "
