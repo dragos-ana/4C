@@ -1802,6 +1802,7 @@ namespace Mat
      * 195, Springer Optimization and its Applications, DOI: 10.1007/978-3-031-08720-2
      * @param[in] curr_sol solution of the current iteration of the
      * Local Newton Loop \f$ \boldsymbol{s}_i \f$
+     * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
      * @param[in] curr_res residual of the current iteration of the
      * Local Newton Loop \f$ \boldsymbol{r}_{\boldsymbol{s}_i} \f$
      * @param[in] incr increment \f$ \Delta \boldsymbol{s}_{i+1} \f$ for
@@ -1811,8 +1812,8 @@ namespace Mat
      *
      */
     double get_line_search_parameter(const Core::LinAlg::Matrix<10, 1>& curr_sol,
-        const Core::LinAlg::Matrix<10, 1>& curr_res, const Core::LinAlg::Matrix<10, 1>& incr,
-        Mat::ViscoplastErrorType& err_status);
+        const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<10, 1>& curr_res,
+        const Core::LinAlg::Matrix<10, 1>& incr, Mat::ViscoplastErrorType& err_status);
 
 
     /*!
