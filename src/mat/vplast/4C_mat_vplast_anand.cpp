@@ -32,9 +32,9 @@ namespace
 Mat::Viscoplastic::PAR::Anand::Anand(const Core::Mat::PAR::Parameter::Data& matdata)
     : Parameter(matdata),
       strain_rate_pre_fac_(matdata.parameters.get<double>("STRAIN_RATE_PREFAC")),
-      strain_rate_sensitivity_(matdata.parameters.get<double>("STRAIN_RATE_SENSITIV")),
+      strain_rate_sensitivity_(matdata.parameters.get<double>("STRAIN_RATE_SENSITIVE")),
       init_flow_res_(matdata.parameters.get<double>("INIT_FLOW_RES")),
-      harden_rate_sensitivity_(matdata.parameters.get<double>("HARDEN_RATE_SENSITIV")),
+      harden_rate_sensitivity_(matdata.parameters.get<double>("HARDEN_RATE_SENSITIVE")),
       harden_rate_pre_fac_(matdata.parameters.get<double>("HARDEN_RATE_PREFAC")),
       flow_res_sat_fac_(matdata.parameters.get<double>("FLOW_RES_SAT_FAC")),
       flow_res_sat_exp_(matdata.parameters.get<double>("FLOW_RES_SAT_EXP"))
@@ -378,6 +378,7 @@ double Mat::Viscoplastic::Anand::compute_flow_resistance(const double equiv_stre
     if (flow_resistance < 0.0)
     {
       err_status = Mat::ViscoplastErrorType::FailedComputationFlowResistance;
+      return -1;
     }
 
     // compute hardening tangent
