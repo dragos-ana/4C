@@ -3802,6 +3802,16 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
   return extended_error_string;
 }
 
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantities(const int gp,
+    const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
+    const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
+    const Core::LinAlg::Matrix<3, 3>& last_rightCG)
+{
+  time_step_quantities_.last_plastic_defgrd_inverse_[gp] = last_plastic_defgrad_inverse;
+  time_step_quantities_.last_plastic_strain_[gp] = last_plastic_strain;
+  time_step_quantities_.last_defgrad_[gp] = last_defgrad;
+  time_step_quantities_.last_rightCG_[gp] = last_rightCG;
+}
 
 
 FOUR_C_NAMESPACE_CLOSE
