@@ -3007,7 +3007,7 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Global::v
                                           "number of iterations, number of substeps, ...) to a csv "
                                           "file? If true: yes, false: no",
                               .default_value = false}));
-    m->add_component(entry<std::string>("LINEARIZATION",
+    m->add_component(parameter<std::string>("LINEARIZATION",
         {.description = "utilized material linearization: analytic | perturb_based (based on "
                         "perturbations of the current state)",
             .default_value = "analytic"}));
