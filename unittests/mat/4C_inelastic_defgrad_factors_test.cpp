@@ -305,10 +305,9 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", 1.0e13);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
+          "MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e13);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("INTERP_FACT_PRED_ADAPT", 0.5);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
@@ -338,9 +337,8 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-      inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", 1.0e10);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e10);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("INTERP_FACT_PRED_ADAPT", 0.1);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
@@ -2175,45 +2173,43 @@ namespace
   {
     // define last_values to be set for InelasticDefgradTransvIsotropElastViscoplast
     Core::LinAlg::Matrix<3, 3> last_plastic_defgrd_inverse{true};
-    last_plastic_defgrd_inverse(0, 0) = 1.0000000000000000;
-    last_plastic_defgrd_inverse(0, 1) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(0, 2) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(1, 0) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(1, 1) = 1.0000000000000000;
-    last_plastic_defgrd_inverse(1, 2) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(2, 0) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(2, 1) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(2, 2) = 1.0000000000000000;
+    last_plastic_defgrd_inverse(0, 0) = 0.7799447943653105;
+    last_plastic_defgrd_inverse(0, 1) = 0.6717937212153998;
+    last_plastic_defgrd_inverse(0, 2) = -0.0000000000040838;
+    last_plastic_defgrd_inverse(1, 0) = 0.3020939183947698;
+    last_plastic_defgrd_inverse(1, 1) = 1.5657053121955613;
+    last_plastic_defgrd_inverse(1, 2) = -0.0000000000002554;
+    last_plastic_defgrd_inverse(2, 0) = -0.0000000000011122;
+    last_plastic_defgrd_inverse(2, 1) = 0.0000000000070020;
+    last_plastic_defgrd_inverse(2, 2) = 0.9821070791314345;
 
 
 
-    double last_plastic_strain = 0.0000000000000000;
+    double last_plastic_strain = 0.8947623269281545;
 
 
     Core::LinAlg::Matrix<3, 3> last_defgrad{true};
-    last_defgrad(0, 0) = 0.9962527930483470;
-    last_defgrad(0, 1) = 0.0255731437380345;
-    last_defgrad(0, 2) = 0.0000000000000765;
-    last_defgrad(1, 0) = -0.0270266720962624;
-    last_defgrad(1, 1) = 1.0017741563408098;
-    last_defgrad(1, 2) = -0.0000000000003348;
-    last_defgrad(2, 0) = 0.0000000000000002;
+    last_defgrad(0, 0) = 0.7241001029935439;
+    last_defgrad(0, 1) = 0.1761787498957881;
+    last_defgrad(0, 2) = -0.0000000000037455;
+    last_defgrad(1, 0) = -1.3648389655342599;
+    last_defgrad(1, 1) = 0.9759870878727099;
+    last_defgrad(1, 2) = -0.0000000000095394;
+    last_defgrad(2, 0) = 0.0000000000000001;
     last_defgrad(2, 1) = 0.0000000000000000;
-    last_defgrad(2, 2) = 1.0000000000000000;
-
+    last_defgrad(2, 2) = 1.0000000000000002;
 
 
     Core::LinAlg::Matrix<3, 3> last_rightCG{true};
-    last_rightCG(0, 0) = 0.9932500686612314;
-    last_rightCG(0, 1) = -0.0015973057618893;
-    last_rightCG(0, 2) = 0.0000000000000855;
-    last_rightCG(1, 0) = -0.0015973057618893;
-    last_rightCG(1, 1) = 1.0042054459929874;
-    last_rightCG(1, 2) = -0.0000000000003335;
-    last_rightCG(2, 0) = 0.0000000000000855;
-    last_rightCG(2, 1) = -0.0000000000003335;
-    last_rightCG(2, 2) = 1.0000000000000000;
-
+    last_rightCG(0, 0) = 2.3871063609958894;
+    last_rightCG(0, 1) = -1.2044941564421703;
+    last_rightCG(0, 2) = 0.0000000000103077;
+    last_rightCG(1, 0) = -1.2044941564421703;
+    last_rightCG(1, 1) = 0.9835897476090955;
+    last_rightCG(1, 2) = -0.0000000000099702;
+    last_rightCG(2, 0) = 0.0000000000103077;
+    last_rightCG(2, 1) = -0.0000000000099702;
+    last_rightCG(2, 2) = 1.0000000000000004;
 
 
     // set the values at the 0-th GP
@@ -2233,17 +2229,15 @@ namespace
 
     // set other variables needed for evaluation
     Core::LinAlg::Matrix<3, 3> current_defgrad{true};
-    current_defgrad(0, 0) = 0.9948391692476263;
-    current_defgrad(0, 1) = 0.0279501341106699;
-    current_defgrad(0, 2) = -0.0000000000004720;
-    current_defgrad(1, 0) = -0.0298864486026118;
-    current_defgrad(1, 1) = 1.0031544822258729;
-    current_defgrad(1, 2) = 0.0000000000013676;
-    current_defgrad(2, 0) = 0.0000000000000002;
+    current_defgrad(0, 0) = 0.7227210102623968;
+    current_defgrad(0, 1) = 0.1768048705148126;
+    current_defgrad(0, 2) = 0.0000000000029728;
+    current_defgrad(1, 0) = -1.3705327073134841;
+    current_defgrad(1, 1) = 0.9749990823169901;
+    current_defgrad(1, 2) = -0.0000000000095437;
+    current_defgrad(2, 0) = 0.0000000000000001;
     current_defgrad(2, 1) = 0.0000000000000000;
-    current_defgrad(2, 2) = 1.0000000000000000;
-
-
+    current_defgrad(2, 2) = 1.0000000000000002;
 
     Core::LinAlg::Matrix<3, 3>* current_defgrad_ptr = &current_defgrad;
     Core::LinAlg::Matrix<3, 3> iFin_other{
@@ -2271,20 +2265,11 @@ namespace
     //    isotrop_vplast_Anand_->debug_set_update_hist_var(true);
     isotrop_vplast_refJC_->debug_set_update_hist_var(true);
 
-    // DEBUG
-    std::cout << "Will we evaluate the inverse inelastic defgrad?" << std::endl;
-
-
-
     // evaluate
     //    isotrop_vplast_Anand_->evaluate_inverse_inelastic_def_grad(
     //       current_defgrad_ptr, iFin_other, iFinM);
     isotrop_vplast_refJC_->evaluate_inverse_inelastic_def_grad(
         current_defgrad_ptr, iFin_other, iFinM);
-
-    // DEBUG
-    std::cout << "Did we evaluate the inverse inelastic defgrad?" << std::endl;
-
 
 
     // ----------------------------------------------------------------------- //
@@ -2437,7 +2422,7 @@ namespace
 
     // compare the results
     // WE SHOULD ACTUALLY NOT BE HERE BEFORE DEBUGGING!!!
-    // FOUR_C_THROW("Dummy test error");
+    FOUR_C_THROW("Dummy test error");
   }
 
 
