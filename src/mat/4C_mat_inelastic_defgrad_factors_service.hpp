@@ -19,6 +19,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 
 FOUR_C_NAMESPACE_OPEN
@@ -425,11 +426,11 @@ namespace Mat
   // flag for debug output (viscoplastic material) related to the
   // inverse inelastic defgrad computation; less detailed than
   // DEBUGVPLAST_TIMINT
-  // #define DEBUGVPLAST_INELDEFGRAD
+// #define DEBUGVPLAST_INELDEFGRAD
 
-  // flag for debug output (viscoplastic material) related to the
-  // stiffness contribution
-  // #define DEBUGVPLAST_LINEARIZATION
+// flag for debug output (viscoplastic material) related to the
+// stiffness contribution
+#define DEBUGVPLAST_LINEARIZATION
 
 }  // namespace Mat
 
