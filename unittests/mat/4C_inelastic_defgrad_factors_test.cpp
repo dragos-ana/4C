@@ -8,6 +8,8 @@
 #include <gtest/gtest.h>
 
 #include "4C_global_data.hpp"
+#include "4C_inpar_ssi.hpp"
+#include "4C_inpar_structure.hpp"
 #include "4C_io_input_parameter_container.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
@@ -2175,43 +2177,46 @@ namespace
   {
     // define last_values to be set for InelasticDefgradTransvIsotropElastViscoplast
     Core::LinAlg::Matrix<3, 3> last_plastic_defgrd_inverse{true};
-    last_plastic_defgrd_inverse(0, 0) = 0.7799447943653105;
-    last_plastic_defgrd_inverse(0, 1) = 0.6717937212153998;
-    last_plastic_defgrd_inverse(0, 2) = -0.0000000000040838;
-    last_plastic_defgrd_inverse(1, 0) = 0.3020939183947698;
-    last_plastic_defgrd_inverse(1, 1) = 1.5657053121955613;
-    last_plastic_defgrd_inverse(1, 2) = -0.0000000000002554;
-    last_plastic_defgrd_inverse(2, 0) = -0.0000000000011122;
-    last_plastic_defgrd_inverse(2, 1) = 0.0000000000070020;
-    last_plastic_defgrd_inverse(2, 2) = 0.9821070791314345;
+    last_plastic_defgrd_inverse(0, 0) = 0.1802440187642438;
+    last_plastic_defgrd_inverse(0, 1) = 0.7461038798156964;
+    last_plastic_defgrd_inverse(0, 2) = -0.0000000003148670;
+    last_plastic_defgrd_inverse(1, 0) = -0.5701621504233563;
+    last_plastic_defgrd_inverse(1, 1) = 3.2637544568069616;
+    last_plastic_defgrd_inverse(1, 2) = -0.0000000008927429;
+    last_plastic_defgrd_inverse(2, 0) = 0.0000000001019112;
+    last_plastic_defgrd_inverse(2, 1) = 0.0000000001152076;
+    last_plastic_defgrd_inverse(2, 2) = 0.9865120000123015;
 
 
 
-    double last_plastic_strain = 0.8947623269281545;
+    double last_plastic_strain = 1.7362315808947422;
+
 
 
     Core::LinAlg::Matrix<3, 3> last_defgrad{true};
-    last_defgrad(0, 0) = 0.7241001029935439;
-    last_defgrad(0, 1) = 0.1761787498957881;
-    last_defgrad(0, 2) = -0.0000000000037455;
-    last_defgrad(1, 0) = -1.3648389655342599;
-    last_defgrad(1, 1) = 0.9759870878727099;
-    last_defgrad(1, 2) = -0.0000000000095394;
-    last_defgrad(2, 0) = 0.0000000000000001;
+    last_defgrad(0, 0) = 0.9502120971890605;
+    last_defgrad(0, 1) = 0.0823150942461374;
+    last_defgrad(0, 2) = 0.0000000002457544;
+    last_defgrad(1, 0) = -3.0937188235596338;
+    last_defgrad(1, 1) = 0.7421827375604764;
+    last_defgrad(1, 2) = -0.0000000002191509;
+    last_defgrad(2, 0) = -0.0000000000000002;
     last_defgrad(2, 1) = 0.0000000000000000;
-    last_defgrad(2, 2) = 1.0000000000000002;
+    last_defgrad(2, 2) = 1.0000000000000000;
+
 
 
     Core::LinAlg::Matrix<3, 3> last_rightCG{true};
-    last_rightCG(0, 0) = 2.3871063609958894;
-    last_rightCG(0, 1) = -1.2044941564421703;
-    last_rightCG(0, 2) = 0.0000000000103077;
-    last_rightCG(1, 0) = -1.2044941564421703;
-    last_rightCG(1, 1) = 0.9835897476090955;
-    last_rightCG(1, 2) = -0.0000000000099702;
-    last_rightCG(2, 0) = 0.0000000000103077;
-    last_rightCG(2, 1) = -0.0000000000099702;
-    last_rightCG(2, 2) = 1.0000000000000004;
+    last_rightCG(0, 0) = 10.4739991888916375;
+    last_rightCG(0, 1) = -2.2178879073779281;
+    last_rightCG(0, 2) = 0.0000000009115099;
+    last_rightCG(1, 0) = -2.2178879073779281;
+    last_rightCG(1, 1) = 0.5576109906735135;
+    last_rightCG(1, 2) = -0.0000000001424207;
+    last_rightCG(2, 0) = 0.0000000009115099;
+    last_rightCG(2, 1) = -0.0000000001424207;
+    last_rightCG(2, 2) = 1.0000000000000000;
+
 
 
     // set the values at the 0-th GP
@@ -2231,15 +2236,16 @@ namespace
 
     // set other variables needed for evaluation
     Core::LinAlg::Matrix<3, 3> current_defgrad{true};
-    current_defgrad(0, 0) = 0.7227210102623968;
-    current_defgrad(0, 1) = 0.1768048705148126;
-    current_defgrad(0, 2) = 0.0000000000029728;
-    current_defgrad(1, 0) = -1.3705327073134841;
-    current_defgrad(1, 1) = 0.9749990823169901;
-    current_defgrad(1, 2) = -0.0000000000095437;
-    current_defgrad(2, 0) = 0.0000000000000001;
+    current_defgrad(0, 0) = 0.9495521406408685;
+    current_defgrad(0, 1) = 0.0822756509928580;
+    current_defgrad(0, 2) = 0.0000000002431954;
+    current_defgrad(1, 0) = -3.1022983060634637;
+    current_defgrad(1, 1) = 0.7419900024887491;
+    current_defgrad(1, 2) = -0.0000000002164365;
+    current_defgrad(2, 0) = -0.0000000000000002;
     current_defgrad(2, 1) = 0.0000000000000000;
-    current_defgrad(2, 2) = 1.0000000000000002;
+    current_defgrad(2, 2) = 1.0000000000000000;
+
 
     Core::LinAlg::Matrix<3, 3>* current_defgrad_ptr = &current_defgrad;
     Core::LinAlg::Matrix<3, 3> iFin_other{
@@ -2366,12 +2372,12 @@ namespace
 
     // set parameter list
     auto parameter_list_pointer = std::make_shared<Teuchos::ParameterList>();
-    auto structural_dynamic_params = parameter_list_pointer->sublist("STRUCTURAL DYNAMIC", false);
-
-    structural_dynamic_params.set("MASSLIN", "No");
-
+    parameter_list_pointer->sublist("STRUCTURAL DYNAMIC", false)
+        .set("MASSLIN", Inpar::Solid::MassLin::ml_none);
     // set the parameter list in the global problem
     problem.set_parameter_list(parameter_list_pointer);
+    parameter_list_pointer->sublist("SSI CONTROL")
+        .set("COUPALGO", Inpar::SSI::SolutionSchemeOverFields::ssi_IterStagg);
 
     // get pointer to parameter class
     std::shared_ptr<Mat::PAR::MultiplicativeSplitDefgradElastHyper>
