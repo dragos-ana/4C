@@ -2946,7 +2946,7 @@ std::shared_ptr<std::vector<std::shared_ptr<Mat::MaterialDefinition>>> Global::v
                 "(default: exp(30))",
             .default_value = std::exp(30.0)}));
     m->add_component(entry<double>("INTERP_FACT_PRED_ADAPT",
-        {.description = "interpolation factor $ \\xi_{\\texŧ{user}}$ utilized in the predictor "
+        {.description = "interpolation factor $ \\xi_{user}$ utilized in the predictor "
                         "adaptation (default: 0.5)",
             .default_value = 0.5}));
     m->add_component(entry<int>("MAX_NUM_PRED_ADAPT",
