@@ -10,6 +10,7 @@
 #include "4C_global_data.hpp"
 #include "4C_inpar_ssi.hpp"
 #include "4C_io_input_parameter_container.templates.hpp"
+#include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
@@ -1837,11 +1838,11 @@ namespace
     last_rightCG(2, 1) = 0.0000000000000020;
     last_rightCG(2, 2) = 0.9999999999999998;
 
-
+    double last_xi = 0.0;
 
     // set the values at the 0-th GP
     iso_visco_mat->debug_set_last_quantities(
-        0, last_plastic_defgrd_inverse, last_plastic_strain, last_defgrad, last_rightCG);
+        0, last_plastic_defgrd_inverse, last_plastic_strain, last_defgrad, last_rightCG, last_xi);
 
 
     // define last_values to be set for the viscoplastic law (Anand)
@@ -2183,76 +2184,74 @@ namespace
 
   TEST_F(InelasticDefgradFactorsTest, DummyViscoplastTimIntLinearizTest)
   {
+    auto& iso_mat = isotrop_vplast_Anand_;
+
     // define last_values to be set for InelasticDefgradTransvIsotropElastViscoplast
     Core::LinAlg::Matrix<3, 3> last_plastic_defgrd_inverse{true};
-    last_plastic_defgrd_inverse(0, 0) = 0.1802440187642438;
-    last_plastic_defgrd_inverse(0, 1) = 0.7461038798156964;
-    last_plastic_defgrd_inverse(0, 2) = -0.0000000003148670;
-    last_plastic_defgrd_inverse(1, 0) = -0.5701621504233563;
-    last_plastic_defgrd_inverse(1, 1) = 3.2637544568069616;
-    last_plastic_defgrd_inverse(1, 2) = -0.0000000008927429;
-    last_plastic_defgrd_inverse(2, 0) = 0.0000000001019112;
-    last_plastic_defgrd_inverse(2, 1) = 0.0000000001152076;
-    last_plastic_defgrd_inverse(2, 2) = 0.9865120000123015;
+    last_plastic_defgrd_inverse(0, 0) = 1.0000000000000000;
+    last_plastic_defgrd_inverse(0, 1) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(0, 2) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(1, 0) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(1, 1) = 1.0000000000000000;
+    last_plastic_defgrd_inverse(1, 2) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(2, 0) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(2, 1) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(2, 2) = 1.0000000000000000;
 
 
-
-    double last_plastic_strain = 1.7362315808947422;
-
+    double last_plastic_strain = 0.0000000000000000;
 
 
     Core::LinAlg::Matrix<3, 3> last_defgrad{true};
-    last_defgrad(0, 0) = 0.9502120971890605;
-    last_defgrad(0, 1) = 0.0823150942461374;
-    last_defgrad(0, 2) = 0.0000000002457544;
-    last_defgrad(1, 0) = -3.0937188235596338;
-    last_defgrad(1, 1) = 0.7421827375604764;
-    last_defgrad(1, 2) = -0.0000000002191509;
-    last_defgrad(2, 0) = -0.0000000000000002;
+    last_defgrad(0, 0) = 1.0000000000000000;
+    last_defgrad(0, 1) = 0.0000000000000000;
+    last_defgrad(0, 2) = 0.0000000000000000;
+    last_defgrad(1, 0) = 0.0000000000000000;
+    last_defgrad(1, 1) = 1.0000000000000000;
+    last_defgrad(1, 2) = 0.0000000000000000;
+    last_defgrad(2, 0) = 0.0000000000000000;
     last_defgrad(2, 1) = 0.0000000000000000;
     last_defgrad(2, 2) = 1.0000000000000000;
 
 
-
     Core::LinAlg::Matrix<3, 3> last_rightCG{true};
-    last_rightCG(0, 0) = 10.4739991888916375;
-    last_rightCG(0, 1) = -2.2178879073779281;
-    last_rightCG(0, 2) = 0.0000000009115099;
-    last_rightCG(1, 0) = -2.2178879073779281;
-    last_rightCG(1, 1) = 0.5576109906735135;
-    last_rightCG(1, 2) = -0.0000000001424207;
-    last_rightCG(2, 0) = 0.0000000009115099;
-    last_rightCG(2, 1) = -0.0000000001424207;
+    last_rightCG(0, 0) = 1.0000000000000000;
+    last_rightCG(0, 1) = 0.0000000000000000;
+    last_rightCG(0, 2) = 0.0000000000000000;
+    last_rightCG(1, 0) = 0.0000000000000000;
+    last_rightCG(1, 1) = 1.0000000000000000;
+    last_rightCG(1, 2) = 0.0000000000000000;
+    last_rightCG(2, 0) = 0.0000000000000000;
+    last_rightCG(2, 1) = 0.0000000000000000;
     last_rightCG(2, 2) = 1.0000000000000000;
 
-
+    double last_xi = 0.0;
 
     // set the values at the 0-th GP
-    // isotrop_vplast_Anand_->debug_set_last_quantities(
-    //    0, last_plastic_defgrd_inverse, last_plastic_strain, last_defgrad, last_rightCG);
-    isotrop_vplast_refJC_->debug_set_last_quantities(
-        0, last_plastic_defgrd_inverse, last_plastic_strain, last_defgrad, last_rightCG);
-
+    iso_mat->debug_set_last_quantities(
+        0, last_plastic_defgrd_inverse, last_plastic_strain, last_defgrad, last_rightCG, last_xi);
 
     // define last_values to be set for the viscoplastic law (Anand)
-    // double last_flow_resistance = 0.75;
-    // double last_plastic_strain_vp = 0.0;
-    // set the values at the 0-th GP
-    // std::dynamic_pointer_cast<Mat::Viscoplastic::Anand>(
-    //     isotrop_vplast_Anand_->debug_get_viscoplastic_law())
-    //    ->debug_set_last_values(0, last_flow_resistance, last_plastic_strain_vp);
-
+    if (iso_mat->material_type() == FourC::Core::Materials::mvl_Anand)
+    {
+      double last_flow_resistance = 0.75;
+      double last_plastic_strain_vp = 0.0;
+      // set the values at the 0-th GP
+      std::dynamic_pointer_cast<Mat::Viscoplastic::Anand>(iso_mat->debug_get_viscoplastic_law())
+          ->debug_set_last_values(0, last_flow_resistance, last_plastic_strain_vp);
+    }
     // set other variables needed for evaluation
     Core::LinAlg::Matrix<3, 3> current_defgrad{true};
-    current_defgrad(0, 0) = 0.9495521406408685;
-    current_defgrad(0, 1) = 0.0822756509928580;
-    current_defgrad(0, 2) = 0.0000000002431954;
-    current_defgrad(1, 0) = -3.1022983060634637;
-    current_defgrad(1, 1) = 0.7419900024887491;
-    current_defgrad(1, 2) = -0.0000000002164365;
-    current_defgrad(2, 0) = -0.0000000000000002;
-    current_defgrad(2, 1) = 0.0000000000000000;
-    current_defgrad(2, 2) = 1.0000000000000000;
+    current_defgrad(0, 0) = 1.0000000000000000;
+    current_defgrad(0, 1) = 0.0000000000000000;
+    current_defgrad(0, 2) = 0.0000000000000000;
+    current_defgrad(1, 0) = -0.0000008112353492;
+    current_defgrad(1, 1) = 1.0000007108980511;
+    current_defgrad(1, 2) = -0.0000015223016897;
+    current_defgrad(2, 0) = -0.0000031785804713;
+    current_defgrad(2, 1) = 0.0000017542417145;
+    current_defgrad(2, 2) = 0.9999976596855432;
+
 
 
     Core::LinAlg::Matrix<3, 3>* current_defgrad_ptr = &current_defgrad;
@@ -2271,22 +2270,16 @@ namespace
         true};  // only declared, to be able to pass it to the evaluation function
 
     // parameter list for InelasticDefGradTransvIsotropElastViscoplast
-    Teuchos::ParameterList param_list_transv_isotrop_vplast_refJC{};
-    param_list_transv_isotrop_vplast_refJC.set<double>("delta time", 5.0e-3);
+    Teuchos::ParameterList param_list{};
+    param_list.set<double>("delta time", 2.5e-3);
     // call pre_evaluate
-    //   isotrop_vplast_Anand_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
-    isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
+    iso_mat->pre_evaluate(param_list, 0, 0);
 
     // set boolean for updating history variables
-    //    isotrop_vplast_Anand_->debug_set_update_hist_var(true);
-    isotrop_vplast_refJC_->debug_set_update_hist_var(true);
+    iso_mat->debug_set_update_hist_var(true);
 
     // evaluate
-    //    isotrop_vplast_Anand_->evaluate_inverse_inelastic_def_grad(
-    //       current_defgrad_ptr, iFin_other, iFinM);
-    isotrop_vplast_refJC_->evaluate_inverse_inelastic_def_grad(
-        current_defgrad_ptr, iFin_other, iFinM);
-
+    iso_mat->evaluate_inverse_inelastic_def_grad(current_defgrad_ptr, iFin_other, iFinM);
 
     // ----------------------------------------------------------------------- //
     // START:: CREATE MULT. SPLIT MATERIAL CONTAINING THIS INELASTIC DEFGRAD

@@ -418,10 +418,10 @@ namespace Mat
                                   // derivatives of the plastic strain rate have been evaluated
   };
 
-  /// defines
-  // flag for debug output (viscoplastic material) related to
-  // time integration
-  // #define DEBUGVPLAST_TIMINT
+/// defines
+// flag for debug output (viscoplastic material) related to
+// time integration
+#define DEBUGVPLAST_TIMINT
 
   // flag for debug output (viscoplastic material) related to the
   // inverse inelastic defgrad computation; less detailed than
