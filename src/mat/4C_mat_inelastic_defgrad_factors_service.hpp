@@ -131,8 +131,8 @@ namespace Mat
   /// variables in the Local Newton Loop of InelasticDefgradTransvIsotropElastViscoplast)
   enum class ViscoplastTimIntType
   {
-    Standard,     // standard time integration,
-    Logarithmic,  // time integration with logarithmically transformed residual equation for the
+    standard,     // standard time integration,
+    logarithmic,  // time integration with logarithmically transformed residual equation for the
                   // evolution of the plastic deformation gradient
   };
 

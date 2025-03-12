@@ -306,7 +306,7 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MAT_BEHAVIOR", Mat::ViscoplastMatBehavior::transv_isotrop);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "TIME_INTEGRATION_HIST_VARS", std::string("log"));
+          "TIME_INTEGRATION_HIST_VARS", Mat::ViscoplastTimIntType::logarithmic);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_PRED_ADAPT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
@@ -347,7 +347,7 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MAT_BEHAVIOR", Mat::ViscoplastMatBehavior::isotrop);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "TIME_INTEGRATION_HIST_VARS", std::string("log"));
+          "TIME_INTEGRATION_HIST_VARS", Mat::ViscoplastTimIntType::logarithmic);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_PRED_ADAPT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);

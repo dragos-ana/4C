@@ -2723,12 +2723,12 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<Mat::ViscoplastMatBehavior>(
                 "MAT_BEHAVIOR", {.description = "Material behavior / anisotropy type: transversely "
                                                 "isotropic | isotropic (default)"}),
-            parameter<std::string>("TIME_INTEGRATION_HIST_VARS",
+            parameter<Mat::ViscoplastTimIntType>("TIME_INTEGRATION_HIST_VARS",
                 {.description =
                         "time integration of internal variables: standard | log (logarithmic "
                         "transformation of the "
                         "evolution equation for the plastic deformation gradient)",
-                    .default_value = "log"}),
+                    .default_value = Mat::ViscoplastTimIntType::logarithmic}),
             parameter<bool>("USE_PRED_ADAPT",
                 {.description = "boolean: use predictor adaptation before and in the "
                                 "Local Newton Loop? (true: yes, false: "

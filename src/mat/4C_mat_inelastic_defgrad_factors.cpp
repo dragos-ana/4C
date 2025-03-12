@@ -485,17 +485,6 @@ namespace
 }  // namespace
 
 
-/// get the time integration type (Local Newton Loop of
-/// InelasticDefgradTransvIsotropElastViscoplast) from the
-/// user-specified string in the input file
-Mat::ViscoplastTimIntType Mat::get_time_integration_type(const std::string& timint_string)
-{
-  if (timint_string == "standard") return Mat::ViscoplastTimIntType::Standard;
-  if (timint_string == "log") return Mat::ViscoplastTimIntType::Logarithmic;
-
-  FOUR_C_THROW("You should not be here!");
-}
-
 /// get the material linearization type (InelasticDefgradTransvIsotropElastViscoplast) from the
 /// user-specified string in the input file
 Mat::ViscoplastLinearizationType Mat::get_linearization_type(
@@ -683,9 +672,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       yield_cond_a_(matdata.parameters.get<double>("YIELD_COND_A")),
       yield_cond_b_(matdata.parameters.get<double>("YIELD_COND_B")),
       yield_cond_f_(matdata.parameters.get<double>("YIELD_COND_F")),
-      mat_behavior_(matdata.parameters.get<ViscoplastMatBehavior>("MAT_BEHAVIOR")),
-      timint_type_(get_time_integration_type(
-          matdata.parameters.get<std::string>("TIME_INTEGRATION_HIST_VARS"))),
+      mat_behavior_(matdata.parameters.get<Mat::ViscoplastMatBehavior>("MAT_BEHAVIOR")),
+      timint_type_(matdata.parameters.get<Mat::ViscoplastTimIntType>("TIME_INTEGRATION_HIST_VARS")),
       linearization_type_(
           get_linearization_type(matdata.parameters.get<std::string>("LINEARIZATION"))),
       max_plastic_strain_incr_(matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_INCR")),
@@ -2031,7 +2019,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
 
   // calculate plastic update tensor (only required, and computed, for
   // standard time integration)
-  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Standard)
+  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::standard)
   {
     temp3x3.update(-dt, state_quantities.curr_lpM_, 0.0);
     Core::LinAlg::MatrixFunctErrorType exp_err_status =
@@ -2411,7 +2399,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
 
 
   // compute derivatives of the update tensor (only required for standard substepping)
-  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Standard)
+  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::standard)
   {
     // compute argument
     Core::LinAlg::Matrix<3, 3> min_dt_lpM(true);
@@ -2573,7 +2561,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     Core::LinAlg::Matrix<9, 6> rhs_iFin_V(true);
     Core::LinAlg::Matrix<1, 6> rhs_epsp_V(true);
 
-    if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Standard)
+    if (parameter()->timint_type() == Mat::ViscoplastTimIntType::standard)
     // standard time integration
     {
       // calculate RHS of the equation for the plastic deformation gradient
@@ -2589,7 +2577,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
           time_step_settings_.dt_ * state_quantity_derivatives_.curr_dpsr_dequiv_stress_,
           state_quantity_derivatives_.curr_dequiv_stress_dC_, 0.0);
     }
-    else if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Logarithmic)
+    else if (parameter()->timint_type() == Mat::ViscoplastTimIntType::logarithmic)
     // logarithmic substepping
     {
       // calculate RHS of the equation for the plastic deformation gradient
@@ -3100,7 +3088,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::calculate_local_newton_loop_r
   double resepsp = 0.0;
 
   // compute residuals (standard time integration)
-  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Standard)
+  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::standard)
   {
     // calculate residual of the equation for inelastic defgrad
     temp3x3.multiply_nn(1.0, last_iFinM, state_quantities_.curr_EpM_, 0.0);
@@ -3110,7 +3098,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::calculate_local_newton_loop_r
     resepsp = plastic_strain - last_plastic_strain -
               dt * state_quantities_.curr_equiv_plastic_strain_rate_;
   }
-  else if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Logarithmic)
+  else if (parameter()->timint_type() == Mat::ViscoplastTimIntType::logarithmic)
   // compute residuals (logarithmic substepping)
   {
     // calculate the tensor logarithm involved in the residual
@@ -3216,7 +3204,7 @@ Core::LinAlg::Matrix<10, 10> Mat::InelasticDefgradTransvIsotropElastViscoplast::
   double J_epsp_epsp = 0.0;
 
   // standard time integration
-  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Standard)
+  if (parameter()->timint_type() == Mat::ViscoplastTimIntType::standard)
   {
     // compute 9x9 north-west component block of the Jacobian (derivative of residual for
     // inelastic deformation gradient w.r.t. inelastic deformation gradient)
@@ -3243,7 +3231,7 @@ Core::LinAlg::Matrix<10, 10> Mat::InelasticDefgradTransvIsotropElastViscoplast::
     // strain w.r.t. plastic strain)
     J_epsp_epsp = 1.0 - dt * state_quantity_derivatives_.curr_dpsr_depsp_;
   }
-  else if (parameter()->timint_type() == Mat::ViscoplastTimIntType::Logarithmic)
+  else if (parameter()->timint_type() == Mat::ViscoplastTimIntType::logarithmic)
   // logarithmic time integration
   {
     // compute 9x9 north-west component block of the Jacobian (derivative of residual for
