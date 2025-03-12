@@ -2791,25 +2791,29 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "utilized material linearization: analytic | perturb_based (based on "
                         "perturbations of the current state)",
                     .default_value = Mat::ViscoplastLinearizationType::analytic}),
-            parameter<std::string>("MATRIX_EXP_CALC_METHOD",
+            parameter<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD",
                 {.description =
                         "chosen computation method for matrix exponential (default | taylor_series "
                         "| spectral_decomp )",
-                    .default_value = "default"}),
-            parameter<std::string>("MATRIX_LOG_CALC_METHOD",
+                    .default_value = Core::LinAlg::MatrixExpCalcMethod::default_method}),
+            parameter<Core::LinAlg::MatrixLogCalcMethod>("MATRIX_LOG_CALC_METHOD",
                 {.description = "chosen computation method for matrix logarithm (default_series | "
                                 "taylor_series "
                                 "| gregory_series | spectral_decomp | inv_scal_square )",
-                    .default_value = "inv_scal_square"}),
-            parameter<std::string>("MATRIX_EXP_DERIV_CALC_METHOD",
+                    .default_value = Core::LinAlg::MatrixLogCalcMethod::inv_scal_square}),
+            parameter<Core::LinAlg::GenMatrixExpFirstDerivCalcMethod>(
+                "MATRIX_EXP_DERIV_CALC_METHOD",
                 {.description = "chosen computation method for the first derivative of the matrix "
                                 "exponential (default | taylor_series)",
-                    .default_value = "default"}),
-            parameter<std::string>("MATRIX_LOG_DERIV_CALC_METHOD",
+                    .default_value =
+                        Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::default_method}),
+            parameter<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
+                "MATRIX_LOG_DERIV_CALC_METHOD",
                 {.description = "chosen computation method for the first derivative of the matrix "
                                 "logarithm (default_series | taylor_series | gregory_series | "
                                 "pade_part_fract)",
-                    .default_value = "pade_part_fract"}),
+                    .default_value =
+                        Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract}),
         },
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "

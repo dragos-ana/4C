@@ -322,13 +322,13 @@ namespace
           "LINEARIZATION", Mat::ViscoplastLinearizationType::analytic);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MATRIX_EXP_CALC_METHOD", std::string("default"));
+          "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::default_method);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MATRIX_EXP_DERIV_CALC_METHOD", std::string("default"));
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MATRIX_LOG_CALC_METHOD", std::string("inv_scal_square"));
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MATRIX_LOG_DERIV_CALC_METHOD", std::string("pade_part_fract"));
+          "MATRIX_LOG_CALC_METHOD", Core::LinAlg::MatrixLogCalcMethod::inv_scal_square);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MATRIX_LOG_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
 
       // get pointer to parameter class
       params_transv_isotrop_vplast_refJC_ =
@@ -364,13 +364,13 @@ namespace
           "LINEARIZATION", Mat::ViscoplastLinearizationType::analytic);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "MATRIX_EXP_CALC_METHOD", std::string("default"));
+          "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::default_method);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "MATRIX_EXP_DERIV_CALC_METHOD", std::string("default"));
-      inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "MATRIX_LOG_CALC_METHOD", std::string("inv_scal_square"));
-      inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "MATRIX_LOG_DERIV_CALC_METHOD", std::string("pade_part_fract"));
+          "MATRIX_LOG_CALC_METHOD", Core::LinAlg::MatrixLogCalcMethod::inv_scal_square);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("MATRIX_LOG_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
 
       params_isotrop_vplast_refJC_ =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
