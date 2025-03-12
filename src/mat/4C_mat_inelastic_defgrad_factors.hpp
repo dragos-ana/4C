@@ -348,7 +348,7 @@ namespace Mat
         return linearization_type_;
       };
       //! DEBUG: set linearization type
-      void debug_set_linearization_type(const std::string linearization_type);
+      void debug_set_linearization_type(const Mat::ViscoplastLinearizationType linearization_type);
       //! get maximum, numerically evaluable plastic strain increment
       [[nodiscard]] double max_plastic_strain_incr() const { return max_plastic_strain_incr_; };
       //! get maximum, numerically evaluable value for the increment of

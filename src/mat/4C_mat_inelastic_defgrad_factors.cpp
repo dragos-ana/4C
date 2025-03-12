@@ -485,19 +485,6 @@ namespace
 }  // namespace
 
 
-/// get the material linearization type (InelasticDefgradTransvIsotropElastViscoplast) from the
-/// user-specified string in the input file
-Mat::ViscoplastLinearizationType Mat::get_linearization_type(
-    const std::string& linearization_string)
-{
-  if (linearization_string == "analytic") return Mat::ViscoplastLinearizationType::Analytic;
-  if (linearization_string == "perturb_based")
-    return Mat::ViscoplastLinearizationType::PerturbBased;
-
-  FOUR_C_THROW("You should not be here!");
-}
-
-
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Mat::PAR::InelasticDefgradNoGrowth::InelasticDefgradNoGrowth(
@@ -675,7 +662,7 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       mat_behavior_(matdata.parameters.get<Mat::ViscoplastMatBehavior>("MAT_BEHAVIOR")),
       timint_type_(matdata.parameters.get<Mat::ViscoplastTimIntType>("TIME_INTEGRATION_HIST_VARS")),
       linearization_type_(
-          get_linearization_type(matdata.parameters.get<std::string>("LINEARIZATION"))),
+          matdata.parameters.get<Mat::ViscoplastLinearizationType>("LINEARIZATION")),
       max_plastic_strain_incr_(matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_INCR")),
       max_plastic_strain_deriv_incr_(
           matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
@@ -2483,7 +2470,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
   if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_) > 0.0)
   {
     // ----- perturbation-based linearization ----- //
-    if (parameter()->linearization_type() == Mat::ViscoplastLinearizationType::PerturbBased)
+    if (parameter()->linearization_type() == Mat::ViscoplastLinearizationType::perturb_based)
     {
       evaluate_additional_cmat_perturb_based(FredM, cmatadd, iFin_other, dSdiFinj);
       return;
@@ -4759,9 +4746,9 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::debug_set_linearization_type(
-    const std::string linearization_type)
+    const Mat::ViscoplastLinearizationType linearization_type)
 {
-  linearization_type_ = get_linearization_type(linearization_type);
+  linearization_type_ = linearization_type;
 }
 
 FOUR_C_NAMESPACE_CLOSE

@@ -2786,11 +2786,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "number of iterations, number of substeps, ...) to a csv "
                                 "file? If true: yes, false: no",
                     .default_value = false}),
-            parameter<std::string>("LINEARIZATION",
+            parameter<Mat::ViscoplastLinearizationType>("LINEARIZATION",
                 {.description =
                         "utilized material linearization: analytic | perturb_based (based on "
                         "perturbations of the current state)",
-                    .default_value = "analytic"}),
+                    .default_value = Mat::ViscoplastLinearizationType::analytic}),
             parameter<std::string>("MATRIX_EXP_CALC_METHOD",
                 {.description =
                         "chosen computation method for matrix exponential (default | taylor_series "

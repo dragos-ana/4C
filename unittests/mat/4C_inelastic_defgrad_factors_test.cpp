@@ -319,7 +319,7 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "LINEARIZATION", std::string("analytic"));
+          "LINEARIZATION", Mat::ViscoplastLinearizationType::analytic);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MATRIX_EXP_CALC_METHOD", std::string("default"));
@@ -360,7 +360,8 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("INTERP_FACT_PRED_ADAPT", 0.1);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("LINEARIZATION", std::string("analytic"));
+      inelastic_defgrad_isotrop_vplast_refJC_data.add(
+          "LINEARIZATION", Mat::ViscoplastLinearizationType::analytic);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MATRIX_EXP_CALC_METHOD", std::string("default"));
@@ -2057,7 +2058,8 @@ namespace
         current_defgrad_ptr, iFin_other, iFinM, kin_quantities.iCV, dSdiFinj, cmatadd);
 
     cmatadd.clear();
-    isotrop_vplast_refJC_->parameter()->debug_set_linearization_type("perturb_based");
+    isotrop_vplast_refJC_->parameter()->debug_set_linearization_type(
+        FourC::Mat::ViscoplastLinearizationType::perturb_based);
     isotrop_vplast_refJC_->evaluate_additional_cmat(
         current_defgrad_ptr, iFin_other, iFinM, kin_quantities.iCV, dSdiFinj, cmatadd);
 
