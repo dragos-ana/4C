@@ -683,8 +683,7 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       yield_cond_a_(matdata.parameters.get<double>("YIELD_COND_A")),
       yield_cond_b_(matdata.parameters.get<double>("YIELD_COND_B")),
       yield_cond_f_(matdata.parameters.get<double>("YIELD_COND_F")),
-      bool_transv_isotropy_(
-          read_anisotropy_type(matdata.parameters.get<std::string>("ANISOTROPY"))),
+      mat_behavior_(matdata.parameters.get<ViscoplastMatBehavior>("MAT_BEHAVIOR")),
       timint_type_(get_time_integration_type(
           matdata.parameters.get<std::string>("TIME_INTEGRATION_HIST_VARS"))),
       linearization_type_(
@@ -1872,7 +1871,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
   state_quantities.curr_dSedCe_.clear();
   // compute additional 2nd elastic PK stress and elastic stiffness for the transversely isotropic
   // components (additive split assumed, as for CoupTransverselyIsotropic)
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == ViscoplastMatBehavior::transv_isotrop)
   {
     // initialize empty parameter list
     Teuchos::ParameterList param_list{};
@@ -1897,7 +1896,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
   Me_sym_M.update(state_quantities.curr_gamma_(0), state_quantities.curr_CeM_,
       state_quantities.curr_gamma_(1), CeCeM, 0.0);
   Me_sym_M.update(state_quantities.curr_gamma_(2), const_non_mat_tensors.id3x3_, 1.0);
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == Mat::ViscoplastMatBehavior::transv_isotrop)
   {
     Core::LinAlg::Matrix<3, 3> addMeM(true);
     temp3x3.multiply_nn(1.0, state_quantities.curr_CeM_, state_quantities.curr_SeM_, 0.0);
@@ -1934,7 +1933,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
   double mTMe_dev_sym_m = temp1x1(0);
 
   // calculate equivalent tensile stress
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == Mat::ViscoplastMatBehavior::transv_isotrop)
   {
     state_quantities.curr_equiv_stress_ =
         std::sqrt((A + 2 * B) * Me_dev_sym_contract_Me_dev_sym +
@@ -1969,7 +1968,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
   }
 
   // calculate plastic flow direction
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == Mat::ViscoplastMatBehavior::transv_isotrop)
   {
     // determine required components for the computation of the plastic flow direction
     Core::LinAlg::Matrix<3, 1> Me_dev_sym_m(true);
@@ -2223,7 +2222,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
 
   // compute additional components of the elastic transversely isotropic components for the
   // derivatives of the symmetric Mandel stress
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == Mat::ViscoplastMatBehavior::transv_isotrop)
   {
     Core::LinAlg::FourTensor<3> CedSediFin_FourTensor(true);
     Core::LinAlg::Tensor::multiply_matrix_four_tensor<3>(
@@ -2306,7 +2305,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   // \f$ \frac{\partial \boldsymbol{N}^{\text{p}}_{} }{\partial
   // \partial \boldsymbol{M}^{\text{e}}_{\text{dev,sym}}} \f$ (Voigt stress-stress form)
   Core::LinAlg::Matrix<6, 6> dNpdMe_sym_dev(true);
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == Mat::ViscoplastMatBehavior::transv_isotrop)
   {
     dNpdMe_sym_dev.multiply_nt(-1.0 / equiv_stress, NpV, NpV, 0.0);
     dNpdMe_sym_dev.update(-1.0 / 2.0 * 1.0 / equiv_stress * 4.0 / 3.0 * (F - A - 2.0 * B),
@@ -2975,7 +2974,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(
   pred_interp_factors_.setup(numgp);
 
   // read fiber and structural tensor in the case of transverse isotropy
-  if (parameter()->bool_transv_isotropy())
+  if (parameter()->mat_behavior() == Mat::ViscoplastMatBehavior::transv_isotrop)
   {
     // read fiber via the fiber reader (hyperelastic transversely isotropic material)
     fiber_reader_.setup(numgp, container);

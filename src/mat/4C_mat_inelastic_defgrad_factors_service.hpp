@@ -118,6 +118,14 @@ namespace Mat
     }
   }
 
+  /// enum class for material behavior types
+  /// (InelasticDefgradTransvIsotropElastViscoplast)
+  enum class ViscoplastMatBehavior
+  {
+    isotrop,         // isotropic material behavior
+    transv_isotrop,  // isotropic material behavior
+  };
+
 
   /// enum class for time integration types (integration of internal
   /// variables in the Local Newton Loop of InelasticDefgradTransvIsotropElastViscoplast)

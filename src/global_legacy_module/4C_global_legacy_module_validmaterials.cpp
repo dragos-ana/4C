@@ -15,6 +15,7 @@
 #include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_mat_electrode.hpp"
+#include "4C_mat_inelastic_defgrad_factors_service.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -2719,11 +2720,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                                 "following "
                                                 "the notation in Dafalias 1989, International "
                                                 "Journal of Plasticity, Vol. 5"}),
-            parameter<std::string>("ANISOTROPY",
-                {.description =
-                        "Anisotropy type: transversely isotropic (transvisotrop; "
-                        "transverseisotropic; "
-                        "transverselyisotropic) | isotropic (isotrop; isotropic; Default)"}),
+            parameter<Mat::ViscoplastMatBehavior>(
+                "MAT_BEHAVIOR", {.description = "Material behavior / anisotropy type: transversely "
+                                                "isotropic | isotropic (default)"}),
             parameter<std::string>("TIME_INTEGRATION_HIST_VARS",
                 {.description =
                         "time integration of internal variables: standard | log (logarithmic "
