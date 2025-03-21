@@ -250,76 +250,6 @@ namespace
   }
 }  // namespace
 
-Core::LinAlg::TensorInterpolation::RotInterpType
-Core::LinAlg::TensorInterpolation::rot_interp_string_to_type(std::string rot_interp_type_string)
-{
-  if (rot_interp_type_string == "RInterp")
-  {
-    return Core::LinAlg::TensorInterpolation::RotInterpType::RInterp;
-  }
-  else if (rot_interp_type_string == "QInterp")
-  {
-    return Core::LinAlg::TensorInterpolation::RotInterpType::QInterp;
-  }
-  else
-  {
-    FOUR_C_THROW("The rotation interpolation type {} is not implemented yet!",
-        rot_interp_type_string.c_str());
-  }
-}
-
-std::string Core::LinAlg::TensorInterpolation::rot_interp_type_to_string(
-    Core::LinAlg::TensorInterpolation::RotInterpType rot_interp_type)
-{
-  switch (rot_interp_type)
-  {
-    case Core::LinAlg::TensorInterpolation::RotInterpType::RInterp:
-      return "RInterp";
-    case Core::LinAlg::TensorInterpolation::RotInterpType::QInterp:
-      return "QInterp";
-    default:
-      FOUR_C_THROW("You should not be here");
-  }
-}
-
-Core::LinAlg::TensorInterpolation::EigenvalInterpType
-Core::LinAlg::TensorInterpolation::eigenval_interp_string_to_type(
-    std::string eigenval_interp_type_string)
-{
-  if (eigenval_interp_type_string == "LOG")
-  {
-    return Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG;
-  }
-  else if (eigenval_interp_type_string == "MLS")
-  {
-    return Core::LinAlg::TensorInterpolation::EigenvalInterpType::MLS;
-  }
-  else if (eigenval_interp_type_string == "LOGMLS")
-  {
-    return Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOGMLS;
-  }
-  else
-  {
-    FOUR_C_THROW("The eigenvalue interpolation type {} is not implemented yet!",
-        eigenval_interp_type_string.c_str());
-  }
-}
-
-std::string Core::LinAlg::TensorInterpolation::eigenval_interp_type_to_string(
-    Core::LinAlg::TensorInterpolation::EigenvalInterpType eigenval_interp_type)
-{
-  switch (eigenval_interp_type)
-  {
-    case Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG:
-      return "LOG";
-    case Core::LinAlg::TensorInterpolation::EigenvalInterpType::MLS:
-      return "MLS";
-    case Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOGMLS:
-      return "LOGMLS";
-    default:
-      FOUR_C_THROW("You should not be here");
-  }
-}
 
 
 template <unsigned int loc_dim>
@@ -607,8 +537,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
   else
   {
     FOUR_C_THROW("We do not have an implementation for RotInterpType {} and EigenvalInterpType {}!",
-        rot_interp_type_to_string(rot_interp_type_).c_str(),
-        eigenval_interp_type_to_string(eigenval_interp_type_).c_str());
+        magic_enum::enum_name(rot_interp_type_), magic_enum::enum_name(eigenval_interp_type_));
   }
 
 
