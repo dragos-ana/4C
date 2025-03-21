@@ -39,55 +39,43 @@ namespace Mat
     enum class ErrorType
     {
       NoErrors,
-      NegativePlasticStrain,  // negative plastic strain which does not allow for evaluations
-                              // inside the viscoplasticity laws
-      OverflowError,  // overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
-                      // (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
-                      // \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$) checked in the
-                      // standard substepping procedure
-      NoFlowResistance,  // the material has no flow resistance anymore, such that the evaluations
-                         // model non-physical phenomena
-      NoPlasticIncompressibility,  // no plastic incompressibility, meaning that our determinant
-                                   // of the inelastic defgrad is far from
-                                   // 1
-      FailedSolLinSystLNL,  // solution of the linear system in the Local Newton-Raphson Loop failed
-      FailedDetermLineSearchParam,  // the computation of a suitable line search parameter failed
-      NoConvergenceLNL,  // the Local Newton Loop did not converge for the given loop settings
-      SingularJacobian,  // singular Jacobian after converged LNL, which does not enable our
-                         // analytical evaluation of the linearization
-      FailedSolAnalytLinearization,     // solution of the linear system in the analytical
-                                        // linearization failed
-      FailedComputationFlowResistance,  // failed in the computation of the flow resistance via time
-                                        // integration of the hardening-rate equation (e.g., Anand
-                                        // model)
-      FailedComputationFlowResistanceDerivs,  // failed in the computation of the flow resistance
-                                              // derivatives (e.g., Anand model)
-      FailedLogEval,  // failed evaluation of the matrix logarithm or its derivative
-      FailedExpEval,  // failed evaluation of the matrix exponential or its derivative
+      NegativePlasticStrain,  ///< negative plastic strain which does not allow for evaluations
+                              ///< inside the viscoplasticity laws
+      OverflowError,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
+                      ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
+                      ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$) checked in
+                      ///< the standard substepping procedure
+      NoFlowResistance,  ///< the material has no flow resistance anymore, such that the evaluations
+                         ///< model non-physical phenomena
+      NoPlasticIncompressibility,  ///< no plastic incompressibility, meaning that our determinant
+                                   ///< of the inelastic defgrad is far from
+                                   ///< 1
+      FailedSolLinSystLNL,  ///< solution of the linear system in the Local Newton-Raphson Loop
+                            ///< failed
+      FailedDetermLineSearchParam,  ///< the computation of a suitable line search parameter failed
+      NoConvergenceLNL,  ///< the Local Newton Loop did not converge for the given loop settings
+      SingularJacobian,  ///< singular Jacobian after converged LNL, which does not enable our
+                         ///< analytical evaluation of the linearization
+      FailedSolAnalytLinearization,     ///< solution of the linear system in the analytical
+                                        ///< linearization failed
+      FailedComputationFlowResistance,  ///< failed in the computation of the flow resistance via
+                                        ///< time integration of the hardening-rate equation (e.g.,
+                                        ///< Anand model)
+      FailedComputationFlowResistanceDerivs,  ///< failed in the computation of the flow resistance
+                                              ///< derivatives (e.g., Anand model)
+      FailedLogEval,  ///< failed evaluation of the matrix logarithm or its derivative
+      FailedExpEval,  ///< failed evaluation of the matrix exponential or its derivative
     };
-
-    /// make sure ErrorType is stream-insertable
-    inline std::ostream& operator<<(std::ostream& stream, const ErrorType& error_type)
-    {
-      stream << magic_enum::enum_name(error_type);
-      return stream;
-    }
 
     /// enum class for error management actions in InelasticDefgradTransvIsotropElastViscoplast
     enum class ErrorAction
     {
-      Continue,             // continue without any errors (NoErrors)
-      ReturnSolWithErrors,  // return the current solution with errors (if the maximum substepping
-                            // settings have been reached)
-      NextIter,             // go to next iteration after performing certain reset steps
+      Continue,             ///< continue without any errors (NoErrors)
+      ReturnSolWithErrors,  ///< return the current solution with errors (if the maximum substepping
+                            ///< settings have been reached)
+      NextIter,             ///< go to next iteration after performing certain reset steps
     };
 
-    /// make sure ErrorAction is stream-insertable
-    inline std::ostream& operator<<(std::ostream& stream, const ErrorAction& error_action)
-    {
-      stream << magic_enum::enum_name(error_action);
-      return stream;
-    }
 
     /// to_string: error types to error messages in InelasticDefgradTransvIsotropElastViscoplast
     inline std::string to_string(ErrorType err_type)
@@ -148,48 +136,27 @@ namespace Mat
     /// (InelasticDefgradTransvIsotropElastViscoplast)
     enum class MatBehavior
     {
-      isotrop,         // isotropic material behavior
-      transv_isotrop,  // isotropic material behavior
+      isotrop,         ///< isotropic material behavior
+      transv_isotrop,  ///< isotropic material behavior
     };
-
-    /// make sure MatBehavior is stream-insertable
-    inline std::ostream& operator<<(std::ostream& stream, const MatBehavior& mat_behavior)
-    {
-      stream << magic_enum::enum_name(mat_behavior);
-      return stream;
-    }
 
     /// enum class for time integration types (integration of internal
     /// variables in the Local Newton Loop of InelasticDefgradTransvIsotropElastViscoplast)
     enum class TimIntType
     {
-      standard,     // standard time integration,
-      logarithmic,  // time integration with logarithmically transformed residual equation for the
-                    // evolution of the plastic deformation gradient
+      standard,     ///< standard time integration,
+      logarithmic,  ///< time integration with logarithmically transformed residual equation for the
+                    ///< evolution of the plastic deformation gradient
     };
-
-    /// make sure TimIntType is stream-insertable
-    inline std::ostream& operator<<(std::ostream& stream, const TimIntType& timint_type)
-    {
-      stream << magic_enum::enum_name(timint_type);
-      return stream;
-    }
 
     /// enum class for material linearization types (linearization of
     /// InelasticDefgradTransvIsotropElastViscoplast)
     enum class LinearizationType
     {
-      analytic,  // analytical linearization involving the solution of a linear system of equations,
-      perturb_based,  // linearization based on perturbing the current state
+      analytic,       ///< analytical linearization involving the solution of a linear system of
+                      ///< equations,
+      perturb_based,  ///< linearization based on perturbing the current state
     };
-
-    /// make sure LinearizationType is stream-insertable
-    inline std::ostream& operator<<(
-        std::ostream& stream, const LinearizationType& linearization_type)
-    {
-      stream << magic_enum::enum_name(linearization_type);
-      return stream;
-    }
 
     // names of the various error types
     inline std::map<ErrorType, std::string> ErrorNames = {
@@ -206,7 +173,8 @@ namespace Mat
     };
 
     //! class containing utilities for analyzing the material time integration:
-    //! error types, number of line searches, ... (InelastDefgradTransvIsotropElastViscoplast)
+    //! error types, number of line searches, ...
+    //! (InelastDefgradTransvIsotropElastViscoplast)
     class TimIntAnalysisUtils
     {
      public:
@@ -447,18 +415,10 @@ namespace Mat
     /// plastic strain rate,...)
     enum class StateQuantityEvalType
     {
-      FullEval,               // full evaluation (full call of the evaluate_state_quantities method)
-      PlasticStrainRateOnly,  // return in evaluate_state_quantities once the plastic strain rate
-                              // has been evaluated
+      FullEval,  ///< full evaluation (full call of the evaluate_state_quantities method)
+      PlasticStrainRateOnly,  ///< return in evaluate_state_quantities once the plastic strain rate
+                              ///< has been evaluated
     };
-
-    /// make sure StateQuantityEvalType is stream-insertable
-    inline std::ostream& operator<<(
-        std::ostream& stream, const StateQuantityEvalType& state_quant_eval_type)
-    {
-      stream << magic_enum::enum_name(state_quant_eval_type);
-      return stream;
-    }
 
     /// enum class for evaluations of the state quantity derivatives in
     /// InelasticDefgradTransvIsotropElastViscoplast: what is the aim of
@@ -466,9 +426,9 @@ namespace Mat
     /// derivatives of the plastic strain rate,...)
     enum class StateQuantityDerivEvalType
     {
-      FullEval,  // full evaluation (full call of the evaluate_state_quantity_derivatives method)
-      PlasticStrainRateDerivsOnly,  // return in evaluate_state_quantity_derivatives once the
-                                    // derivatives of the plastic strain rate have been evaluated
+      FullEval,  ///< full evaluation (full call of the evaluate_state_quantity_derivatives method)
+      PlasticStrainRateDerivsOnly,  ///< return in evaluate_state_quantity_derivatives once the
+                                    ///< derivatives of the plastic strain rate have been evaluated
     };
 
     /// make sure StateQuantityDerivEvalType is stream-insertable
