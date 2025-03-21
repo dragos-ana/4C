@@ -15,6 +15,7 @@
 #include "4C_linalg_serialdensematrix.hpp"
 #include "4C_utils_exceptions.hpp"
 
+#include <magic_enum/magic_enum.hpp>
 #include <Teuchos_ParameterList.hpp>
 
 FOUR_C_NAMESPACE_OPEN
@@ -26,44 +27,27 @@ namespace Core::LinAlg
     /// enum class for the error types of the tensor interpolator
     enum class TensorInterpErrorType
     {
-      NoErrors,
-      LinSystFailQMatrix,  // the solution of the linear system of equations for the rotation matrix
-                           // Q failed
-      LinSystFailRMatrix,  // the solution of the linear system of equations for the rotation matrix
-                           // R failed
+      NoErrors,            ///< no evaluation errors
+      LinSystFailQMatrix,  ///< the solution of the linear system of equations for the rotation
+                           ///< matrix Q failed
+      LinSystFailRMatrix,  ///< the solution of the linear system of equations for the rotation
+                           ///< matrix R failed
     };
 
     /// enum class for the interpolation type of the relative rotation matrices
     enum class RotInterpType
     {
-      RInterp,  // interpolation of relative rotation vectors,
-      QInterp,  // interpolation of relative quaternions,
+      RInterp,  ///< interpolation of relative rotation vectors,
+      QInterp,  ///< interpolation of relative quaternions,
     };
-
-    /// conversion method from rotation interpolation type string to the
-    /// corresponding enum type
-    RotInterpType rot_interp_string_to_type(std::string rot_interp_type_string);
-
-    /// conversion method from rotation interpolation enum type to the
-    /// corresponding string
-    std::string rot_interp_type_to_string(RotInterpType rot_interp_type);
 
     /// enum class for the interpolation type of the eigenvalue matrix
     enum class EigenvalInterpType
     {
-      LOG,     // logarithmic weighted average,
-      MLS,     // moving least squares,
-      LOGMLS,  // logarithmic moving least squares,
+      LOG,     ///< logarithmic weighted average,
+      MLS,     ///< moving least squares,
+      LOGMLS,  ///< logarithmic moving least squares,
     };
-
-    /// conversion method from eigenvalue interpolation type string to the
-    /// corresponding enum type
-    EigenvalInterpType eigenval_interp_string_to_type(std::string eigenval_interp_type_string);
-
-    /// conversion method from eigenvalue interpolation enum type to the
-    /// corresponding string
-    std::string eigenval_interp_type_to_string(EigenvalInterpType eigenval_interp_type);
-
 
     /// to_string: error types to error message for the tensor interpolator
     inline std::string to_string(const TensorInterpErrorType err_type)
