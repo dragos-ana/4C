@@ -1808,22 +1808,34 @@ namespace Mat
     struct SubstepParams
     {
       //! current time parameter ranging from 0 to the problem time step \f$ \Delta t \f$
-      double t;
+      double t_;
       //! counter of evaluated substeps
-      unsigned int substep_counter;
+      unsigned int substep_counter_;
       //! current substep size
-      double curr_dt;
+      double curr_dt_;
       //! number of times the problem time step \f$ \Delta t \f$ has been halved
-      unsigned int time_step_halving_counter;
+      unsigned int time_step_halving_counter_;
       //!  current total number of substeps to be evaluated within the time step \f$ \Delta t
       //! \f$; this is not always given by time_step_halving_counter, since the
       //! halving does not have to be uniform (e.g. we could halve the time step twice and still
       //! have 3 substeps to evaluate instead of 4, i.e. if the first substep was evaluable
       //! numerically, but the second substep not, leading to another halving of the substep length)
-      unsigned int total_num_of_substeps;
+      unsigned int total_num_of_substeps_;
       //! iteration counter of the Local Newton Loop used to evaluate each substep
-      unsigned int iter;
+      unsigned int iter_;
+
+      //! reset routine: basically, create a new empty object
+      void reset()
+      {
+        t_ = 0.0;
+        substep_counter_ = 0;
+        curr_dt_ = 0.0;
+        time_step_halving_counter_ = 0;
+        total_num_of_substeps_ = 0;
+        iter_ = 0;
+      }
     };
+    SubstepParams substep_params_;
 
 
     /*!
@@ -1990,7 +2002,6 @@ namespace Mat
     /*!
      * @brief Setup new substep in the Local Newton Loop in case of an encountered evaluation error
      *
-     * @param[in,out] substep_params parameters of the substepping procedure
      * @param[in,out] sol current solution vector of the Local Newton Loop (reset to the last
      * converged value within this method)
      * @param[in,out] curr_CM current right Cauchy-Green deformation tensor, interpolated using
@@ -2000,8 +2011,7 @@ namespace Mat
      * step too many times)
      *
      */
-    bool prepare_new_substep(SubstepParams& substep_params, Core::LinAlg::Matrix<10, 1>& sol,
-        Core::LinAlg::Matrix<3, 3>& curr_CM);
+    bool prepare_new_substep(Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM);
 
     /*!
      * @brief Routine utilized during the Local Newton Loop
@@ -2010,7 +2020,6 @@ namespace Mat
      *
      *
      * @param[in] err_status error status
-     * @param[in,out] substep_params parameters of the substepping procedure
      * @param[in,out] sol current solution vector of the Local Newton Loop (reset to the last
      * converged value within this method)
      * @param[in,out] curr_CM current right Cauchy-Green deformation tensor, interpolated using
@@ -2018,7 +2027,7 @@ namespace Mat
      * updated new substep length)
      * @return action to be performed subsequently in the LNL
      */
-    ErrorAction manage_evaluation_error(const ErrorType& err_status, SubstepParams& substep_params,
+    ErrorAction manage_evaluation_error(const ErrorType& err_status,
         Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM);
 
     /*!
