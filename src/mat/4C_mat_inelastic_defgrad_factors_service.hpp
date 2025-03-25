@@ -7,7 +7,6 @@
 #ifndef FOUR_C_MAT_INELASTIC_DEFGRAD_FACTORS_SERVICE_HPP
 #define FOUR_C_MAT_INELASTIC_DEFGRAD_FACTORS_SERVICE_HPP
 
-
 #include "4C_config.hpp"
 
 #include "4C_comm_mpi_utils.hpp"
@@ -63,8 +62,9 @@ namespace Mat
                                         ///< Anand model)
       FailedComputationFlowResistanceDerivs,  ///< failed in the computation of the flow resistance
                                               ///< derivatives (e.g., Anand model)
-      FailedLogEval,  ///< failed evaluation of the matrix logarithm or its derivative
-      FailedExpEval,  ///< failed evaluation of the matrix exponential or its derivative
+      FailedLogEval,        ///< failed evaluation of the matrix logarithm or its derivative
+      FailedExpEval,        ///< failed evaluation of the matrix exponential or its derivative
+      FailedRightCGInterp,  ///< failed interpolation of the right Cauchy-Green tensor
     };
 
     /// enum class for error management actions in InelasticDefgradTransvIsotropElastViscoplast
@@ -127,6 +127,11 @@ namespace Mat
           return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in evaluating the "
                  "matrix exponential or its derivative with respect to the argument";
           break;
+        case ErrorType::FailedRightCGInterp:
+          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in interpolating "
+                 "the "
+                 "right Cauchy-Green deformation tensor";
+          break;
         default:
           FOUR_C_THROW("to_string(ErrorType): You should not be here!");
       }
@@ -170,6 +175,7 @@ namespace Mat
         {ErrorType::FailedSolAnalytLinearization, "FailedSolAnalytLinearization"},
         {ErrorType::FailedLogEval, "FailedLogEval"},
         {ErrorType::FailedExpEval, "FailedExpEval"},
+        {ErrorType::FailedRightCGInterp, "FailedRightCGInterp"},
     };
 
     //! class containing utilities for analyzing the material time integration:
@@ -178,25 +184,32 @@ namespace Mat
     class TimIntAnalysisUtils
     {
      public:
-      //! number of substeps for the current evaluation (LNL)
+      //! number of substeps for the current timestep evaluation (LNL)
       unsigned int eval_num_of_substeps_ = 0;
 
       //! total number of substeps
       unsigned int total_num_of_substeps_ = 0;
 
-      //! number of iterations for the current evaluation (LNL)
+      //! number of iterations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_iters_ = 0;
 
       //! total number of LNL iterations
       unsigned int total_num_of_iters_ = 0;
 
-      //! number of repredictorizations for the current evaluation (LNL)
+      //! number of repredictorizations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_repredict_ = 0;
 
       //! total number of LNL repredictorizations
       unsigned int total_num_of_repredict_ = 0;
 
-      //! number of line searches for the current evaluation (LNL)
+      //! number of iterations spent in the predictor adaptation for the
+      //! current timestep evaluation (LNL)
+      unsigned int eval_num_of_pred_adapt_iters_ = 0;
+
+      //! number of substeps for the current timestep evaluation (LNL)
+      unsigned int total_num_of_pred_adapt_iters_ = 0;
+
+      //! number of line searches for the current timestep evaluation (LNL)
       unsigned int eval_num_of_line_search_ = 0;
 
       //! line search: the number of times the step size \f$ \alpha \f$ of
@@ -221,17 +234,37 @@ namespace Mat
       //! (currently evaluated time step)
       unsigned int total_num_of_alpha_neq_1 = 0;
 
+      //! number of iterations of the line searches for the current timestep evaluation (LNL)
+      unsigned int eval_num_of_line_search_iters_ = 0;
+
+      //! total number of line search iterations
+      unsigned int total_num_of_line_search_iters_ = 0;
+
       //! number of times the LNL convergences directly in its first
-      //! iteration (due to a good predictor!) for the current evaluation
+      //! iteration (due to a good predictor!) for the current timestep evaluation
       unsigned int eval_num_of_first_iter_convergences = 0;
 
       //! total number of times the LNL convergences directly in its first
       //! iteration (due to a good predictor!)
       unsigned int total_num_of_first_iter_convergences = 0;
 
-      //! timer for the current evaluation, from the start of preevaluate to the end of update
+      //! timer for the current timestep evaluation, from the start of preevaluate to the end of
+      //! update
       Teuchos::Time eval_teuchos_timer_{
           "InelasticDefgradTransvIsotropElastViscoplast::from_preevaluate_to_update"};
+
+      //! timer for the time spent in the LNL
+      Teuchos::Time eval_teuchos_timer_LNL_{
+          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
+
+      //! timer for the time spent adapting the predictor
+      Teuchos::Time eval_teuchos_timer_pred_adapt_{
+          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation"};
+
+      //! timer for the time spent in the line search
+      Teuchos::Time eval_teuchos_timer_line_search_{
+          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
+
 
       //! evaluation time
       double eval_time_;
@@ -239,8 +272,29 @@ namespace Mat
       //! total time
       double total_time_;
 
-      //! error map of the current evaluation, from the first preevaluate of this time step to the
-      //! first preevaluate of the next
+      //! evaluation time spent in the LNL (current
+      //! time step)
+      double eval_time_LNL_;
+
+      //! total time spent in the LNL
+      double total_time_LNL_;
+
+      //! evaluation time spent in the predictor adaptation (current
+      //! time step)
+      double eval_time_pred_adapt_;
+
+      //! total time spent in the predictor adaptation
+      double total_time_pred_adapt_;
+
+      //! evaluation time spent in the line search (current
+      //! time step)
+      double eval_time_line_search_;
+
+      //! total time spent in the line search
+      double total_time_line_search_;
+
+      //! error map of the current timestep evaluation, from the first preevaluate of this time step
+      //! to the first preevaluate of the next
       std::map<ErrorType, unsigned int> eval_error_map_ = {
           {ErrorType::NegativePlasticStrain, 0},
           {ErrorType::OverflowError, 0},
@@ -252,6 +306,7 @@ namespace Mat
           {ErrorType::FailedSolAnalytLinearization, 0},
           {ErrorType::FailedLogEval, 0},
           {ErrorType::FailedExpEval, 0},
+          {ErrorType::FailedRightCGInterp, 0},
       };
 
       //! error map of the total evaluation
@@ -266,6 +321,7 @@ namespace Mat
           {ErrorType::FailedSolAnalytLinearization, 0},
           {ErrorType::FailedLogEval, 0},
           {ErrorType::FailedExpEval, 0},
+          {ErrorType::FailedRightCGInterp, 0},
       };
 
       //! runtime csv writer
@@ -288,9 +344,17 @@ namespace Mat
         eval_num_of_substeps_ = 0;
         eval_num_of_iters_ = 0;
         eval_num_of_repredict_ = 0;
+        eval_num_of_pred_adapt_iters_ = 0;
         eval_num_of_line_search_ = 0;
+        eval_num_of_line_search_iters_ = 0;
         eval_teuchos_timer_.reset();
+        eval_teuchos_timer_LNL_.reset();
+        eval_teuchos_timer_pred_adapt_.reset();
+        eval_teuchos_timer_line_search_.reset();
         eval_time_ = 0;
+        eval_time_LNL_ = 0;
+        eval_time_pred_adapt_ = 0;
+        eval_time_line_search_ = 0;
         eval_error_map_ = {
             {ErrorType::NegativePlasticStrain, 0},
             {ErrorType::OverflowError, 0},
@@ -302,6 +366,7 @@ namespace Mat
             {ErrorType::FailedSolAnalytLinearization, 0},
             {ErrorType::FailedLogEval, 0},
             {ErrorType::FailedExpEval, 0},
+            {ErrorType::FailedRightCGInterp, 0},
         };
         eval_num_of_alpha_neq_1 = 0;
         eval_num_of_alpha_neq_1_last_iter = 0;
@@ -326,22 +391,32 @@ namespace Mat
         // create csv_writer and register its columns
         csv_writer_.emplace(
             my_rank, *Global::Problem::instance()->output_control_file(), "timint_output");
-        csv_writer_->register_data_vector("Eval. substeps", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations", 1, 16);
-        csv_writer_->register_data_vector("Eval. repredictorizations", 1, 16);
-        csv_writer_->register_data_vector("Eval. line searches", 1, 16);
+        csv_writer_->register_data_vector("Eval. substeps (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
         csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
         csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
         csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);
-        csv_writer_->register_data_vector("Eval. time", 1, 16);
-        csv_writer_->register_data_vector("Total substeps", 1, 16);
-        csv_writer_->register_data_vector("Total iterations", 1, 16);
-        csv_writer_->register_data_vector("Total repredictorizations", 1, 16);
-        csv_writer_->register_data_vector("Total line searches", 1, 16);
+        csv_writer_->register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
+        csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
+        csv_writer_->register_data_vector("Total substeps (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
         csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
         csv_writer_->register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
         csv_writer_->register_data_vector("Total # of first LNL iter. convergences", 1, 16);
-        csv_writer_->register_data_vector("Total time", 1, 16);
+        csv_writer_->register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
+        csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Total time (line search)", 1, 16);
         for (const auto& [key, value] : ErrorNames)
         {
           csv_writer_->register_data_vector(
@@ -357,10 +432,15 @@ namespace Mat
         total_num_of_substeps_ += eval_num_of_substeps_;
         total_num_of_iters_ += eval_num_of_iters_;
         total_num_of_repredict_ += eval_num_of_repredict_;
+        total_num_of_pred_adapt_iters_ += eval_num_of_pred_adapt_iters_;
         total_num_of_line_search_ += eval_num_of_line_search_;
+        total_num_of_line_search_iters_ += eval_num_of_line_search_iters_;
         total_num_of_alpha_neq_1 += eval_num_of_alpha_neq_1;
         total_num_of_alpha_neq_1_last_iter += eval_num_of_alpha_neq_1_last_iter;
         total_time_ += eval_time_;
+        total_time_LNL_ += eval_time_LNL_;
+        total_time_pred_adapt_ += eval_time_pred_adapt_;
+        total_time_line_search_ += eval_time_line_search_;
         for (const auto& [error_type, error_count] : eval_error_map_)
         {
           total_error_map_[error_type] += error_count;
@@ -372,16 +452,35 @@ namespace Mat
       {
         // output data
         std::map<std::string, std::vector<double>> output_data;
-        output_data["Eval. substeps"] = {static_cast<double>(eval_num_of_substeps_)};
-        output_data["Total substeps"] = {static_cast<double>(total_num_of_substeps_)};
-        output_data["Eval. iterations"] = {static_cast<double>(eval_num_of_iters_)};
-        output_data["Total iterations"] = {static_cast<double>(total_num_of_iters_)};
-        output_data["Eval. repredictorizations"] = {static_cast<double>(eval_num_of_repredict_)};
-        output_data["Total repredictorizations"] = {static_cast<double>(total_num_of_repredict_)};
-        output_data["Eval. line searches"] = {static_cast<double>(eval_num_of_line_search_)};
-        output_data["Total line searches"] = {static_cast<double>(total_num_of_line_search_)};
-        output_data["Eval. time"] = {static_cast<double>(eval_time_)};
-        output_data["Total time"] = {static_cast<double>(total_time_)};
+        output_data["Eval. substeps (LNL)"] = {static_cast<double>(eval_num_of_substeps_)};
+        output_data["Total substeps (LNL)"] = {static_cast<double>(total_num_of_substeps_)};
+        output_data["Eval. iterations (LNL)"] = {static_cast<double>(eval_num_of_iters_)};
+        output_data["Total iterations (LNL)"] = {static_cast<double>(total_num_of_iters_)};
+        output_data["Eval. repredictorizations (LNL)"] = {
+            static_cast<double>(eval_num_of_repredict_)};
+        output_data["Total repredictorizations (LNL)"] = {
+            static_cast<double>(total_num_of_repredict_)};
+        output_data["Eval. iterations (predictor adaptation)"] = {
+            static_cast<double>(eval_num_of_pred_adapt_iters_)};
+        output_data["Total iterations (predictor adaptation)"] = {
+            static_cast<double>(total_num_of_pred_adapt_iters_)};
+        output_data["Eval. iterations (line search)"] = {
+            static_cast<double>(eval_num_of_line_search_iters_)};
+        output_data["Total iterations (line search)"] = {
+            static_cast<double>(total_num_of_line_search_iters_)};
+        output_data["Eval. line searches (LNL)"] = {static_cast<double>(eval_num_of_line_search_)};
+        output_data["Total line searches (LNL)"] = {static_cast<double>(total_num_of_line_search_)};
+        output_data["Eval. time (full: preevaluate -> update)"] = {static_cast<double>(eval_time_)};
+        output_data["Total time (full: preevaluate -> update)"] = {
+            static_cast<double>(total_time_)};
+        output_data["Eval. time (LNL)"] = {static_cast<double>(eval_time_LNL_)};
+        output_data["Total time (LNL)"] = {static_cast<double>(total_time_LNL_)};
+        output_data["Eval. time (predictor adaptation)"] = {
+            static_cast<double>(eval_time_pred_adapt_)};
+        output_data["Total time (predictor adaptation)"] = {
+            static_cast<double>(total_time_pred_adapt_)};
+        output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
+        output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
         output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
             static_cast<double>(eval_num_of_alpha_neq_1)};
         output_data["Eval. # of times: alpha neq 1 (last LNL iter)"] = {
@@ -406,6 +505,21 @@ namespace Mat
 
         // write output data to csv
         csv_writer_->write_data_to_file(sim_time_, sim_timestep_, output_data);
+      }
+
+      //! output routine routine of the csv writer in the case of an error
+      //! during the Local Newton Loop routine
+      void output_error_local_newton_loop(unsigned int substep_counter)
+      {  // add current number of substeps
+        eval_num_of_substeps_ += substep_counter;
+
+        // stop (already started!) LNL timer
+        eval_time_LNL_ += eval_teuchos_timer_LNL_.stop();
+
+        // output routine
+        eval_time_ = eval_teuchos_timer_.stop();
+        update_total();
+        write_to_csv();
       }
     };
 
