@@ -3860,6 +3860,13 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   {
     // timint analysis: start timer
     timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+
+    // timint analysis: start repredictorization timer if this is the
+    // case
+    if (pred_interp_factors_.num_of_pred_adapt_ >= 1)
+    {
+      timint_analysis_utils.eval_teuchos_timer_repredict_.start(true);
+    }
   }
 
 
@@ -3883,6 +3890,60 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
   // declare error status and set to no errors
   ErrorType err_status{ErrorType::NoErrors};
+
+  // initialize adapted predictor for the inverse plastic defgrad and
+  // the plastic strain
+  Core::LinAlg::Matrix<3, 3> iFin_adapt_pred{Core::LinAlg::Initialization::zero};
+  double plastic_strain_adapt_pred{0.0};
+
+  // boolean: check if we need to evaluate the elastic predictor
+  //          --> 1). If we don't use the last predictor interpolation
+  //          factor, then we need to check this directly before
+  //          computing the other predictor extremum and interpolating
+  //          -> HERE
+  //               --> 2). If we use the last predictor interpolation
+  //          factor, then we check that value first and only then the
+  //          elastic predictor -> SEE BELOW
+  bool eval_elastic_pred = check_original_pred && (!parameter()->bool_use_last_pred_adapt_fact());
+
+  // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
+  // evaluated already with xi = 0.0)
+  if (eval_elastic_pred)
+  {
+    iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
+    plastic_strain_adapt_pred = original_pred(9);
+    // check if the original predictor can be evaluated
+    state_quantities_ = evaluate_state_quantities(CM,
+        extract_inverse_inelastic_defgrad(original_pred), original_pred(9, 0), err_status,
+        time_step_settings_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+
+    // if the original predictor can be evaluated: return it
+    if (err_status == ErrorType::NoErrors)
+    {
+      pred_interp_factors_.pred_ = original_pred;
+
+      // timint analysis actions
+      if (parameter()->bool_analyze_timint())
+      {
+        // timint analysis: stop timer
+        timint_analysis_utils.eval_time_pred_adapt_ +=
+            timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+
+        // timint analysis: stop timer for for
+        // repredictorization, if this is the case
+        if (pred_interp_factors_.num_of_pred_adapt_ >= 1)
+        {
+          timint_analysis_utils.eval_time_repredict_ +=
+              timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
+        }
+      }
+
+
+      return pred_interp_factors_.pred_;
+    }
+  }
+
+
 
   // compute $\boldsymbol{F}_{n+1} \boldsymbol{F}^{\text{p}^{-1}}}_n$
   Core::LinAlg::Matrix<3, 3> Fnp_iFin{Core::LinAlg::Initialization::zero};
@@ -3937,11 +3998,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       time_step_quantities_.last_plastic_defgrd_inverse_[gp_], almost_plastic_pred};
   std::vector<double> ref_locs{0.0, 1.0};
 
-  // initialize adapted predictor for the inverse plastic defgrad and
-  // the plastic strain
-  Core::LinAlg::Matrix<3, 3> iFin_adapt_pred{Core::LinAlg::Initialization::zero};
-  double plastic_strain_adapt_pred{0.0};
-
 #ifdef DEBUGVPLAST_TIMINT
   if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
   {
@@ -3984,10 +4040,22 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
     err_status = ErrorType::NoErrors;
 
+    // boolean: check if we need to evaluate the elastic predictor
+    //          --> 1). If we don't use the last predictor interpolation
+    //          factor, then we need to check this directly before
+    //          computing the other predictor extremum and interpolating
+    //          -> SEE ABOVE
+    //               --> 2). If we use the last predictor interpolation
+    //          factor, then we check that value first and only then the
+    //          elastic predictor -> HERE
+    eval_elastic_pred = check_original_pred && (parameter()->bool_use_last_pred_adapt_fact()) &&
+                        ((pred_adapt_step_counter == 2) ||
+                            (std::abs(pred_interp_factors_.current_xi_[gp_]) < 1.0e-8));
+
+
     // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
     // evaluated already with xi = 0.0)
-    if (pred_adapt_step_counter == 2 && check_original_pred &&
-        pred_interp_factors_.current_xi_[gp_] != 0.0)
+    if (eval_elastic_pred)
     {
       iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
       plastic_strain_adapt_pred = original_pred(9);
@@ -4010,6 +4078,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
           // timint analysis: save number of performed iterations
           timint_analysis_utils.eval_num_of_pred_adapt_iters_ += pred_adapt_step_counter;
+
+          // timint analysis:  perform the same actions for
+          // repredictorization, if this is the case
+          if (pred_interp_factors_.num_of_pred_adapt_ >= 1)
+          {
+            timint_analysis_utils.eval_time_repredict_ +=
+                timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
+            timint_analysis_utils.eval_num_of_repredict_iters_ += pred_adapt_step_counter;
+          }
         }
 
 
@@ -4203,6 +4280,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
     // timint analysis: save number of performed iterations
     timint_analysis_utils.eval_num_of_pred_adapt_iters_ += pred_adapt_step_counter;
+
+    // timint analysis: perform the same actions for repredictorization,
+    // if this is the case
+    if (pred_interp_factors_.num_of_pred_adapt_ >= 1)
+    {
+      timint_analysis_utils.eval_time_repredict_ +=
+          timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
+
+      timint_analysis_utils.eval_num_of_repredict_iters_ += pred_adapt_step_counter;
+    }
   }
 
   // return adapted predictor
@@ -4224,7 +4311,6 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
   }
 
 #endif
-
   // set necessary decrease parameter \f$ \rho \in \left(0, \frac{1}{2}\right) \f$ of the
   // backtracking algorithm
   const double rho = 1.0 / 4.0;
@@ -4248,8 +4334,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
   // adapt the maximum step size to eventual negative plastic strains
   if (next_sol(9) < 0.0)
   {
-    // check whether the current plastic strain is 0.0 and negative plastic strains are obtained ->
-    // this means, that any line search step size will fail. Hence, we directly return with an
+    // check whether the current plastic strain is 0.0 and negative plastic strains are obtained
+    // -> this means, that any line search step size will fail. Hence, we directly return with an
     // error.
     if (curr_sol(9) == 0.0)
     {
@@ -4562,6 +4648,9 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
       if (parameter()->bool_analyze_timint())
         timint_analysis_utils.eval_num_of_substeps_ += substep_params_.substep_counter_;
 
+      std::cout << debug_get_error_info(
+                       "Could not find a suitable substep which converges for the given settings!")
+                << std::endl;
       return ErrorAction::ReturnSolWithErrors;  // return with error
     }
     return ErrorAction::NextIter;
@@ -4584,7 +4673,7 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
                        "single Local "
                        "Newton Loop exceeded!")
                 << std::endl;
-      FOUR_C_THROW("See above");
+      return ErrorAction::ReturnSolWithErrors;
     }
 
     sol = adapt_predictor_local_newton_loop(

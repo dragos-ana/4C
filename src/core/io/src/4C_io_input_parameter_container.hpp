@@ -13,6 +13,7 @@
 
 #include "4C_io_input_types.hpp"
 #include "4C_utils_demangle.hpp"
+#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.fwd.hpp"
 
