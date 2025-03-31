@@ -14,6 +14,7 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_io_runtime_csv_writer.hpp"
+#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
 #include <magic_enum/magic_enum.hpp>
@@ -206,8 +207,16 @@ namespace Mat
       //! current timestep evaluation (LNL)
       unsigned int eval_num_of_pred_adapt_iters_ = 0;
 
-      //! number of substeps for the current timestep evaluation (LNL)
+      //! total number of iterations spent in the predictor adaptation
       unsigned int total_num_of_pred_adapt_iters_ = 0;
+
+      //! number of iterations spent in the predictor adaptation for the
+      //! current timestep evaluation (LNL), in the specific case of repredictorization
+      unsigned int eval_num_of_repredict_iters_ = 0;
+
+      //! total number of iterations spent in the predictor adaptation,
+      //! in the specific case of repredictorization
+      unsigned int total_num_of_repredict_iters_ = 0;
 
       //! number of line searches for the current timestep evaluation (LNL)
       unsigned int eval_num_of_line_search_ = 0;
@@ -261,6 +270,12 @@ namespace Mat
       Teuchos::Time eval_teuchos_timer_pred_adapt_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation"};
 
+      //! timer for the time spent adapting the predictor in the
+      //! specific case of repredictorization
+      Teuchos::Time eval_teuchos_timer_repredict_{
+          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation "
+          "(repredictorization)"};
+
       //! timer for the time spent in the line search
       Teuchos::Time eval_teuchos_timer_line_search_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
@@ -285,6 +300,14 @@ namespace Mat
 
       //! total time spent in the predictor adaptation
       double total_time_pred_adapt_;
+
+      //! evaluation time spent in the predictor adaptation (current
+      //! time step), in the specific case of repredictorization
+      double eval_time_repredict_;
+
+      //! total time spent in the predictor adaptation, in the specific
+      //! case of repredictorization
+      double total_time_repredict_;
 
       //! evaluation time spent in the line search (current
       //! time step)
@@ -345,15 +368,18 @@ namespace Mat
         eval_num_of_iters_ = 0;
         eval_num_of_repredict_ = 0;
         eval_num_of_pred_adapt_iters_ = 0;
+        eval_num_of_repredict_iters_ = 0;
         eval_num_of_line_search_ = 0;
         eval_num_of_line_search_iters_ = 0;
         eval_teuchos_timer_.reset();
         eval_teuchos_timer_LNL_.reset();
         eval_teuchos_timer_pred_adapt_.reset();
+        eval_teuchos_timer_repredict_.reset();
         eval_teuchos_timer_line_search_.reset();
         eval_time_ = 0;
         eval_time_LNL_ = 0;
         eval_time_pred_adapt_ = 0;
+        eval_time_repredict_ = 0;
         eval_time_line_search_ = 0;
         eval_error_map_ = {
             {ErrorType::NegativePlasticStrain, 0},
@@ -395,6 +421,7 @@ namespace Mat
         csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Eval. iterations (repredictorization)", 1, 16);
         csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
         csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
@@ -403,11 +430,13 @@ namespace Mat
         csv_writer_->register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
         csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
         csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
         csv_writer_->register_data_vector("Total substeps (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Total iterations (repredictorization)", 1, 16);
         csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
         csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
@@ -416,6 +445,7 @@ namespace Mat
         csv_writer_->register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
         csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
         csv_writer_->register_data_vector("Total time (line search)", 1, 16);
         for (const auto& [key, value] : ErrorNames)
         {
@@ -433,6 +463,7 @@ namespace Mat
         total_num_of_iters_ += eval_num_of_iters_;
         total_num_of_repredict_ += eval_num_of_repredict_;
         total_num_of_pred_adapt_iters_ += eval_num_of_pred_adapt_iters_;
+        total_num_of_repredict_iters_ += eval_num_of_repredict_iters_;
         total_num_of_line_search_ += eval_num_of_line_search_;
         total_num_of_line_search_iters_ += eval_num_of_line_search_iters_;
         total_num_of_alpha_neq_1 += eval_num_of_alpha_neq_1;
@@ -440,6 +471,7 @@ namespace Mat
         total_time_ += eval_time_;
         total_time_LNL_ += eval_time_LNL_;
         total_time_pred_adapt_ += eval_time_pred_adapt_;
+        total_time_repredict_ += eval_time_repredict_;
         total_time_line_search_ += eval_time_line_search_;
         for (const auto& [error_type, error_count] : eval_error_map_)
         {
@@ -464,6 +496,10 @@ namespace Mat
             static_cast<double>(eval_num_of_pred_adapt_iters_)};
         output_data["Total iterations (predictor adaptation)"] = {
             static_cast<double>(total_num_of_pred_adapt_iters_)};
+        output_data["Eval. iterations (repredictorization)"] = {
+            static_cast<double>(eval_num_of_repredict_iters_)};
+        output_data["Total iterations (repredictorization)"] = {
+            static_cast<double>(total_num_of_repredict_iters_)};
         output_data["Eval. iterations (line search)"] = {
             static_cast<double>(eval_num_of_line_search_iters_)};
         output_data["Total iterations (line search)"] = {
@@ -479,6 +515,10 @@ namespace Mat
             static_cast<double>(eval_time_pred_adapt_)};
         output_data["Total time (predictor adaptation)"] = {
             static_cast<double>(total_time_pred_adapt_)};
+        output_data["Eval. time (repredictorization)"] = {
+            static_cast<double>(eval_time_repredict_)};
+        output_data["Total time (repredictorization)"] = {
+            static_cast<double>(total_time_repredict_)};
         output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
         output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
         output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
