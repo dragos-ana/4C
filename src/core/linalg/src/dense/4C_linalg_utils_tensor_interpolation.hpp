@@ -13,6 +13,7 @@
 #include "4C_fem_general_utils_polynomial.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_serialdensematrix.hpp"
+#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
 #include <magic_enum/magic_enum.hpp>
