@@ -1971,11 +1971,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     return state_quantities;
   }
 
-  if (eval_type == StateQuantityEvalType::PlasticStrainRateOnly)
-  {
-    return state_quantities;
-  }
-
   // return if we get an error, all other calculations are useless since substepping is triggered
   if (err_status != ErrorType::NoErrors)
   {
@@ -2866,7 +2861,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       if (parameter()->bool_analyze_timint())
       {
         // timint analysis: add number of substeps to timint_analysis_utils
-        timint_analysis_utils.eval_num_of_substeps_ += substep_params_.substep_counter_ - 1;
+        timint_analysis_utils.eval_num_of_LNL_steps_ += 1;
         // timint analysis: stop LNL timer
         timint_analysis_utils.eval_time_LNL_ +=
             timint_analysis_utils.eval_teuchos_timer_LNL_.stop();
@@ -4647,10 +4642,6 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     const bool new_substep_status = prepare_new_substep(sol, curr_CM);
     if (!new_substep_status)
     {
-      // timint analysis: add number of substeps
-      if (parameter()->bool_analyze_timint())
-        timint_analysis_utils.eval_num_of_substeps_ += substep_params_.substep_counter_;
-
       std::cout << debug_get_error_info(
                        "Could not find a suitable substep which converges for the given settings!")
                 << std::endl;
