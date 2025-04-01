@@ -34,7 +34,7 @@ namespace Mat
   namespace InelasticDefgradTransvIsotropElastViscoplastUtils
   {
     /// enum class for error types in InelasticDefgradTransvIsotropElastViscoplast, used for
-    /// triggering different procedures (e.g. substepping) during the
+    /// triggering different procedures (e.g. repredictorization, substepping) during the
     /// Local Newton Loop
     enum class ErrorType
     {
@@ -43,8 +43,7 @@ namespace Mat
                               ///< inside the viscoplasticity laws
       OverflowError,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
                       ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
-                      ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$) checked in
-                      ///< the standard substepping procedure
+                      ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$)
       NoFlowResistance,  ///< the material has no flow resistance anymore, such that the evaluations
                          ///< model non-physical phenomena
       NoPlasticIncompressibility,  ///< no plastic incompressibility, meaning that our determinant
@@ -72,8 +71,8 @@ namespace Mat
     enum class ErrorAction
     {
       Continue,             ///< continue without any errors (NoErrors)
-      ReturnSolWithErrors,  ///< return the current solution with errors (if the maximum substepping
-                            ///< settings have been reached)
+      ReturnSolWithErrors,  ///< return the current solution with errors (if the current simulation
+                            ///< settings cannot lead to a solution)
       NextIter,             ///< go to next iteration after performing certain reset steps
     };
 
@@ -185,11 +184,11 @@ namespace Mat
     class TimIntAnalysisUtils
     {
      public:
-      //! number of substeps for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_substeps_ = 0;
+      //! number of LNL steps for the current timestep evaluation (LNL)
+      unsigned int eval_num_of_LNL_steps_ = 0;
 
-      //! total number of substeps
-      unsigned int total_num_of_substeps_ = 0;
+      //! total number of steps
+      unsigned int total_num_of_LNL_steps_ = 0;
 
       //! number of iterations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_iters_ = 0;
@@ -364,7 +363,7 @@ namespace Mat
       //! reset method
       void reset()
       {
-        eval_num_of_substeps_ = 0;
+        eval_num_of_LNL_steps_ = 0;
         eval_num_of_iters_ = 0;
         eval_num_of_repredict_ = 0;
         eval_num_of_pred_adapt_iters_ = 0;
@@ -417,7 +416,7 @@ namespace Mat
         // create csv_writer and register its columns
         csv_writer_.emplace(
             my_rank, *Global::Problem::instance()->output_control_file(), "timint_output");
-        csv_writer_->register_data_vector("Eval. substeps (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Eval. steps (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
@@ -432,7 +431,7 @@ namespace Mat
         csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
         csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
         csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
-        csv_writer_->register_data_vector("Total substeps (LNL)", 1, 16);
+        csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
         csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
@@ -459,7 +458,7 @@ namespace Mat
       //! update total values
       void update_total()
       {
-        total_num_of_substeps_ += eval_num_of_substeps_;
+        total_num_of_LNL_steps_ += eval_num_of_LNL_steps_;
         total_num_of_iters_ += eval_num_of_iters_;
         total_num_of_repredict_ += eval_num_of_repredict_;
         total_num_of_pred_adapt_iters_ += eval_num_of_pred_adapt_iters_;
@@ -484,8 +483,8 @@ namespace Mat
       {
         // output data
         std::map<std::string, std::vector<double>> output_data;
-        output_data["Eval. substeps (LNL)"] = {static_cast<double>(eval_num_of_substeps_)};
-        output_data["Total substeps (LNL)"] = {static_cast<double>(total_num_of_substeps_)};
+        output_data["Eval. steps (LNL)"] = {static_cast<double>(eval_num_of_LNL_steps_)};
+        output_data["Total steps (LNL)"] = {static_cast<double>(total_num_of_LNL_steps_)};
         output_data["Eval. iterations (LNL)"] = {static_cast<double>(eval_num_of_iters_)};
         output_data["Total iterations (LNL)"] = {static_cast<double>(total_num_of_iters_)};
         output_data["Eval. repredictorizations (LNL)"] = {
@@ -549,9 +548,9 @@ namespace Mat
 
       //! output routine routine of the csv writer in the case of an error
       //! during the Local Newton Loop routine
-      void output_error_local_newton_loop(unsigned int substep_counter)
-      {  // add current number of substeps
-        eval_num_of_substeps_ += substep_counter;
+      void output_error_local_newton_loop(unsigned int step_counter)
+      {  // add current number of steps
+        eval_num_of_LNL_steps_ += step_counter;
 
         // stop (already started!) LNL timer
         eval_time_LNL_ += eval_teuchos_timer_LNL_.stop();
