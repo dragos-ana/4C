@@ -59,4 +59,20 @@ namespace
     EXPECT_EQ(
         pl.get<std::vector<Teuchos::ParameterList>>("list")[1].sublist("group").get<int>("b"), 2);
   }
+
+  TEST(InputParameterContainerTest, DummyPrintTest)
+  {
+    InputParameterContainer container;
+    enum class TestEnum
+    {
+      something,
+      something_else,
+    };
+
+    container.add<TestEnum>("a", TestEnum::something);
+    container.add<double>("b", 2.0);
+    container.print(std::cout);
+  }
+
+
 }  // namespace

@@ -13,9 +13,10 @@
 
 #include "4C_io_input_types.hpp"
 #include "4C_utils_demangle.hpp"
-#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.fwd.hpp"
+
+#include <magic_enum/magic_enum_iostream.hpp>
 
 #include <any>
 #include <functional>
@@ -192,6 +193,7 @@ namespace Core::IO
 
 namespace Core::IO::Internal::InputParameterContainerImplementation
 {
+
   template <typename T>
   const T* try_get_any_data(const std::string& name, const std::any& data)
   {
@@ -210,22 +212,19 @@ namespace Core::IO::Internal::InputParameterContainerImplementation
           Core::Utils::try_demangle(data.type().name()).c_str());
     }
   }
-
-  // Default printer if not printable.
-  template <typename T>
-  struct PrintHelper
-  {
-    void operator()(std::ostream& os, const std::any& data) { os << "<not printable> "; }
-  };
-
   template <typename T>
   concept StreamInsertable = requires(std::ostream& os, const T& t) { os << t; };
 
-  // Specialization for stream insert.
-  template <StreamInsertable T>
-  struct PrintHelper<T>
+  template <typename T>
+  struct PrintHelper
   {
-    void operator()(std::ostream& os, const std::any& data) { os << std::any_cast<T>(data) << " "; }
+    void operator()(std::ostream& os, const std::any& data)
+    {
+      if constexpr (StreamInsertable<T>)
+        os << std::any_cast<T>(data) << " ";
+      else
+        os << "<not printable> ";
+    }
   };
 
   template <StreamInsertable T>
