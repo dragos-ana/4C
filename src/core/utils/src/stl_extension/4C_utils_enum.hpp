@@ -17,12 +17,6 @@
 #include <magic_enum/magic_enum_format.hpp>
 #include <magic_enum/magic_enum_iostream.hpp>
 
-FOUR_C_NAMESPACE_OPEN
-
 // Import the stream insertion and extraction operators for enums.
-using magic_enum::iostream_operators::operator<<;
-using magic_enum::iostream_operators::operator>>;
-
-FOUR_C_NAMESPACE_CLOSE
 
 #endif
