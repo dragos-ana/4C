@@ -190,10 +190,8 @@ namespace Core::IO
 
 // --- template and inline functions ---//
 
-
 namespace Core::IO::Internal::InputParameterContainerImplementation
 {
-
   template <typename T>
   const T* try_get_any_data(const std::string& name, const std::any& data)
   {
@@ -212,65 +210,6 @@ namespace Core::IO::Internal::InputParameterContainerImplementation
           Core::Utils::try_demangle(data.type().name()).c_str());
     }
   }
-  template <typename T>
-  concept StreamInsertable = requires(std::ostream& os, const T& t) { os << t; };
-
-  template <typename T>
-  struct PrintHelper
-  {
-    void operator()(std::ostream& os, const std::any& data)
-    {
-      if constexpr (StreamInsertable<T>)
-        os << std::any_cast<T>(data) << " ";
-      else
-        os << "<not printable> ";
-    }
-  };
-
-  template <StreamInsertable T>
-  struct PrintHelper<std::optional<T>>
-  {
-    void operator()(std::ostream& os, const std::any& data)
-    {
-      auto val = std::any_cast<std::optional<T>>(data);
-      if (val.has_value())
-        PrintHelper<T>{}(os, *val);
-      else
-        os << "none ";
-    }
-  };
-
-  // Specialization for vectors.
-  template <typename T>
-  struct PrintHelper<std::vector<T>>
-  {
-    void operator()(std::ostream& os, const std::any& data)
-    {
-      FOUR_C_ASSERT(typeid(std::vector<T>) == data.type(), "Implementation error.");
-      const auto& vec = std::any_cast<std::vector<T>>(data);
-      for (const auto& v : vec)
-      {
-        PrintHelper<T>{}(os, v);
-      }
-    }
-  };
-
-  // Specialization for maps.
-  template <typename Key, typename Value>
-  struct PrintHelper<std::map<Key, Value>>
-  {
-    void operator()(std::ostream& os, const std::any& data)
-    {
-      FOUR_C_ASSERT(typeid(std::map<Key, Value>) == data.type(), "Implementation error.");
-      const auto& map = std::any_cast<std::map<Key, Value>>(data);
-      for (const auto& [key, value] : map)
-      {
-        os << key << " : ";
-        PrintHelper<Value>{}(os, value);
-      }
-    }
-  };
-
 }  // namespace Core::IO::Internal::InputParameterContainerImplementation
 
 

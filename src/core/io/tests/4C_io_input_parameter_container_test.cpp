@@ -60,6 +60,7 @@ namespace
         pl.get<std::vector<Teuchos::ParameterList>>("list")[1].sublist("group").get<int>("b"), 2);
   }
 
+
   TEST(InputParameterContainerTest, DummyPrintTest)
   {
     InputParameterContainer container;
@@ -69,8 +70,13 @@ namespace
       something_else,
     };
 
+
     container.add<TestEnum>("a", TestEnum::something);
-    container.add<double>("b", 2.0);
+    container
+        .add<Core::IO::Internal::InputParameterContainerImplementation::TestCorrectNamespaceEnum>(
+            "b", Core::IO::Internal::InputParameterContainerImplementation::
+                     TestCorrectNamespaceEnum::corr_namespace_something);
+    container.add<double>("c", 2.0);
     container.print(std::cout);
   }
 

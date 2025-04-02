@@ -17,15 +17,79 @@
 
 FOUR_C_NAMESPACE_OPEN
 
+// The add() function requires expensive-to-include Teuchos headers, but it is rarely needed, since
+// most user code only reads from the InputParameterContainer. Therefore, we put the implementation
+// into this special templates file.
+
 namespace Core::IO::Internal::InputParameterContainerImplementation
 {
   using magic_enum::iostream_operators::operator<<;
   using magic_enum::iostream_operators::operator>>;
-}  // namespace Core::IO::Internal::InputParameterContainerImplementation
 
-// The add() function requires expensive-to-include Teuchos headers, but it is rarely needed, since
-// most user code only reads from the InputParameterContainer. Therefore, we put the implementation
-// into this special templates file.
+  template <typename T>
+  concept StreamInsertable = requires(std::ostream& os, const T& t) { os << t; };
+
+
+
+  template <typename T>
+  struct PrintHelper
+  {
+    void operator()(std::ostream& os, const std::any& data)
+    {
+      if constexpr (StreamInsertable<T>)
+        os << std::any_cast<T>(data) << " ";
+      else
+        os << "<not printable> ";
+    }
+  };
+
+
+  template <StreamInsertable T>
+  struct PrintHelper<std::optional<T>>
+  {
+    void operator()(std::ostream& os, const std::any& data)
+    {
+      auto val = std::any_cast<std::optional<T>>(data);
+      if (val.has_value())
+        PrintHelper<T>{}(os, *val);
+      else
+        os << "none ";
+    }
+  };
+
+  // Specialization for vectors.
+  template <typename T>
+  struct PrintHelper<std::vector<T>>
+  {
+    void operator()(std::ostream& os, const std::any& data)
+    {
+      FOUR_C_ASSERT(typeid(std::vector<T>) == data.type(), "Implementation error.");
+      const auto& vec = std::any_cast<std::vector<T>>(data);
+      for (const auto& v : vec)
+      {
+        PrintHelper<T>{}(os, v);
+      }
+    }
+  };
+
+  // Specialization for maps.
+  template <typename Key, typename Value>
+  struct PrintHelper<std::map<Key, Value>>
+  {
+    void operator()(std::ostream& os, const std::any& data)
+    {
+      FOUR_C_ASSERT(typeid(std::map<Key, Value>) == data.type(), "Implementation error.");
+      const auto& map = std::any_cast<std::map<Key, Value>>(data);
+      for (const auto& [key, value] : map)
+      {
+        os << key << " : ";
+        PrintHelper<Value>{}(os, value);
+      }
+    }
+  };
+
+
+}  // namespace Core::IO::Internal::InputParameterContainerImplementation
 
 template <typename T>
 void Core::IO::InputParameterContainer::add(const std::string& name, const T& data)
@@ -47,6 +111,19 @@ void Core::IO::InputParameterContainer::ensure_type_action_registered()
     };
   }
 }
+
+
+
+namespace Core::IO::Internal::InputParameterContainerImplementation
+{
+  enum class TestCorrectNamespaceEnum
+  {
+    corr_namespace_something,
+    corr_namespace_something_else,
+  };
+};
+
+
 
 // --- Declare that these templates are instantiated for some types --- //
 

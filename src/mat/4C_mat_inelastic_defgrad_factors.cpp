@@ -1957,11 +1957,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     return state_quantities;
   }
 
-  if (eval_type == StateQuantityEvalType::PlasticStrainRateOnly)
-  {
-    return state_quantities;
-  }
-
   // return if we get an error, all other calculations are useless since substepping is triggered
   if (err_status != ErrorType::NoErrors)
   {
@@ -4818,7 +4813,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
-         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
+        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrd_inverse_[gp], temp9x1);
@@ -4833,7 +4828,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_plastic_strain_[gp];
     }
