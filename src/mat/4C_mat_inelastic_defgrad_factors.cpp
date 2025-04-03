@@ -1957,11 +1957,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     return state_quantities;
   }
 
-  if (eval_type == StateQuantityEvalType::PlasticStrainRateOnly)
-  {
-    return state_quantities;
-  }
-
   // return if we get an error, all other calculations are useless since substepping is triggered
   if (err_status != ErrorType::NoErrors)
   {
@@ -2848,7 +2843,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       if (parameter()->bool_analyze_timint())
       {
         // timint analysis: add number of substeps to timint_analysis_utils
-        timint_analysis_utils.eval_num_of_substeps_ += substep_params_.substep_counter_ - 1;
+        timint_analysis_utils.eval_num_of_LNL_steps_ += 1;
         // timint analysis: stop LNL timer
         timint_analysis_utils.eval_time_LNL_ +=
             timint_analysis_utils.eval_teuchos_timer_LNL_.stop();
@@ -4620,10 +4615,6 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     const bool new_substep_status = prepare_new_substep(sol, curr_CM);
     if (!new_substep_status)
     {
-      // timint analysis: add number of substeps
-      if (parameter()->bool_analyze_timint())
-        timint_analysis_utils.eval_num_of_substeps_ += substep_params_.substep_counter_;
-
       std::cout << debug_get_error_info(
                        "Could not find a suitable substep which converges for the given settings!")
                 << std::endl;
@@ -4818,7 +4809,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
-         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
+        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrd_inverse_[gp], temp9x1);
@@ -4833,7 +4824,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_plastic_strain_[gp];
     }
