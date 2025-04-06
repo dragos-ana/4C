@@ -10,6 +10,7 @@
 #include "4C_linalg_utils_tensor_interpolation.hpp"
 
 #include "4C_linalg_fixedsizematrix.hpp"
+#include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_utils_densematrix_eigen.hpp"
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_fad.hpp"
@@ -251,7 +252,8 @@ namespace
 }  // namespace
 
 
-
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 template <unsigned int loc_dim>
 Core::LinAlg::Matrix<3, 3>
 Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_interpolated_matrix(
@@ -359,7 +361,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
 
     // compute unnormalized weights of interpolation points
     diff_locs.update(1.0, ref_locs[i], -1.0, interp_loc, 0.0);
-    all_unnorm_weights[i] = std::exp(-interp_param_list_.c * diff_locs.norm2() * diff_locs.norm2());
+    all_unnorm_weights[i] = std::exp(-interp_params_.c * diff_locs.norm2() * diff_locs.norm2());
     sum_of_unnorm_weights += all_unnorm_weights[i];
   }
 
@@ -533,58 +535,11 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
     FOUR_C_THROW("We do not have an implementation for RotInterpType {} and EigenvalInterpType {}!",
         magic_enum::enum_name(rot_interp_type_), magic_enum::enum_name(eigenval_interp_type_));
   }
-
-
-
-#ifdef DEBUG_TENSORINTERP
-  std::cout << std::string(30, '-') << "TENSOR INTERPOLATION DEBUGGING (1D INTERP)"
-            << std::string(30, '-') << std::endl;
-  std::cout << "EIGENVAL: " << std::endl;
-  std::cout << "xi = 0: " << std::endl;
-  std::cout << all_spectral_pairs[0][0].first << ", " << all_spectral_pairs[0][1].first << ", "
-            << all_spectral_pairs[0][2].first << std::endl;
-  std::cout << "--> xi = " << interp_loc(0) << ":" << std::endl;
-  std::cout << lambda_interp(0, 0) << ", " << lambda_interp(1, 1) << ", " << lambda_interp(2, 2)
-            << std::endl;
-  std::cout << "xi = 1: " << std::endl;
-  std::cout << all_spectral_pairs[1][0].first << ", " << all_spectral_pairs[1][1].first << ", "
-            << all_spectral_pairs[1][2].first << std::endl;
-  std::cout << "Q: " << std::endl;
-  std::cout << "xi = 0: " << std::endl;
-  all_Q[0].print(std::cout);
-  std::cout << "--> xi = " << interp_loc(0) << ":" << std::endl;
-  Q_interp.print(std::cout);
-  std::cout << "xi = 1: " << std::endl;
-  all_Q[1].print(std::cout);
-  std::cout << "R: " << std::endl;
-  std::cout << "xi = 0: " << std::endl;
-  all_R[0].print(std::cout);
-  std::cout << "--> xi = " << interp_loc(0) << ":" << std::endl;
-  R_interp.print(std::cout);
-  std::cout << "xi = 1: " << std::endl;
-  all_R[1].print(std::cout);
-  std::cout << "...rel: " << std::endl;
-  std::cout << "Q_rel_vect (interp): " << std::endl;
-  rot_vect_Q_rel_interp.print(std::cout);
-  std::cout << "R_rel_vect (interp): " << std::endl;
-  rot_vect_R_rel_interp.print(std::cout);
-  std::cout << "R_rel_vect (left): " << std::endl;
-  all_rot_vect_R_rel[0].print(std::cout);
-  std::cout << "R_rel_vect (right): " << std::endl;
-  all_rot_vect_R_rel[1].print(std::cout);
-  all_R_rel[0].print(std::cout);
-  all_R_rel[1].print(std::cout);
-  std::cout << "base_ind: " << base_ind << std::endl;
-  std::cout << "all_R[base_ind]: " << std::endl;
-  all_R[base_ind].print(std::cout);
-  std::cout << "...weights: " << all_norm_weights[0] << ", " << all_norm_weights[1] << std::endl;
-  std::cout << std::string(100, '-') << std::endl;
-#endif
-
   return output;
 }
 
-
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 void Core::LinAlg::matrix_3x3_polar_decomposition(const Core::LinAlg::Matrix<3, 3>& inp_matrix,
     Core::LinAlg::Matrix<3, 3>& R_matrix, Core::LinAlg::Matrix<3, 3>& U_matrix,
     Core::LinAlg::Matrix<3, 3>& eigenval_matrix,
@@ -637,7 +592,8 @@ void Core::LinAlg::matrix_3x3_polar_decomposition(const Core::LinAlg::Matrix<3, 
                                 spectral_pairs[0].second(1) * spectral_pairs[1].second(0);
 }
 
-
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Core::LinAlg::matrix_3x3_material_stretch(
     const Core::LinAlg::Matrix<3, 3>& inp_matrix)
 {
@@ -668,6 +624,8 @@ Core::LinAlg::Matrix<3, 3> Core::LinAlg::matrix_3x3_material_stretch(
   return U_matrix;
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Core::LinAlg::matrix_3x3_spatial_stretch(
     const Core::LinAlg::Matrix<3, 3>& inp_matrix)
 {
@@ -708,7 +666,8 @@ Core::LinAlg::Matrix<3, 3> Core::LinAlg::matrix_3x3_spatial_stretch(
   return v_matrix;
 }
 
-
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 1> Core::LinAlg::calc_rot_vect_from_rot_matrix(
     const Core::LinAlg::Matrix<3, 3>& rot_matrix)
 {
@@ -786,6 +745,8 @@ Core::LinAlg::Matrix<3, 1> Core::LinAlg::calc_rot_vect_from_rot_matrix(
   return rot_vect;
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Core::LinAlg::calc_rot_matrix_from_rot_vect(
     const Core::LinAlg::Matrix<3, 1>& rot_vect)
 {
@@ -833,6 +794,8 @@ Core::LinAlg::Matrix<3, 3> Core::LinAlg::calc_rot_matrix_from_rot_vect(
   return rot_matrix;
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
 template <>
 Core::LinAlg::Matrix<3, 3>
 Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpolated_matrix(
@@ -860,6 +823,98 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpo
   // call the general constructor with the matrix expressions
   return get_interpolated_matrix(ref_matrices, converted_ref_locs, converted_interp_loc);
 }
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+template <unsigned int loc_dim>
+Core::LinAlg::Matrix<9, loc_dim> Core::LinAlg::TensorInterpolation::
+    SecondOrderTensorInterpolator<loc_dim>::get_interpolation_gradient(
+        const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
+        const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
+        const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc)
+{
+  // auxiliaries
+  Core::LinAlg::Matrix<9, 1> temp9x1(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Matrix<3, 3> temp3x3(Core::LinAlg::Initialization::zero);
+
+  // compute the current interpolated matrix
+  Core::LinAlg::Matrix<3, 3> interp_matrix =
+      get_interpolated_matrix(ref_matrices, ref_locs, interp_loc);
+
+  // check for interpolation errors
+  if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
+  {
+    // return empty matrix
+    return Core::LinAlg::Matrix<9, loc_dim>(Core::LinAlg::Initialization::zero);
+  }
+
+  // initialize output derivative
+  Core::LinAlg::Matrix<9, loc_dim> output(Core::LinAlg::Initialization::zero);
+
+  // initialize perturbed location
+  Core::LinAlg::Matrix<loc_dim, 1> perturbed_loc(Core::LinAlg::Initialization::zero);
+
+  // loop through interpolation location dimensions
+  for (unsigned int i = 0; i < loc_dim; ++i)
+  {
+    // get perturbed location
+    perturbed_loc = interp_loc;
+    perturbed_loc(i, 0) += interp_params_.perturbation_factor;
+
+    // compute the perturbed matrix
+    Core::LinAlg::Matrix<3, 3> perturbed_matrix =
+        get_interpolated_matrix(ref_matrices, ref_locs, perturbed_loc);
+
+    // check for interpolation errors
+    if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
+    {
+      // return empty matrix
+      return Core::LinAlg::Matrix<9, loc_dim>(Core::LinAlg::Initialization::zero);
+    }
+
+    // compute the finite difference derivative
+    temp3x3.update(1.0, perturbed_matrix, -1.0, interp_matrix, 0.0);
+    temp3x3.scale(1.0 / interp_params_.perturbation_factor);
+    Core::LinAlg::Voigt::matrix_3x3_to_9x1(temp3x3, temp9x1);
+
+    // update the respective column of the output matrix
+    for (unsigned int j = 0; j < 9; ++j)
+    {
+      output(j, i) = temp9x1(j, 0);
+    }
+  }
+  // return the output matrix
+  return output;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+template <>
+Core::LinAlg::Matrix<9, 1>
+Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpolation_gradient(
+    const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
+    const std::vector<double>& ref_locs, const double interp_loc)
+{
+  // auxiliaries
+  Core::LinAlg::Matrix<1, 1> temp1x1(Core::LinAlg::Initialization::zero);
+
+  // pack reference locations to matrices
+  std::vector<Core::LinAlg::Matrix<1, 1>> converted_ref_locs{};
+  for (unsigned int i = 0; i < ref_locs.size(); ++i)
+  {
+    temp1x1(0, 0) = ref_locs[i];
+    // add 1x1 matrix to its corresponding vector
+    converted_ref_locs.push_back(temp1x1);
+  }
+
+  // pack interpolation location to matrix
+  Core::LinAlg::Matrix<1, 1> converted_interp_loc(Core::LinAlg::Initialization::zero);
+  converted_interp_loc(0, 0) = interp_loc;
+
+  // call the general constructor with the matrix expressions
+  return get_interpolation_gradient(ref_matrices, converted_ref_locs, converted_interp_loc);
+}
+
 
 
 // explicit instantiation of template functions
