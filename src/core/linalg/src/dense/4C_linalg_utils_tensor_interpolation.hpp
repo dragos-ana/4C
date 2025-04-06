@@ -75,6 +75,10 @@ namespace Core::LinAlg
       ///  2024, 10.1002/nme.7373, Eq. (21). We currently use the same factor
       ///  for the rotation and eigenvalue interpolation.
       double c = 10.0;
+
+      /// perturbation factor used for the numerical approximation of
+      /// the interpolation gradient
+      double perturbation_factor = 1.0e-8;
     };
 
 
@@ -105,14 +109,19 @@ namespace Core::LinAlg
        *
        *  @param[in] order polynomial order (1:linear, 2: quadratic, ...) used for interpolating
        * the rotation vectors at the specified location
+       *  @param[in] rot_interp_type interpolation algorithm used for
+       *  the rotation matrices
+       *  @param[in] eigenval_interp_type interpolation algorithm used for
+       *  the eigenvalue matrices
+       *  @param[in] interp_params interpolation parameters
        */
       SecondOrderTensorInterpolator(unsigned int order, const RotInterpType rot_interp_type,
-          const EigenvalInterpType eigenval_interp_type, const InterpParams& interp_param_list)
+          const EigenvalInterpType eigenval_interp_type, const InterpParams& interp_params)
           : polynomial_space_(create_polynomial_space(order)),
             err_type_(TensorInterpErrorType::NoErrors),
             rot_interp_type_(rot_interp_type),
             eigenval_interp_type_(eigenval_interp_type),
-            interp_param_list_(interp_param_list)
+            interp_params_(interp_params)
       {
       }
 
@@ -185,6 +194,44 @@ namespace Core::LinAlg
           const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
           const std::vector<double>& ref_locs, const double interp_loc);
 
+      /*!
+       * @name Get interpolation gradient, i.e. the derivative of the
+       * interpolated matrix with respect to the interpolation location
+       * vector / scalar.
+       *
+       * @note The derivative is computed numerically using a
+       * perturbation approach with finite differences.
+       *
+       * @param[in]  ref_matrices  reference 3x3 matrices \f$ \boldsymbol{T}_j \f$ used as basis for
+       *                            interpolation
+       * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
+       * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated
+       * tensor
+       * @returns derivative of the interpolated matrix with respect to
+       * the interpolation location vector. The result is a 9 x <dim>
+       * matrix, where the second dimension corresponds to the dimension of
+       * the location vector (1D, 2D, 3D).
+       */
+      //! @{
+      /*!
+       * @brief Standard method for interpolation locations with
+       * variable dimensionality.
+       */
+      Core::LinAlg::Matrix<9, loc_dim> get_interpolation_gradient(
+          const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
+          const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
+          const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc);
+
+      /*!
+       * @brief Specialized method for 1D interpolation locations.
+       * @note Calls the standard method but is more easy to handle when
+       * using 1D locations.
+       */
+      Core::LinAlg::Matrix<9, 1> get_interpolation_gradient(
+          const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
+          const std::vector<double>& ref_locs, const double interp_loc);
+      //! @}
+
       /// get current error type of the tensor interpolator
       TensorInterpErrorType get_err_type() { return err_type_; }
 
@@ -206,7 +253,7 @@ namespace Core::LinAlg
       const EigenvalInterpType eigenval_interp_type_;
 
       /// interpolation parameters
-      const InterpParams interp_param_list_;
+      const InterpParams interp_params_;
     };
 
   }  // namespace TensorInterpolation
