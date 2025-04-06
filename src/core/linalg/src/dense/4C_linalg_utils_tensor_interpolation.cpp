@@ -277,12 +277,6 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
   Core::LinAlg::Matrix<3, 1> temp3x1(Core::LinAlg::Initialization::zero);
   Core::LinAlg::Matrix<loc_dim, 1> diff_locs(Core::LinAlg::Initialization::zero);
 
-  // get interpolation settings: exponential decay factor of the
-  // weighting functions, as in Satheesh,
-  // 2024, 10.1002/nme.7373, Eq. (21). We currently use the same factor
-  // for the rotation and eigenvalue interpolation.
-  double c = interp_param_list_.get<double>("weighting_expdecay_factor");
-
   // index of the base matrix, which is the matrix located nearest to the
   // interpolation location
   unsigned int base_ind = 0;
@@ -365,7 +359,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
 
     // compute unnormalized weights of interpolation points
     diff_locs.update(1.0, ref_locs[i], -1.0, interp_loc, 0.0);
-    all_unnorm_weights[i] = std::exp(-c * diff_locs.norm2() * diff_locs.norm2());
+    all_unnorm_weights[i] = std::exp(-interp_param_list_.c * diff_locs.norm2() * diff_locs.norm2());
     sum_of_unnorm_weights += all_unnorm_weights[i];
   }
 
@@ -389,7 +383,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
   Core::LinAlg::Matrix<3, 3> Q_interp(Initialization::zero);
   Core::LinAlg::Matrix<3, 3> R_interp(Initialization::zero);
 
-  if ((rot_interp_type_ == RotInterpType::RInterp) &&
+  if ((rot_interp_type_ == RotInterpType::RotVectInterp) &&
       (eigenval_interp_type_ == EigenvalInterpType::LOG))
   {
     // get \f$ \boldsymbol{Q} \f$, normalized weights and build \f$ \boldsymbol{P} \f$ matrix along
