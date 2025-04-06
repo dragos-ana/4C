@@ -17,7 +17,6 @@
 #include "4C_utils_exceptions.hpp"
 
 #include <magic_enum/magic_enum.hpp>
-#include <Teuchos_ParameterList.hpp>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -38,8 +37,8 @@ namespace Core::LinAlg
     /// enum class for the interpolation type of the relative rotation matrices
     enum class RotInterpType
     {
-      RInterp,  ///< interpolation of relative rotation vectors,
-      QInterp,  ///< interpolation of relative quaternions,
+      RotVectInterp,  ///< interpolation of relative rotation vectors,
+      QuatInterp,     ///< interpolation of relative quaternions,
     };
 
     /// enum class for the interpolation type of the eigenvalue matrix
@@ -68,6 +67,17 @@ namespace Core::LinAlg
       }
     }
 
+    /// struct containing parameters used for the tensor interpolation
+    struct InterpParams
+    {
+      /// exponential decay factor of the
+      ///  weighting functions, as shown in Satheesh,
+      ///  2024, 10.1002/nme.7373, Eq. (21). We currently use the same factor
+      ///  for the rotation and eigenvalue interpolation.
+      double c = 10.0;
+    };
+
+
     /*!
      * \class SecondOrderTensorInterpolator
      *
@@ -82,7 +92,7 @@ namespace Core::LinAlg
      * several tensor characteristics, such as positive definiteness and monotonicity of
      * invariants. For further information on the interpolation scheme, refer to:
      * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-     * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
+     * Second-Order Tensors, Int J Numerical Methods Eng. 2024, 125, 10.1002/nme.7373
      *
      * @tparam loc_dim dimension of the location vectors \f$ \boldsymbol{x}_j \f$
      */
@@ -97,8 +107,7 @@ namespace Core::LinAlg
        * the rotation vectors at the specified location
        */
       SecondOrderTensorInterpolator(unsigned int order, const RotInterpType rot_interp_type,
-          const EigenvalInterpType eigenval_interp_type,
-          const Teuchos::ParameterList interp_param_list)
+          const EigenvalInterpType eigenval_interp_type, const InterpParams& interp_param_list)
           : polynomial_space_(create_polynomial_space(order)),
             err_type_(TensorInterpErrorType::NoErrors),
             rot_interp_type_(rot_interp_type),
@@ -164,7 +173,7 @@ namespace Core::LinAlg
        * currently implemented (rotation vector interpolation + logarithmic weighted average method
        * for eigenvalues):
        * -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-       * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373
+       * Second-Order Tensors, Int J Numerical Methods Eng. 2024, 125, 10.1002/nme.7373
        * @param[in]  ref_matrices  reference 3x3 matrices \f$ \boldsymbol{T}_j \f$ used as basis for
        *                            interpolation
        * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
@@ -196,8 +205,8 @@ namespace Core::LinAlg
       /// eigenvalue interpolation type
       const EigenvalInterpType eigenval_interp_type_;
 
-      /// interpolation parameter list
-      const Teuchos::ParameterList interp_param_list_;
+      /// interpolation parameters
+      const InterpParams interp_param_list_;
     };
 
   }  // namespace TensorInterpolation
@@ -209,7 +218,7 @@ namespace Core::LinAlg
    *
    * This method performs Step 1 of the procedure described in:
    *    -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-   * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373, Section 2.5
+   * Second-Order Tensors, Int J Numerical Methods Eng. 2024, 125, 10.1002/nme.7373, Section 2.5
    *
    *   Specifically, it splits a general tensor into its rotational and its stretch (symmetric,
    * positive definite) component. Moreover, the method calculates the eigenvalues, and it also
@@ -262,7 +271,7 @@ namespace Core::LinAlg
    * Direction-Cosine
    * Matrix", Journal of Spacecraft and Rockets 1978, 15(4):255-255
    *    -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-   * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373, Section 2.2.2
+   * Second-Order Tensors, Int J Numerical Methods Eng. 2024, 125, 10.1002/nme.7373, Section 2.2.2
    * @param[in]  rot_matrix  input rotation matrix
    * @returns  corresponding rotation vector
    */
@@ -276,7 +285,7 @@ namespace Core::LinAlg
    *
    * For further information, refer to:
    *    -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for Invertible
-   * Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373, Section 2.2.1
+   * Second-Order Tensors, Int J Numerical Methods Eng. 2024, 125, 10.1002/nme.7373, Section 2.2.1
    * @param[in]  rot_vect  input rotation vector
    * @returns  corresponding rotation matrix
    */

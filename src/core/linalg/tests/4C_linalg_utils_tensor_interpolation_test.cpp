@@ -32,15 +32,13 @@ namespace
 
     Core::LinAlg::Matrix<3, 3> temp3x3(Core::LinAlg::Initialization::zero);
 
-    // create interpolation parameter list and append exponential decay
-    // factor
-    Teuchos::ParameterList param_list;
-    param_list.set("weighting_expdecay_factor", 10.0);
+    // create interpolation parameter object
+    Core::LinAlg::TensorInterpolation::InterpParams interp_params;
 
     // create tensor interpolator
     Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1> interp{1,
-        Core::LinAlg::TensorInterpolation::RotInterpType::RInterp,
-        Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, param_list};
+        Core::LinAlg::TensorInterpolation::RotInterpType::RotVectInterp,
+        Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, interp_params};
 
     std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices;
     std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs;
@@ -120,15 +118,13 @@ namespace
 
     Core::LinAlg::Matrix<3, 3> temp3x3(Core::LinAlg::Initialization::zero);
 
-    // create interpolation parameter list and append exponential decay
-    // factor
-    Teuchos::ParameterList param_list;
-    param_list.set("weighting_expdecay_factor", 10.0);
+    // create interpolation parameter object
+    Core::LinAlg::TensorInterpolation::InterpParams interp_params;
 
     // create tensor interpolator
     Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1> interp{1,
-        Core::LinAlg::TensorInterpolation::RotInterpType::RInterp,
-        Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, param_list};
+        Core::LinAlg::TensorInterpolation::RotInterpType::RotVectInterp,
+        Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, interp_params};
 
     std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices;
     std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs;
@@ -288,15 +284,13 @@ namespace
     Core::LinAlg::Matrix<3, 1> right_matrix_Q_vect =
         Core::LinAlg::calc_rot_vect_from_rot_matrix(right_matrix_Q);
 
-    // create interpolation parameter list and append exponential decay
-    // factor
-    Teuchos::ParameterList param_list;
-    param_list.set("weighting_expdecay_factor", 10.0);
+    // create interpolation parameter object
+    Core::LinAlg::TensorInterpolation::InterpParams interp_params;
 
     // create tensor interpolator
     Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1> interp{1,
-        Core::LinAlg::TensorInterpolation::RotInterpType::RInterp,
-        Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, param_list};
+        Core::LinAlg::TensorInterpolation::RotInterpType::RotVectInterp,
+        Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, interp_params};
 
     // get interp matrix (loc = specified)
     double loc = 5.695328e-01;
