@@ -2039,13 +2039,13 @@ namespace Mat
     Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1> init_tensor_interpolator()
     {
       // initialize interpolation parameter list
-      Teuchos::ParameterList interp_param_list;
-      // add exponential decay factor for weighting
-      interp_param_list.set("weighting_expdecay_factor", 20.0);
+      Core::LinAlg::TensorInterpolation::InterpParams interp_param_list;
+      /// add exponential decay factor for weighting
+      interp_param_list.c = 20.0;
 
       // return corresponding tensor interpolator
       return Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>{1,
-          Core::LinAlg::TensorInterpolation::RotInterpType::RInterp,
+          Core::LinAlg::TensorInterpolation::RotInterpType::RotVectInterp,
           Core::LinAlg::TensorInterpolation::EigenvalInterpType::LOG, interp_param_list};
     }
 
