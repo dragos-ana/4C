@@ -3380,6 +3380,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // initialize error management action
   ErrorAction err_action{ErrorAction::Continue};
 
+  // initialize tensor interpolation error status
+  Core::LinAlg::TensorInterpolation::TensorInterpErrorType tensor_interp_err_status =
+      Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors;
+
   // substepping procedures
   while (substep_params_.substep_counter_ <= substep_params_.total_num_of_substeps_)
   {
@@ -3390,8 +3394,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     if (parameter()->bool_substep())
     {
       curr_CM = tensor_interpolator_.get_interpolated_matrix(ref_matrices_, ref_locs_,
-          (substep_params_.t_ + substep_params_.curr_dt_) / time_step_settings_.dt_);
-      if (tensor_interpolator_.get_err_type() !=
+          (substep_params_.t_ + substep_params_.curr_dt_) / time_step_settings_.dt_,
+          tensor_interp_err_status);
+      if (tensor_interp_err_status !=
           Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
       {
         err_status =
@@ -3701,15 +3706,18 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_new_substep(
   sol = wrap_unknowns(time_step_quantities_.last_substep_plastic_defgrd_inverse_[gp_],
       time_step_quantities_.last_substep_plastic_strain_[gp_]);
 
+  // initialize tensor interpolation error status
+  Core::LinAlg::TensorInterpolation::TensorInterpErrorType tensor_interp_err_status =
+      Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors;
 
   // recompute the current right CG
   curr_CM = tensor_interpolator_.get_interpolated_matrix(
-      ref_matrices_, ref_locs_, (t + curr_dt) / time_step_settings_.dt_);
-  if (tensor_interpolator_.get_err_type() !=
+      ref_matrices_, ref_locs_, (t + curr_dt) / time_step_settings_.dt_, tensor_interp_err_status);
+  if (tensor_interp_err_status !=
       Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
   {
-    std::cout << debug_get_error_info(Core::LinAlg::TensorInterpolation::to_string(
-                     tensor_interpolator_.get_err_type()))
+    std::cout << debug_get_error_info(
+                     Core::LinAlg::TensorInterpolation::to_string(tensor_interp_err_status))
               << std::endl;
     FOUR_C_THROW("See above");
   }
@@ -4075,14 +4083,19 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     }
     else
     {
+      // initialize tensor interpolation error status
+      Core::LinAlg::TensorInterpolation::TensorInterpErrorType tensor_interp_err_status =
+          Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors;
+
+
       // interpolate predictor of the inverse plastic deformation gradient
       iFin_adapt_pred = tensor_interpolator_.get_interpolated_matrix(
-          ref_matrices, ref_locs, pred_interp_factors_.current_xi_[gp_]);
-      if (tensor_interpolator_.get_err_type() !=
+          ref_matrices, ref_locs, pred_interp_factors_.current_xi_[gp_], tensor_interp_err_status);
+      if (tensor_interp_err_status !=
           Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
       {
-        std::cout << debug_get_error_info(Core::LinAlg::TensorInterpolation::to_string(
-                         tensor_interpolator_.get_err_type()))
+        std::cout << debug_get_error_info(
+                         Core::LinAlg::TensorInterpolation::to_string(tensor_interp_err_status))
                   << std::endl;
         FOUR_C_THROW("See above");
       }
