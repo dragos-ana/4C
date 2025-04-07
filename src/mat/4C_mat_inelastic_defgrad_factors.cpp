@@ -37,6 +37,7 @@
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 #include <Teuchos_Time.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iomanip>
@@ -539,6 +540,20 @@ namespace
     std::vector<double> ref_locs{0.0, 1.0};
 
     return almost_plastic_pred;
+  }
+
+  // checks if a given 3x3 matrix is diagonal
+  bool check_3x3_diagonal(const Core::LinAlg::Matrix<3, 3>& mat, const double tol = 1.0e-8)
+  {
+    // check if the matrix is diagonal
+    for (int i = 0; i < 3; ++i)
+    {
+      for (int j = 0; j < 3; ++j)
+      {
+        if (i != j && std::abs(mat(i, j)) > tol) return false;
+      }
+    }
+    return true;
   }
 
 
@@ -2954,6 +2969,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 {
+  // timint analysis: determine the optimal interpolation factors for 1D
+  // cases
+  if (parameter()->bool_analyze_timint())
+  {
+    double optimal_interpolation_factor = 0.0;
+    for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
+    {
+      optimal_interpolation_factor = compute_optimal_pred_interp_factor(gp);
+      if (gp == 0)
+      {
+        std::cout << "optimal_interpolation_factor for GP " << gp << ": "
+                  << optimal_interpolation_factor << std::endl;
+      }
+    }
+  }
+
   // update history variables for the next time step
   time_step_quantities_.last_rightCG_ = time_step_quantities_.current_rightCG_;
   time_step_quantities_.last_plastic_defgrd_inverse_ =
@@ -4844,7 +4875,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
-         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
+        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrd_inverse_[gp], temp9x1);
@@ -4859,7 +4890,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_plastic_strain_[gp];
     }
@@ -4902,6 +4933,183 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   }
 
   return viscoplastic_law_->evaluate_output_data(name, data);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_interp_factor(
+    const int gp)
+{
+  // Note on the general algorithm: we assume a 1D case where the
+  // inelastic deformation gradient is a diagonal matrix (AND it should
+  // also be isotropic / transversely isotropic with axis of symmetry =
+  // axis load, but we don't check for that currently). This is an
+  // utility of the time integration analysis framework and should only
+  // be employed in these cases. Then we take
+  // the current inelastic deformation gradient as the reference
+  // solution and try to determine the optimal interpolation factor
+  // which leads to this current inelastic deformation gradient. Since
+  // the involved matrices are diagonal and due to the plastic
+  // incompressibility assumption, we can simply take
+  // the first stretch component (xx-component) for the determination of this optimal interpolation
+  // factor. All other components consistently follow the same
+  // interpolation factor (1D plastic incompressibility).
+
+  // check diagonality of the last and current inverse inelastic defgrads
+  FOUR_C_ASSERT_ALWAYS(check_3x3_diagonal(time_step_quantities_.last_plastic_defgrd_inverse_[gp]),
+      "You should only use the optimal interpolation factor computation for diagonal, 1D cases! "
+      "This is not the case for your last inelastic defgrad!");
+  FOUR_C_ASSERT_ALWAYS(
+      check_3x3_diagonal(time_step_quantities_.current_plastic_defgrd_inverse_[gp]),
+      "You should only use the optimal interpolation factor computation for diagonal, 1D cases! "
+      "This is not the case for your current inelastic defgrad!");
+
+  // get predictor interpolation bounds (reference matrices: inelastic
+  // defgrad of the elastic and plastic deformation gradient)
+  Core::LinAlg::Matrix<3, 3> aplast_iFinM = get_almost_plastic_pred_defgrad(
+      time_step_quantities_.current_defgrad_[gp], time_step_quantities_.last_defgrad_[gp],
+      time_step_quantities_.last_plastic_defgrd_inverse_[gp],
+      time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp],
+      time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp]);
+  FOUR_C_ASSERT_ALWAYS(check_3x3_diagonal(aplast_iFinM),
+      "You should only use the optimal interpolation factor computation for diagonal, 1D cases! "
+      "This is not the case for your almost plastic predictor!");
+
+  std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
+      time_step_quantities_.last_plastic_defgrd_inverse_[gp], aplast_iFinM};
+  std::vector<double> ref_locs{0.0, 1.0};
+
+
+  // get material stretch tensor of the inverse inelastic defgrad of the
+  // elastic predictor
+  Core::LinAlg::Matrix<3, 3> elast_U = Core::LinAlg::matrix_3x3_material_stretch(ref_matrices[0]);
+  // get the first stretch component of the elastic predictor
+  const double elast_first_stretch = elast_U(0, 0);
+
+  // get material stretch tensor of the inverse inelastic defgrad of the
+  // almost plastic predictor
+  Core::LinAlg::Matrix<3, 3> aplast_U = Core::LinAlg::matrix_3x3_material_stretch(ref_matrices[1]);
+  // get the first stretch component of the almost plastic predictor
+  const double aplast_first_stretch = aplast_U(0, 0);
+
+  // get material stretch tensor of the current inverse inelastic
+  // defgrad  (reference)
+  Core::LinAlg::Matrix<3, 3> ref_U = Core::LinAlg::matrix_3x3_material_stretch(
+      time_step_quantities_.current_plastic_defgrd_inverse_[gp]);
+  // get the first stretch component of the current inverse inelastic
+  // defgrad
+  const double ref_first_stretch = ref_U(0, 0);
+
+  // check whether the reference stretch is within the interval posed
+  // by the predictor interpolation bounds
+  FOUR_C_ASSERT_ALWAYS(ref_first_stretch <= std::max(elast_first_stretch, aplast_first_stretch) &&
+                           std::min(elast_first_stretch, aplast_first_stretch) <= ref_first_stretch,
+      "Something is wrong with the predictor interpolation of gp {}: the reference solution (first "
+      "eigenvalue of the inverse inelastic defgrad) is {}, and it "
+      "does not lie between the elastic predictor ({}) and the almost plastic predictor ({})",
+      gp, ref_first_stretch, elast_first_stretch, aplast_first_stretch);
+
+  // declare interpolated inverse inelastic defgrad and the corresponding polar decomposition
+  // utilities
+  Core::LinAlg::Matrix<3, 3> interp_iFinM{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> interp_U{Core::LinAlg::Initialization::zero};
+  double interp_first_stretch = 0.0;
+  Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType err_type =
+      Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors;
+
+  // set loop settings
+  unsigned int iter = 0;
+  const unsigned int max_iter = 50;
+  const double tol = 1.0e-13;
+  // set initial value (predictor) for the optimal interpolation
+  // factor
+  double optimal_interp_factor = 0.5;
+  // declare residual and jacobian
+  double residual = 1.0e10;
+  double jacobian = 1.0e10;
+
+
+  // auxiliary variable used below for bound checking
+  double temp;
+
+  // Newton-Raphson loop for the determination of the optimal
+  // interpolation factor
+  while (true)
+  {
+    // increment iteration count
+    ++iter;
+
+    // check whether the maximum number of iterations was reached
+    FOUR_C_ASSERT_ALWAYS(iter <= max_iter,
+        "The maximum number of iterations was reached without finding an optimal interpolation "
+        "factor for gp {}",
+        gp);
+
+    // interpolate the inverse inelastic defgrad
+    interp_iFinM = tensor_interpolator_.get_interpolated_matrix(
+        ref_matrices, ref_locs, optimal_interp_factor, err_type);
+    FOUR_C_ASSERT_ALWAYS(
+        err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
+        "Could not interpolate inverse inelastic defgrad for interpolation factor {} within the "
+        "optimal interpolation factor computation of gp {}",
+        optimal_interp_factor, gp);
+    // get first stretch component of the interpolated inverse inelastic
+    // defgrad
+    interp_U = Core::LinAlg::matrix_3x3_material_stretch(interp_iFinM);
+    interp_first_stretch = interp_U(0, 0);
+
+    // compute the residual
+    residual = interp_first_stretch - ref_first_stretch;
+
+    // check convergence
+    if (std::abs(residual) < tol)
+    {
+      // return the optimal interpolation factor
+      return optimal_interp_factor;
+    }
+
+    // compute the jacobian
+    jacobian = tensor_interpolator_.get_interpolation_gradient(
+        ref_matrices, ref_locs, optimal_interp_factor, err_type)(0,
+        0);  // due to diagonality, this should be the first component of the interpolation gradient
+    FOUR_C_ASSERT_ALWAYS(
+        err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
+        "Could not compute the jacobian of the interpolation for interpolation factor {} within "
+        "the "
+        "optimal interpolation factor computation of gp {}",
+        optimal_interp_factor, gp);
+
+
+    // check if the jacobian is 0 (is the case in the neighbourhoods of
+    // the reference locations 0 and 1) - in that case, we move the optimal
+    // interpolation factor to the "right" side of the interval (the
+    // almost plastic side)
+    if (std::abs(jacobian) < 1.0e-16)
+    {
+      optimal_interp_factor += (1.0 - optimal_interp_factor) / 2.0;
+      continue;
+    }
+
+
+    // check if the optimal interpolation factor is out of the interval
+    // posed by ref_locs: in that case, we limit it to the specific
+    // bound. Otherwise, we perform the Newton update.
+    temp = optimal_interp_factor - residual / jacobian;
+    if (temp < 0.0)
+    {
+      optimal_interp_factor = 0.0;
+    }
+    else if (temp > 1.0)
+    {
+      optimal_interp_factor = 1.0;
+    }
+    else
+    {
+      optimal_interp_factor = temp;
+    }
+  }
+
+  return optimal_interp_factor;
 }
 
 /*--------------------------------------------------------------------*
