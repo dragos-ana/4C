@@ -851,21 +851,32 @@ Core::LinAlg::Matrix<9, loc_dim> Core::LinAlg::TensorInterpolation::
   // initialize output derivative
   Core::LinAlg::Matrix<9, loc_dim> output(Core::LinAlg::Initialization::zero);
 
-  // initialize perturbed location
-  Core::LinAlg::Matrix<loc_dim, 1> perturbed_loc(Core::LinAlg::Initialization::zero);
+  // initialize perturbed matrix and location (we look at both positive
+  // and negative perturbations in order to account for 0 - derivatives)
+  Core::LinAlg::Matrix<3, 3> perturbed_pos_matrix{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<loc_dim, 1> perturbed_pos_loc(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Matrix<3, 3> perturbed_neg_matrix{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<loc_dim, 1> perturbed_neg_loc(Core::LinAlg::Initialization::zero);
+
 
   // loop through interpolation location dimensions
   for (unsigned int i = 0; i < loc_dim; ++i)
   {
-    // get perturbed location
-    perturbed_loc = interp_loc;
-    perturbed_loc(i, 0) += interp_params_.perturbation_factor;
+    // get perturbed locations
+    perturbed_pos_loc = interp_loc;
+    perturbed_pos_loc(i, 0) += interp_params_.perturbation_factor;
+    perturbed_neg_loc = interp_loc;
+    perturbed_neg_loc(i, 0) -= interp_params_.perturbation_factor;
 
-    // compute the perturbed matrix
-    Core::LinAlg::Matrix<3, 3> perturbed_matrix =
-        get_interpolated_matrix(ref_matrices, ref_locs, perturbed_loc);
 
-    // check for interpolation errors
+    // compute the perturbed matrices
+    perturbed_pos_matrix = get_interpolated_matrix(ref_matrices, ref_locs, perturbed_pos_loc);
+    if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
+    {
+      // return empty matrix
+      return Core::LinAlg::Matrix<9, loc_dim>(Core::LinAlg::Initialization::zero);
+    }
+    perturbed_neg_matrix = get_interpolated_matrix(ref_matrices, ref_locs, perturbed_neg_loc);
     if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
     {
       // return empty matrix
@@ -873,7 +884,7 @@ Core::LinAlg::Matrix<9, loc_dim> Core::LinAlg::TensorInterpolation::
     }
 
     // compute the finite difference derivative
-    temp3x3.update(1.0, perturbed_matrix, -1.0, interp_matrix, 0.0);
+    temp3x3.update(1.0 / 2.0, perturbed_pos_matrix, -1.0 / 2.0, perturbed_neg_matrix, 0.0);
     temp3x3.scale(1.0 / interp_params_.perturbation_factor);
     Core::LinAlg::Voigt::matrix_3x3_to_9x1(temp3x3, temp9x1);
 
