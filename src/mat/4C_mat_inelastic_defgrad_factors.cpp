@@ -32,6 +32,7 @@
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 #include <Teuchos_Time.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iomanip>
@@ -517,8 +518,6 @@ namespace
 
     return almost_plastic_pred;
   }
-
-
 
 // DEBUG utils (InelasticDefgradTransvIsotropElastViscoplast)
 // define ele_gid to be debugged
@@ -4887,6 +4886,139 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   }
 
   return viscoplastic_law_->evaluate_output_data(name, data);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_interp_factor(
+    const int gp)
+{
+  // get predictor interpolation bounds (reference matrices: inelastic
+  // defgrad of the elastic and plastic deformation gradient)
+  Core::LinAlg::Matrix<3, 3> aplast_iFinM = get_almost_plastic_pred_defgrad(
+      time_step_quantities_.current_defgrad_[gp], time_step_quantities_.last_defgrad_[gp],
+      time_step_quantities_.last_plastic_defgrd_inverse_[gp],
+      time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp],
+      time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp]);
+  std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
+      time_step_quantities_.last_plastic_defgrd_inverse_[gp], aplast_iFinM};
+  std::vector<double> ref_locs{0.0, 1.0};
+  // perform polar decomposition of the inverse inelastic deformation
+  // gradient of the elastic predictor
+  Core::LinAlg::Matrix<3, 3> elast_R{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> elast_U{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> elast_eigenval{Core::LinAlg::Initialization::zero};
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> elast_spectral_pairs;
+  Core::LinAlg::matrix_3x3_polar_decomposition(
+      time_step_quantities_.current_plastic_defgrd_inverse_[gp], elast_R, elast_U, elast_eigenval,
+      elast_spectral_pairs);
+
+  // perform polar decomposition of the inverse inelastic deformation
+  // gradient of the almost plastic predictor
+  Core::LinAlg::Matrix<3, 3> aplast_R{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> aplast_U{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> aplast_eigenval{Core::LinAlg::Initialization::zero};
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> aplast_spectral_pairs;
+  Core::LinAlg::matrix_3x3_polar_decomposition(
+      time_step_quantities_.current_plastic_defgrd_inverse_[gp], aplast_R, aplast_U,
+      aplast_eigenval, aplast_spectral_pairs);
+
+  // get the predictor interpolation bounds: the corresponding
+  // first eigenvalues of the inverse inelastic defgrad of the elastic and the almost plastic
+  // predictor
+  const double elast_first_eigenval = elast_spectral_pairs[0].first;
+  const double aplast_first_eigenval = aplast_spectral_pairs[0].first;
+
+  // perform polar decomposition of the current inverse inelastic deformation
+  // gradient
+  Core::LinAlg::Matrix<3, 3> ref_R{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> ref_U{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> ref_eigenval{Core::LinAlg::Initialization::zero};
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> ref_spectral_pairs;
+  Core::LinAlg::matrix_3x3_polar_decomposition(
+      time_step_quantities_.current_plastic_defgrd_inverse_[gp], ref_R, ref_U, ref_eigenval,
+      ref_spectral_pairs);
+
+  // get the smallest eigenvalue of the stretch tensor of the current
+  // inelastic deformation gradient - this is our reference, for which
+  // we want to determine a suitable predictor interpolation factor
+  const double ref_first_eigenval = ref_spectral_pairs[0].first;
+
+  // check whether the reference eigenvalue is within the interval posed
+  // by the predictor interpolation bounds
+  FOUR_C_ASSERT_ALWAYS(
+      ref_first_eigenval <= std::max(elast_first_eigenval, aplast_first_eigenval) &&
+          std::min(elast_first_eigenval, aplast_first_eigenval) <= ref_first_eigenval,
+      "Something is wrong with the predictor interpolation of gp {}: the reference solution (first "
+      "eigenvalue of the inverse inelastic defgrad) is {}, and it "
+      "does not lie between the elastic predictor ({}) and the almost plastic predictor ({})",
+      gp, ref_first_eigenval, elast_first_eigenval, aplast_first_eigenval);
+
+  // declare interpolated inverse inelastic defgrad and the corresponding polar decomposition
+  // utilities
+  Core::LinAlg::Matrix<3, 3> interp_iFinM{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> interp_R{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> interp_U{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> interp_eigenval{Core::LinAlg::Initialization::zero};
+  double interp_first_eigenval = 0.0;
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> interp_spectral_pairs;
+  Core::LinAlg::TensorInterpolation::TensorInterpErrorType err_type =
+      Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors;
+
+  // set loop settings
+  unsigned int iter = 0;
+  const unsigned int max_iter = 50;
+  const double tol = 1.0e-8;
+  // set initial value (predictor) for the optimal interpolation
+  // factor
+  double optimal_interp_factor = pred_interp_factors_.current_xi_[gp];
+  // declare residual and jacobian
+  double residual = 1.0e10;
+  double jacobian = 1.0e10;
+
+  // Newton-Raphson loop
+  while (true)
+  {
+    // increment iteration count
+    ++iter;
+
+    // check whether the maximum number of iterations was reached
+    FOUR_C_ASSERT_ALWAYS(iter <= max_iter,
+        "The maximum number of iterations was reached without finding an optimal interpolation "
+        "factor for gp {}",
+        gp);
+
+    // interpolate the inverse inelastic defgrad
+    interp_iFinM = tensor_interpolator_.get_interpolated_matrix(
+        ref_matrices, ref_locs, optimal_interp_factor, err_type);
+    FOUR_C_ASSERT_ALWAYS(
+        err_type == Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
+        "Could not interpolate inverse inelastic defgrad for interpolation factor {} within the "
+        "optimal interpolation factor computation of gp {}",
+        optimal_interp_factor, gp);
+    // perform polar decomposition of the interpolated inverse
+    // inelastic deformation gradient
+    Core::LinAlg::matrix_3x3_polar_decomposition(
+        time_step_quantities_.current_plastic_defgrd_inverse_[gp], interp_R, interp_U,
+        interp_eigenval, interp_spectral_pairs);
+    // get the first eigenvalue of the interpolated inverse inelastic
+    // defgrad
+    interp_first_eigenval = interp_spectral_pairs[0].first;
+
+    // compute the residual
+    residual = std::abs(interp_first_eigenval - ref_first_eigenval);
+
+    // check convergence
+    if (residual < tol)
+    {
+      // return the optimal interpolation factor
+      return optimal_interp_factor;
+    }
+
+    // compute the jacobian
+    jacobian = tensor_interpolator_.get_interpolation_gradient(
+        ref_matrices, ref_locs, optimal_interp_factor, err_type);
+  }
 }
 
 /*--------------------------------------------------------------------*
