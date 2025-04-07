@@ -3402,9 +3402,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // initialize error management action
   ErrorAction err_action{ErrorAction::Continue};
 
-  // declare error status for tensor interpolation
-  Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType tensor_interpolator_err_status{
-      Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors};
+  // initialize tensor interpolation error status
+  Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType tensor_interp_err_status =
+      Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors;
+
   // substepping procedures
   while (substep_params_.substep_counter_ <= substep_params_.total_num_of_substeps_)
   {
@@ -3416,8 +3417,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     {
       curr_CM = tensor_interpolator_.get_interpolated_matrix(ref_matrices_, ref_locs_,
           (substep_params_.t_ + substep_params_.curr_dt_) / time_step_settings_.dt_,
-          tensor_interpolator_err_status);
-      if (tensor_interpolator_err_status !=
+          tensor_interp_err_status);
+      if (tensor_interp_err_status !=
           Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors)
       {
         err_status =
