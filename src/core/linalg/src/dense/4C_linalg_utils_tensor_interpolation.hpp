@@ -118,7 +118,6 @@ namespace Core::LinAlg
       SecondOrderTensorInterpolator(unsigned int order, const RotInterpType rot_interp_type,
           const EigenvalInterpType eigenval_interp_type, const InterpParams& interp_params)
           : polynomial_space_(create_polynomial_space(order)),
-            err_type_(TensorInterpErrorType::NoErrors),
             rot_interp_type_(rot_interp_type),
             eigenval_interp_type_(eigenval_interp_type),
             interp_params_(interp_params)
@@ -164,12 +163,14 @@ namespace Core::LinAlg
        * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
        * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated
        * tensor
+       * @param[in, out] err_type  error type of the tensor interpolator
+       *  (shall be TensorInterpErrorType::NoErrors if no errors occurred)
        * @returns interpolated 3x3 matrix
        */
       Core::LinAlg::Matrix<3, 3> get_interpolated_matrix(
           const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
           const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
-          const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc);
+          const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc, TensorInterpErrorType& err_type);
 
       /*!
        * @brief Interpolate matrix (second-order 3x3 tensor) from a set of defined reference
@@ -188,11 +189,14 @@ namespace Core::LinAlg
        * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
        * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated
        * tensor
+       * @param[in, out] err_type  error type of the tensor interpolator
+       *  (shall be TensorInterpErrorType::NoErrors if no errors occurred)
        * @returns interpolated 3x3 matrix
        */
       Core::LinAlg::Matrix<3, 3> get_interpolated_matrix(
           const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
-          const std::vector<double>& ref_locs, const double interp_loc);
+          const std::vector<double>& ref_locs, const double interp_loc,
+          TensorInterpErrorType& err_type);
 
       /*!
        * @name Get interpolation gradient, i.e. the derivative of the
@@ -207,6 +211,8 @@ namespace Core::LinAlg
        * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
        * @param[in]  interp_loc location \f$ \boldsymbol{x}_{\text{p}} \f$ of the interpolated
        * tensor
+       * @param[in, out] err_type  error type of the tensor interpolator
+       *  (shall be TensorInterpErrorType::NoErrors if no errors occurred)
        * @returns derivative of the interpolated matrix with respect to
        * the interpolation location vector. The result is a 9 x <dim>
        * matrix, where the second dimension corresponds to the dimension of
@@ -220,7 +226,7 @@ namespace Core::LinAlg
       Core::LinAlg::Matrix<9, loc_dim> get_interpolation_gradient(
           const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
           const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
-          const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc);
+          const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc, TensorInterpErrorType& err_type);
 
       /*!
        * @brief Specialized method for 1D interpolation locations.
@@ -229,22 +235,14 @@ namespace Core::LinAlg
        */
       Core::LinAlg::Matrix<9, 1> get_interpolation_gradient(
           const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
-          const std::vector<double>& ref_locs, const double interp_loc);
+          const std::vector<double>& ref_locs, const double interp_loc,
+          TensorInterpErrorType& err_type);
       //! @}
-
-      /// get current error type of the tensor interpolator
-      TensorInterpErrorType get_err_type() { return err_type_; }
-
-      /// reset error type to NoErrors
-      void reset_err_type() { err_type_ = TensorInterpErrorType::NoErrors; }
 
      private:
       /// polynomial space used for the interpolation of rotation vectors depending
       /// on the desired order (created in constructor call)
       Core::FE::PolynomialSpaceComplete<loc_dim, Core::FE::Polynomial> polynomial_space_;
-
-      /// error type of the tensor interpolator
-      TensorInterpErrorType err_type_;
 
       /// rotation interpolation type
       const RotInterpType rot_interp_type_;
@@ -306,7 +304,6 @@ namespace Core::LinAlg
    */
   Core::LinAlg::Matrix<3, 3> matrix_3x3_spatial_stretch(
       const Core::LinAlg::Matrix<3, 3>& inp_matrix);
-
 
 
   /*!
