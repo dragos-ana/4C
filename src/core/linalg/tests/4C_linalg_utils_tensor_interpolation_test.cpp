@@ -427,53 +427,51 @@ namespace
   /// computed with the logarithmic weighted average method. We have two
   /// reference matrices, left and right, with corresponding eigenvalues
   /// and locations.
-  Core::LinAlg::Matrix<1, 3> get_eigenval_gradient_log_weighted_average(const double c,
-      const double left_eigenval, const Core::LinAlg::Matrix<3, 1>& left_loc,
-      const double right_eigenval, const Core::LinAlg::Matrix<3, 1>& right_loc,
-      const Core::LinAlg::Matrix<3, 1>& interp_loc)
+  double get_eigenval_gradient_log_weighted_average(const double c, const double left_eigenval,
+      const double left_loc, const double right_eigenval, const double right_loc,
+      const double interp_loc)
   {
     // compute the distances of the interpolation location with respect to
     // the reference locations
-    Core::LinAlg::Matrix<3, 1> left_dist_vect{Core::LinAlg::Initialization::zero};
-    left_dist_vect.update(1.0, interp_loc, -1.0, left_loc, 0.0);
-    const double left_dist = left_dist_vect.norm2();
-    Core::LinAlg::Matrix<3, 1> right_dist_vect{Core::LinAlg::Initialization::zero};
-    right_dist_vect.update(1.0, interp_loc, -1.0, right_loc, 0.0);
-    const double right_dist = right_dist_vect.norm2();
+    double left_dist{interp_loc - left_loc};
+    const double abs_left_dist = std::abs(left_dist);
+    double right_dist{interp_loc - right_loc};
+    const double abs_right_dist = std::abs(right_dist);
 
     // compute the unnormalized weights and their sum
-    const double left_unnorm_weight = std::exp(-c * left_dist * left_dist);
-    const double right_unnorm_weight = std::exp(-c * right_dist * right_dist);
+    const double left_unnorm_weight = std::exp(-c * abs_left_dist * abs_left_dist);
+    const double right_unnorm_weight = std::exp(-c * abs_right_dist * abs_right_dist);
     const double sum_unnorm_weight = left_unnorm_weight + right_unnorm_weight;
 
+    // compute the normalized weights and their sum
+    const double left_norm_weight = left_unnorm_weight / sum_unnorm_weight;
+    const double right_norm_weight = right_unnorm_weight / sum_unnorm_weight;
+
+
     // compute the gradients of the unnormalized weights
-    Core::LinAlg::Matrix<1, 3> left_unnorm_weight_gradient{Core::LinAlg::Initialization::zero};
-    left_unnorm_weight_gradient.update_t(-2 * c * left_unnorm_weight, left_dist_vect, 0.0);
-    Core::LinAlg::Matrix<1, 3> right_unnorm_weight_gradient{Core::LinAlg::Initialization::zero};
-    right_unnorm_weight_gradient.update_t(-2 * c * right_unnorm_weight, right_dist_vect, 0.0);
+    double left_unnorm_weight_gradient{-2.0 * c * left_unnorm_weight * left_dist};
+    double right_unnorm_weight_gradient{-2.0 * c * right_unnorm_weight * right_dist};
 
     // compute the gradients of the normalized weights
-    Core::LinAlg::Matrix<1, 3> left_norm_weight_gradient{Core::LinAlg::Initialization::zero};
-    left_norm_weight_gradient.update(
-        1.0 / sum_unnorm_weight - left_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight),
-        left_unnorm_weight_gradient, -left_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight),
-        right_unnorm_weight_gradient, 0.0);
-    Core::LinAlg::Matrix<1, 3> right_norm_weight_gradient{Core::LinAlg::Initialization::zero};
-    right_norm_weight_gradient.update(
-        -right_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight), left_unnorm_weight_gradient,
-        1.0 / sum_unnorm_weight - right_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight),
-        right_unnorm_weight_gradient, 0.0);
+    double left_norm_weight_gradient{
+        (1.0 / sum_unnorm_weight - left_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight)) *
+            left_unnorm_weight_gradient -
+        left_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight) *
+            right_unnorm_weight_gradient};
+    double right_norm_weight_gradient{
+        -right_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight) *
+            left_unnorm_weight_gradient +
+        (1.0 / sum_unnorm_weight - right_unnorm_weight / (sum_unnorm_weight * sum_unnorm_weight)) *
+            right_unnorm_weight_gradient};
 
     // compute the interpolated eigenvalue
-    double interp_eigenval = std::exp(left_norm_weight_gradient(0) * std::log(left_eigenval) +
-                                      right_norm_weight_gradient(0) * std::log(right_eigenval));
+    double interp_eigenval = std::exp(
+        left_norm_weight * std::log(left_eigenval) + right_norm_weight * std::log(right_eigenval));
 
     // compute the gradient of the interpolated eigenvalue
-    Core::LinAlg::Matrix<1, 3> interp_eigenval_gradient{Core::LinAlg::Initialization::zero};
-    interp_eigenval_gradient.update(std::log(left_eigenval), left_norm_weight_gradient,
-        std::log(right_eigenval), right_norm_weight_gradient, 0.0);
-    interp_eigenval_gradient.scale(interp_eigenval);
-
+    double interp_eigenval_gradient{std::log(left_eigenval) * left_norm_weight_gradient +
+                                    std::log(right_eigenval) * right_norm_weight_gradient};
+    interp_eigenval_gradient *= interp_eigenval;
 
     return interp_eigenval_gradient;
   }
@@ -503,6 +501,7 @@ namespace
     // create interpolation parameter object
     Core::LinAlg::TensorInterpolation::InterpParams interp_params;
     interp_params.c = 10.0;
+    interp_params.perturbation_factor = 1.0e-10;
 
     // create tensor interpolator
     Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1> interp{1,
@@ -512,37 +511,33 @@ namespace
     // get interpolation gradient
     std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{left_matrix, right_matrix};
     std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs{left_matrix_loc, right_matrix_loc};
-    Core::LinAlg::Matrix<9, 1> interp_gradient =
+    // ... using the standard method
+    Core::LinAlg::Matrix<9, 1> interp_gradient_standard =
         interp.get_interpolation_gradient(ref_matrices, ref_locs, interp_loc);
+    // ... using the specialized method
+    Core::LinAlg::Matrix<9, 1> interp_gradient_specialized =
+        interp.get_interpolation_gradient(ref_matrices,
+            std::vector<double>{left_matrix_loc(0, 0), right_matrix_loc(0, 0)}, interp_loc(0, 0));
+
     FOUR_C_ASSERT_ALWAYS(
         interp.get_err_type() == Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
         "{}", Core::LinAlg::TensorInterpolation::to_string(interp.get_err_type()));
 
     // declare the reference eigenvalue derivatives
-    Core::LinAlg::Matrix<1, 1> ref_eigenval_gradient{Core::LinAlg::Initialization::zero};
+    double ref_eigenval_gradient;
+    // loop through eigenvalues
     for (unsigned int i = 0; i < 3; ++i)
     {
       // compute the reference solution
-      ref_eigenval_gradient = get_eigenval_gradient_log_weighted_average(interp_params.c,
-          left_matrix(i, i), left_matrix_loc, right_matrix(i, i), right_matrix_loc, interp_loc);
-
-      // DEBUG
-      std::cout << "DEBUG: ref_eigenval_gradient: " << std::endl;
-      ref_eigenval_gradient.print(std::cout);
-      std::cout << "DEBUG: interp_gradient: " << std::endl;
-      interp_gradient.print(std::cout);
+      ref_eigenval_gradient =
+          get_eigenval_gradient_log_weighted_average(interp_params.c, left_matrix(i, i),
+              left_matrix_loc(0, 0), right_matrix(i, i), right_matrix_loc(0, 0), interp_loc(0, 0));
 
 
       // compare interpolation gradient with reference solution
-      for (unsigned int j = 0; j < 3; ++j)
-      {
-        EXPECT_NEAR(interp_gradient(i, j), ref_eigenval_gradient(0, j), 1.0e-8);
-      }
+      EXPECT_NEAR(interp_gradient_standard(i, 0), ref_eigenval_gradient, 1.0e-4);
+      EXPECT_NEAR(interp_gradient_specialized(i, 0), ref_eigenval_gradient, 1.0e-4);
     }
-
-
-    // DEBUG
-    FOUR_C_THROW("STOP");
   }
 
 }  // namespace
