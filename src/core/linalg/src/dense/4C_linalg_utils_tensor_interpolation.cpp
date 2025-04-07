@@ -259,10 +259,11 @@ Core::LinAlg::Matrix<3, 3>
 Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_interpolated_matrix(
     const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
     const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
-    const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc)
+    const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc,
+    Core::LinAlg::TensorInterpolation::TensorInterpErrorType& err_type)
 {
   // reset error type
-  reset_err_type();
+  err_type = TensorInterpErrorType::NoErrors;
 
   // declare output variable
   Core::LinAlg::Matrix<3, 3> output(Core::LinAlg::Initialization::zero);
@@ -475,7 +476,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
     solver.solveToRefinedSolution(true);
     if (solver.factor() or solver.solve())
     {
-      err_type_ = TensorInterpErrorType::LinSystFailQMatrix;
+      err_type = TensorInterpErrorType::LinSystFailQMatrix;
       return Core::LinAlg::Matrix<3, 3>{Initialization::zero};
     }
 
@@ -486,7 +487,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<loc_dim>::get_i
     solver.solveToRefinedSolution(true);
     if (solver.factor() or solver.solve())
     {
-      err_type_ = TensorInterpErrorType::LinSystFailRMatrix;
+      err_type = TensorInterpErrorType::LinSystFailRMatrix;
       return Core::LinAlg::Matrix<3, 3>{Initialization::zero};
     }
 
@@ -800,7 +801,8 @@ template <>
 Core::LinAlg::Matrix<3, 3>
 Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpolated_matrix(
     const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
-    const std::vector<double>& ref_locs, const double interp_loc)
+    const std::vector<double>& ref_locs, const double interp_loc,
+    Core::LinAlg::TensorInterpolation::TensorInterpErrorType& err_type)
 {
   // auxiliaries
   Core::LinAlg::Matrix<1, 1> temp_matrix;
@@ -821,7 +823,7 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpo
   converted_interp_loc(0) = interp_loc;
 
   // call the general constructor with the matrix expressions
-  return get_interpolated_matrix(ref_matrices, converted_ref_locs, converted_interp_loc);
+  return get_interpolated_matrix(ref_matrices, converted_ref_locs, converted_interp_loc, err_type);
 }
 
 /*--------------------------------------------------------------------*
@@ -831,7 +833,8 @@ Core::LinAlg::Matrix<9, loc_dim> Core::LinAlg::TensorInterpolation::
     SecondOrderTensorInterpolator<loc_dim>::get_interpolation_gradient(
         const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
         const std::vector<Core::LinAlg::Matrix<loc_dim, 1>>& ref_locs,
-        const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc)
+        const Core::LinAlg::Matrix<loc_dim, 1>& interp_loc,
+        Core::LinAlg::TensorInterpolation::TensorInterpErrorType& err_type)
 {
   // auxiliaries
   Core::LinAlg::Matrix<9, 1> temp9x1(Core::LinAlg::Initialization::zero);
@@ -839,10 +842,10 @@ Core::LinAlg::Matrix<9, loc_dim> Core::LinAlg::TensorInterpolation::
 
   // compute the current interpolated matrix
   Core::LinAlg::Matrix<3, 3> interp_matrix =
-      get_interpolated_matrix(ref_matrices, ref_locs, interp_loc);
+      get_interpolated_matrix(ref_matrices, ref_locs, interp_loc, err_type);
 
   // check for interpolation errors
-  if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
+  if (err_type != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
   {
     // return empty matrix
     return Core::LinAlg::Matrix<9, loc_dim>(Core::LinAlg::Initialization::zero);
@@ -870,14 +873,16 @@ Core::LinAlg::Matrix<9, loc_dim> Core::LinAlg::TensorInterpolation::
 
 
     // compute the perturbed matrices
-    perturbed_pos_matrix = get_interpolated_matrix(ref_matrices, ref_locs, perturbed_pos_loc);
-    if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
+    perturbed_pos_matrix =
+        get_interpolated_matrix(ref_matrices, ref_locs, perturbed_pos_loc, err_type);
+    if (err_type != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
     {
       // return empty matrix
       return Core::LinAlg::Matrix<9, loc_dim>(Core::LinAlg::Initialization::zero);
     }
-    perturbed_neg_matrix = get_interpolated_matrix(ref_matrices, ref_locs, perturbed_neg_loc);
-    if (err_type_ != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
+    perturbed_neg_matrix =
+        get_interpolated_matrix(ref_matrices, ref_locs, perturbed_neg_loc, err_type);
+    if (err_type != Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors)
     {
       // return empty matrix
       return Core::LinAlg::Matrix<9, loc_dim>(Core::LinAlg::Initialization::zero);
@@ -904,7 +909,8 @@ template <>
 Core::LinAlg::Matrix<9, 1>
 Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpolation_gradient(
     const std::vector<Core::LinAlg::Matrix<3, 3>>& ref_matrices,
-    const std::vector<double>& ref_locs, const double interp_loc)
+    const std::vector<double>& ref_locs, const double interp_loc,
+    Core::LinAlg::TensorInterpolation::TensorInterpErrorType& err_type)
 {
   // auxiliaries
   Core::LinAlg::Matrix<1, 1> temp1x1(Core::LinAlg::Initialization::zero);
@@ -923,7 +929,8 @@ Core::LinAlg::TensorInterpolation::SecondOrderTensorInterpolator<1>::get_interpo
   converted_interp_loc(0, 0) = interp_loc;
 
   // call the general constructor with the matrix expressions
-  return get_interpolation_gradient(ref_matrices, converted_ref_locs, converted_interp_loc);
+  return get_interpolation_gradient(
+      ref_matrices, converted_ref_locs, converted_interp_loc, err_type);
 }
 
 
