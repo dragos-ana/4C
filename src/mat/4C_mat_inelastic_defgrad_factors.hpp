@@ -2049,6 +2049,21 @@ namespace Mat
         const Core::LinAlg::Matrix<6, 9>& dSdiFinj);
 
     /*!
+     * @brief Compute optimal predictor interpolation factor of the current time step for given
+     * Gauss point
+     * @note Called within
+     * the update method, since the time step solution is only
+     * known there for all GP. Currently, we regard this as relevant for
+     * the time integration analysis of the 1D simulations,
+     * where the optimal predictor interpolation factor can really be determined
+     * in a consistent manner.
+     *
+     * @param[in] gp Gauss Point
+     *
+     */
+    double compute_optimal_pred_interp_factor(const int gp);
+
+    /*!
      * @brief Get an extensive error message to be displayed when the
      * simulation terminates. This is used for debugging the time
      * integration in more detail. This message contains a base error
