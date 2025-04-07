@@ -489,6 +489,59 @@ namespace
   static Mat::TimIntAnalysisUtils timint_analysis_utils;
 
 
+  //! compute the inverse inelastic deformation gradient corresponding
+  //! to the almost plastic predictor in InelasticDefgradTransvIsotropElastViscoplast
+  Core::LinAlg::Matrix<3, 3> get_almost_plastic_pred_defgrad(const Core::LinAlg::Matrix<3, 3>& FM,
+      const Core::LinAlg::Matrix<3, 3> last_FM, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
+      const Core::LinAlg::Matrix<3, 3>& last_iFinM_matstretch,
+      const Core::LinAlg::Matrix<3, 3>& last_iFinM_rot)
+  {
+    // declare output
+    Core::LinAlg::Matrix<3, 3> almost_plastic_pred(Core::LinAlg::Initialization::zero);
+
+    // compute $\boldsymbol{F}_{n+1} \boldsymbol{F}^{\text{p}^{-1}}}_n$
+    Core::LinAlg::Matrix<3, 3> Fnp_iFin{Core::LinAlg::Initialization::zero};
+    Fnp_iFin.multiply_nn(1.0, FM, last_iFinM, 0.0);
+
+    // determine stretch factor $\boldsymbol{U}_{\boldsymbol{F}_{n+1}
+    // \boldsymbol{F}^{\text{p}^{-1}}_n}$ and its inverse
+    Core::LinAlg::Matrix<3, 3> U_Fnp_iFin = Core::LinAlg::matrix_3x3_material_stretch(Fnp_iFin);
+    Core::LinAlg::Matrix<3, 3> iU_Fnp_iFin{Core::LinAlg::Initialization::zero};
+    iU_Fnp_iFin.invert(U_Fnp_iFin);
+
+    // compute $\boldsymbol{F}_{n} \boldsymbol{F}^{\text{p}^{-1}}}_n$
+    Core::LinAlg::Matrix<3, 3> Fn_iFin{Core::LinAlg::Initialization::zero};
+    Fn_iFin.multiply_nn(1.0, last_FM, last_iFinM, 0.0);
+
+    // determine stretch factor $\boldsymbol{U}_{\boldsymbol{F}_{n}
+    // \boldsymbol{F}^{\text{p}^{-1}}_n}$
+    Core::LinAlg::Matrix<3, 3> U_Fn_iFin = Core::LinAlg::matrix_3x3_material_stretch(Fn_iFin);
+
+    // determine $\boldsymbol{K}^{-1} = \boldsymbol{v}^{\text{p}^{-1}}_n
+    // \boldsymbol{U}^{-1}_{\boldsymbol{F}_{n+1}
+    // \boldsymbol{F}^{\text{p}^{-1}}_n}  \boldsymbol{U}_{\boldsymbol{F}_{n}
+    // \boldsymbol{F}^{\text{p}^{-1}}_n}$
+    Core::LinAlg::Matrix<3, 3> iK{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
+    temp.multiply_nn(1.0, last_iFinM_matstretch, iU_Fnp_iFin, 0.0);
+    iK.multiply_nn(1.0, temp, U_Fn_iFin, 0.0);
+
+    // determine the spatial stretch \f$
+    // \boldsymbol{v}_{\boldsymbol{K}^{-1}} \f and its isochoric component
+    Core::LinAlg::Matrix<3, 3> v_iK = Core::LinAlg::matrix_3x3_spatial_stretch(iK);
+    Core::LinAlg::Matrix<3, 3> v_iK_iso{v_iK};
+    v_iK_iso.scale(std::pow(v_iK.determinant(), -1.0 / 3.0));
+
+    // save the reference matrices and their spatial locations for the
+    // interpolation
+    almost_plastic_pred.multiply_nn(1.0, last_iFinM_rot, v_iK_iso);
+    std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{last_iFinM, almost_plastic_pred};
+    std::vector<double> ref_locs{0.0, 1.0};
+
+    return almost_plastic_pred;
+  }
+
+
 
 // DEBUG utils (InelasticDefgradTransvIsotropElastViscoplast)
 // define ele_gid to be debugged
@@ -3901,9 +3954,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   //          factor, then we check that value first and only then the
   //          elastic predictor -> SEE BELOW
   bool eval_elastic_pred = check_original_pred && (!parameter()->bool_use_last_pred_adapt_fact());
-
-  // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
-  // evaluated already with xi = 0.0)
   if (eval_elastic_pred)
   {
     iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
@@ -3939,59 +3989,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     }
   }
 
+  // get inverse plastic defgrad from the almost plastic predictor
+  Core::LinAlg::Matrix<3, 3> almost_plastic_pred_iFinM =
+      get_almost_plastic_pred_defgrad(FM, time_step_quantities_.last_defgrad_[gp_],
+          time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
+          time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp_],
+          time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp_]);
 
-
-  // compute $\boldsymbol{F}_{n+1} \boldsymbol{F}^{\text{p}^{-1}}}_n$
-  Core::LinAlg::Matrix<3, 3> Fnp_iFin{Core::LinAlg::Initialization::zero};
-  Fnp_iFin.multiply_nn(1.0, FM, time_step_quantities_.last_plastic_defgrd_inverse_[gp_], 0.0);
-
-#ifdef DEBUGVPLAST_TIMINT
-  if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
-  {
-    std::cout << "Fnp_iFin: " << std::endl;
-    Fnp_iFin.print(std::cout);
-  }
-#endif
-
-
-  // determine stretch factor $\boldsymbol{U}_{\boldsymbol{F}_{n+1}
-  // \boldsymbol{F}^{\text{p}^{-1}}_n}$ and its inverse
-  Core::LinAlg::Matrix<3, 3> U_Fnp_iFin = Core::LinAlg::matrix_3x3_material_stretch(Fnp_iFin);
-  Core::LinAlg::Matrix<3, 3> iU_Fnp_iFin{Core::LinAlg::Initialization::zero};
-  iU_Fnp_iFin.invert(U_Fnp_iFin);
-
-  // compute $\boldsymbol{F}_{n} \boldsymbol{F}^{\text{p}^{-1}}}_n$
-  Core::LinAlg::Matrix<3, 3> Fn_iFin{Core::LinAlg::Initialization::zero};
-  Fn_iFin.multiply_nn(1.0, time_step_quantities_.last_defgrad_[gp_],
-      time_step_quantities_.last_plastic_defgrd_inverse_[gp_], 0.0);
-
-  // determine stretch factor $\boldsymbol{U}_{\boldsymbol{F}_{n}
-  // \boldsymbol{F}^{\text{p}^{-1}}_n}$
-  Core::LinAlg::Matrix<3, 3> U_Fn_iFin = Core::LinAlg::matrix_3x3_material_stretch(Fn_iFin);
-
-  // determine $\boldsymbol{K}^{-1} = \boldsymbol{v}^{\text{p}^{-1}}_n
-  // \boldsymbol{U}^{-1}_{\boldsymbol{F}_{n+1}
-  // \boldsymbol{F}^{\text{p}^{-1}}_n}  \boldsymbol{U}_{\boldsymbol{F}_{n}
-  // \boldsymbol{F}^{\text{p}^{-1}}_n}$
-  Core::LinAlg::Matrix<3, 3> iK{Core::LinAlg::Initialization::zero};
-  Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
-  temp.multiply_nn(
-      1.0, time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp_], iU_Fnp_iFin, 0.0);
-  iK.multiply_nn(1.0, temp, U_Fn_iFin, 0.0);
-
-  // determine the spatial stretch \f$
-  // \boldsymbol{v}_{\boldsymbol{K}^{-1}} \f and its isochoric component
-  Core::LinAlg::Matrix<3, 3> v_iK = Core::LinAlg::matrix_3x3_spatial_stretch(iK);
-  Core::LinAlg::Matrix<3, 3> v_iK_iso{v_iK};
-  v_iK_iso.scale(std::pow(v_iK.determinant(), -1.0 / 3.0));
-
-  // save the reference matrices and their spatial locations for the
-  // interpolation
-  Core::LinAlg::Matrix<3, 3> almost_plastic_pred{Core::LinAlg::Initialization::zero};
-  almost_plastic_pred.multiply_nn(
-      1.0, time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp_], v_iK_iso);
+  // initialize reference matrices and locations for the interpolation
   std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
-      time_step_quantities_.last_plastic_defgrd_inverse_[gp_], almost_plastic_pred};
+      time_step_quantities_.last_plastic_defgrd_inverse_[gp_], almost_plastic_pred_iFinM};
   std::vector<double> ref_locs{0.0, 1.0};
 
 #ifdef DEBUGVPLAST_TIMINT
