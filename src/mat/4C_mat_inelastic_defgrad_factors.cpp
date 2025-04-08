@@ -1873,6 +1873,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   // timint analysis: start evaluation if it has not already started
   if (parameter()->bool_analyze_timint() && !(timint_analysis_utils.pre_eval_called_))
   {
+    FOUR_C_ASSERT_ALWAYS(ele_gid_ == 0,
+        "We only want to use the time integration analysis for 1D simulations employing a single "
+        "element! Your current element id is {}",
+        ele_gid_);
+
     timint_analysis_utils.pre_eval_called_ = true;
     timint_analysis_utils.reset();
     timint_analysis_utils.eval_teuchos_timer_.start(true);
