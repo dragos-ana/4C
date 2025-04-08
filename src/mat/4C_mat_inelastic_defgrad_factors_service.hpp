@@ -179,7 +179,8 @@ namespace Mat
     };
 
     //! class containing utilities for analyzing the material time integration:
-    //! error types, number of line searches, ...
+    //! error types, number of line searches, ... Currently only
+    //! employed for single-element single-processor simulations.
     //! (InelastDefgradTransvIsotropElastViscoplast)
     class TimIntAnalysisUtils
     {
