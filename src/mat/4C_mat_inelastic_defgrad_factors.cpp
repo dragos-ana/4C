@@ -2969,20 +2969,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 {
-  // timint analysis: determine the optimal interpolation factors for 1D
-  // cases
+  // timint analysis: get interpolation factors: from predictor
+  // adaptation and optimal (1D)
   if (parameter()->bool_analyze_timint())
   {
-    double optimal_interpolation_factor = 0.0;
-    for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
-    {
-      optimal_interpolation_factor = compute_optimal_pred_interp_factor(gp);
-      if (gp == 0)
-      {
-        std::cout << "optimal_interpolation_factor for GP " << gp << ": "
-                  << optimal_interpolation_factor << std::endl;
-      }
-    }
+    timint_analysis_utils.pred_adapt_interp_factor_ = pred_interp_factors_.current_xi_[0];
+    timint_analysis_utils.optimal_pred_adapt_interp_factor_ = compute_optimal_pred_interp_factor(0);
   }
 
   // update history variables for the next time step
