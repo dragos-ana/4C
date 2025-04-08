@@ -256,6 +256,16 @@ namespace Mat
       //! iteration (due to a good predictor!)
       unsigned int total_num_of_first_iter_convergences = 0;
 
+      //! predictor interpolation factor obtained from the predictor
+      //! adaptation routine (for GP 0 of element 0 after the current
+      //! time step)
+      double pred_adapt_interp_factor_ = 0;
+
+      //! optimal predictor interpolation factor obtained from the time
+      //! step solution (for GP 0 of element 0 after the current
+      //! time step)
+      double optimal_pred_adapt_interp_factor_ = 0;
+
       //! timer for the current timestep evaluation, from the start of preevaluate to the end of
       //! update
       Teuchos::Time eval_teuchos_timer_{
@@ -396,6 +406,8 @@ namespace Mat
         eval_num_of_alpha_neq_1 = 0;
         eval_num_of_alpha_neq_1_last_iter = 0;
         eval_num_of_first_iter_convergences = 0;
+        pred_adapt_interp_factor_ = -1.0;
+        optimal_pred_adapt_interp_factor_ = -1.0;
       }
 
       //! initialize csv_writer
@@ -446,6 +458,9 @@ namespace Mat
         csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
         csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
         csv_writer_->register_data_vector("Total time (line search)", 1, 16);
+        csv_writer_->register_data_vector(
+            "Interpolation factor of GP 0 of Ele 0 (predictor adaptation)", 1, 16);
+        csv_writer_->register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
         for (const auto& [key, value] : ErrorNames)
         {
           csv_writer_->register_data_vector(
@@ -541,6 +556,12 @@ namespace Mat
           output_data["Total Error " + std::to_string(static_cast<int>(key)) + ": " + value] = {
               static_cast<double>(total_error_map_[key])};
         }
+
+        // predictor interpolation factors
+        output_data["Interpolation factor of GP 0 of Ele 0 (predictor adaptation)"] = {
+            static_cast<double>(pred_adapt_interp_factor_)};
+        output_data["Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
+            static_cast<double>(optimal_pred_adapt_interp_factor_)};
 
         // write output data to csv
         csv_writer_->write_data_to_file(sim_time_, sim_timestep_, output_data);
