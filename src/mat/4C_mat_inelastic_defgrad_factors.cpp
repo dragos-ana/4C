@@ -2975,8 +2975,30 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // adaptation and optimal (1D)
   if (parameter()->bool_analyze_timint())
   {
-    timint_analysis_utils.pred_adapt_interp_factor_ = pred_interp_factors_.current_xi_[0];
-    timint_analysis_utils.optimal_pred_adapt_interp_factor_ = compute_optimal_pred_interp_factor(0);
+    if (timint_analysis_utils.num_update_calls_ ==
+        Global::Problem::instance()->get_dis("structure")->num_global_elements() - 1)
+    {
+      // timint analysis: stop timer
+      timint_analysis_utils.eval_time_ = timint_analysis_utils.eval_teuchos_timer_.stop();
+      // timint analysis: set predictor interpolation factors (the one
+      // obtained from the predictor adaptation and the optimal one)
+      timint_analysis_utils.pred_adapt_interp_factor_ = pred_interp_factors_.current_xi_[0];
+      timint_analysis_utils.optimal_pred_adapt_interp_factor_ =
+          compute_optimal_pred_interp_factor(0);
+
+      // timint analysis: update_total_values
+      timint_analysis_utils.update_total();
+      // timint analysis: write data to csv
+      timint_analysis_utils.write_to_csv();
+
+      // timint_analysis: reset control flow variables
+      timint_analysis_utils.pre_eval_called_ = false;
+      timint_analysis_utils.num_update_calls_ = 0;
+    }
+    else
+    {
+      ++timint_analysis_utils.num_update_calls_;
+    }
   }
 
   // update history variables for the next time step
@@ -3004,29 +3026,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 
   // call update method of the predictor interpolation factors
   pred_interp_factors_.update();
-
-  // timint analysis: perform update
-  if (parameter()->bool_analyze_timint())
-  {
-    if (timint_analysis_utils.num_update_calls_ ==
-        Global::Problem::instance()->get_dis("structure")->num_global_elements() - 1)
-    {
-      // timint analysis: stop timer
-      timint_analysis_utils.eval_time_ = timint_analysis_utils.eval_teuchos_timer_.stop();
-      // timint analysis: update_total_values
-      timint_analysis_utils.update_total();
-      // timint analysis: write data to csv
-      timint_analysis_utils.write_to_csv();
-
-      // timint_analysis: reset control flow variables
-      timint_analysis_utils.pre_eval_called_ = false;
-      timint_analysis_utils.num_update_calls_ = 0;
-    }
-    else
-    {
-      ++timint_analysis_utils.num_update_calls_;
-    }
-  }
 }
 
 
@@ -5013,8 +5012,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
   // set loop settings
   unsigned int iter = 0;
-  const unsigned int max_iter = 50;
-  const double tol = 1.0e-13;
+  const unsigned int max_iter = 100;
+  const double tol = 1.0e-10;
   // set initial value (predictor) for the optimal interpolation
   // factor
   double optimal_interp_factor = 0.5;
@@ -5022,6 +5021,9 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   double residual = 1.0e10;
   double jacobian = 1.0e10;
 
+  // DEBUG
+  std::cout << "elast_first_stretch: " << elast_first_stretch << std::endl;
+  std::cout << "aplast_first_stretch: " << aplast_first_stretch << std::endl;
 
   // auxiliary variable used below for bound checking
   double temp;
@@ -5054,6 +5056,12 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
     // compute the residual
     residual = interp_first_stretch - ref_first_stretch;
+
+
+    // DEBUG
+    std::cout << "iter: " << iter << "/" << max_iter << std::endl;
+    std::cout << "optimal_interp_factor: " << optimal_interp_factor << std::endl;
+    std::cout << "residual: " << residual << std::endl;
 
     // check convergence
     if (std::abs(residual) < tol)
