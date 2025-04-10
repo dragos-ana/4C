@@ -2892,7 +2892,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       }
       else
       {
-        pred_interp_factors_.current_xi_[gp_] = pred_interp_factors_.xi_user_;
+        pred_interp_factors_.current_xi_[gp_] = 0.0;
       }
 
       x_adapted = adapt_predictor_local_newton_loop(x, FredM);
@@ -3931,6 +3931,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     const Core::LinAlg::Matrix<10, 1>& original_pred, const Core::LinAlg::Matrix<3, 3>& FM,
     const bool check_original_pred)
 {
+  // auxiliaries
+  const double zero_tol = 1.0e-8;  // tolerance used for checking if a value is numerically 0
+
   // timint analysis actions
   if (parameter()->bool_analyze_timint())
   {
@@ -3954,7 +3957,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
   {
     std::cout << std::string(40, '-') << std::endl;
-    std::cout << std::string(5, '.') << "adapt_predictor_local_newton_loop" << std::endl;
+    std::cout << std::string(5, '.') << "ndapt_predictor_local_newton_loop" << std::endl;
     std::cout << std::fixed << std::setprecision(8);
     std::cout << "CM: " << std::endl;
     CM.print(std::cout);
@@ -3993,6 +3996,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // if the original predictor can be evaluated: return it
     if (err_status == ErrorType::NoErrors)
     {
+      pred_interp_factors_.current_xi_[gp_] = 0.0;
       pred_interp_factors_.pred_ = original_pred;
 
       // timint analysis actions
@@ -4013,6 +4017,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
 
       return pred_interp_factors_.pred_;
+    }
+    else
+    {
+      // evaluation was not successful: we set the current xi value to
+      // the user-defined interval-scanning value
+      pred_interp_factors_.current_xi_[gp_] = pred_interp_factors_.xi_user_;
     }
   }
 
@@ -4080,7 +4090,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     //          elastic predictor -> HERE
     eval_elastic_pred = check_original_pred && (parameter()->bool_use_last_pred_adapt_fact()) &&
                         ((pred_adapt_step_counter == 2) ||
-                            (std::abs(pred_interp_factors_.current_xi_[gp_]) < 1.0e-8));
+                            (std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
 
 
     // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
@@ -4130,7 +4140,22 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       }
 #endif
 
-      // if the original predictor cannot be evaluated, proceed with interpolation
+      // if the original predictor cannot be evaluated, proceed with
+      // interpolation
+      pred_adapt_step_counter += 1;
+      // adapt the lower bound of the xi parameter and recompute
+      // interpolation factor (only if the predictor interpolation factor is
+      // currently 0.0 otherwise we get stuck. If the predictor
+      // interpolation factor is non-0, this lower bound adaptation has already been
+      // performed.)
+      if (pred_interp_factors_.current_xi_[gp_] < zero_tol)
+      {
+        pred_interp_factors_.xi_l_ = pred_interp_factors_.current_xi_[gp_];
+        pred_interp_factors_.current_xi_[gp_] =
+            pred_interp_factors_.xi_l_ +
+            pred_interp_factors_.xi_user_ *
+                (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
+      }
       continue;
     }
     else
@@ -5021,10 +5046,6 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   double residual = 1.0e10;
   double jacobian = 1.0e10;
 
-  // DEBUG
-  std::cout << "elast_first_stretch: " << elast_first_stretch << std::endl;
-  std::cout << "aplast_first_stretch: " << aplast_first_stretch << std::endl;
-
   // auxiliary variable used below for bound checking
   double temp;
 
@@ -5056,12 +5077,6 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
     // compute the residual
     residual = interp_first_stretch - ref_first_stretch;
-
-
-    // DEBUG
-    std::cout << "iter: " << iter << "/" << max_iter << std::endl;
-    std::cout << "optimal_interp_factor: " << optimal_interp_factor << std::endl;
-    std::cout << "residual: " << residual << std::endl;
 
     // check convergence
     if (std::abs(residual) < tol)
