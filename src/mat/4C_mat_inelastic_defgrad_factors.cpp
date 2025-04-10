@@ -3917,6 +3917,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     const Core::LinAlg::Matrix<10, 1>& original_pred, const Core::LinAlg::Matrix<3, 3>& FM,
     const bool check_original_pred)
 {
+  // auxiliaries
+  const double zero_tol = 1.0e-8;  // tolerance used for checking if a value is numerically 0
+
   // timint analysis actions
   if (parameter()->bool_analyze_timint())
   {
@@ -4062,7 +4065,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     //          elastic predictor -> HERE
     eval_elastic_pred = check_original_pred && (parameter()->bool_use_last_pred_adapt_fact()) &&
                         ((pred_adapt_step_counter == 2) ||
-                            (std::abs(pred_interp_factors_.current_xi_[gp_]) < 1.0e-8));
+                            (std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
 
 
     // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
@@ -4112,7 +4115,22 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       }
 #endif
 
-      // if the original predictor cannot be evaluated, proceed with interpolation
+      // if the original predictor cannot be evaluated, proceed with
+      // interpolation
+      pred_adapt_step_counter += 1;
+      // adapt the lower bound of the xi parameter and recompute
+      // interpolation factor (only if the predictor interpolation factor is
+      // currently 0.0 otherwise we get stuck. If the predictor
+      // interpolation factor is non-0, this lower bound adaptation has already been
+      // performed.)
+      if (pred_interp_factors_.current_xi_[gp_] < zero_tol)
+      {
+        pred_interp_factors_.xi_l_ = pred_interp_factors_.current_xi_[gp_];
+        pred_interp_factors_.current_xi_[gp_] =
+            pred_interp_factors_.xi_l_ +
+            pred_interp_factors_.xi_user_ *
+                (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
+      }
       continue;
     }
     else
