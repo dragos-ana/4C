@@ -1963,44 +1963,45 @@ namespace
 
     // define last_values to be set for InelasticDefgradTransvIsotropElastViscoplast
     Core::LinAlg::Matrix<3, 3> last_plastic_defgrd_inverse{Core::LinAlg::Initialization::zero};
-    last_plastic_defgrd_inverse(0, 0) = 0.9997843238208046;
-    last_plastic_defgrd_inverse(0, 1) = -0.0000179764117343;
+    last_plastic_defgrd_inverse(0, 0) = 0.9988597960862144;
+    last_plastic_defgrd_inverse(0, 1) = -0.0000000000266572;
     last_plastic_defgrd_inverse(0, 2) = 0.0000000000000000;
-    last_plastic_defgrd_inverse(1, 0) = -0.0000043003931011;
-    last_plastic_defgrd_inverse(1, 1) = 1.5568481659592206;
-    last_plastic_defgrd_inverse(1, 2) = -0.0000000000000000;
-    last_plastic_defgrd_inverse(2, 0) = -0.0000113535849902;
-    last_plastic_defgrd_inverse(2, 1) = 0.7509592308895675;
-    last_plastic_defgrd_inverse(2, 2) = 0.6424619591203067;
+    last_plastic_defgrd_inverse(1, 0) = 0.0000000000519829;
+    last_plastic_defgrd_inverse(1, 1) = 1.1875914025443759;
+    last_plastic_defgrd_inverse(1, 2) = 0.0000000000000000;
+    last_plastic_defgrd_inverse(2, 0) = 0.0000000000065724;
+    last_plastic_defgrd_inverse(2, 1) = 0.5454437917108480;
+    last_plastic_defgrd_inverse(2, 2) = 0.8430016446041934;
 
 
 
-    double last_plastic_strain = 0.6438144806910731;
+    double last_plastic_strain = 0.3570093574153679;
+
 
 
     Core::LinAlg::Matrix<3, 3> last_defgrad{Core::LinAlg::Initialization::zero};
     last_defgrad(0, 0) = 1.0000000000000000;
     last_defgrad(0, 1) = 0.0000000000000000;
     last_defgrad(0, 2) = 0.0000000000000000;
-    last_defgrad(1, 0) = 0.0000024765597918;
-    last_defgrad(1, 1) = 0.9874956231069180;
-    last_defgrad(1, 2) = -1.1822672902000435;
-    last_defgrad(2, 0) = 0.0000250843090924;
-    last_defgrad(2, 1) = -0.0005195856892278;
-    last_defgrad(2, 2) = 1.0120947099109050;
+    last_defgrad(1, 0) = -0.0000000000244777;
+    last_defgrad(1, 1) = 1.0016225929465183;
+    last_defgrad(1, 2) = -0.6441657709542163;
+    last_defgrad(2, 0) = 0.0000000000080927;
+    last_defgrad(2, 1) = -0.0000081192042417;
+    last_defgrad(2, 2) = 0.9945755461369070;
 
 
 
     Core::LinAlg::Matrix<3, 3> last_rightCG{Core::LinAlg::Initialization::zero};
-    last_rightCG(0, 0) = 1.0000000006353558;
-    last_rightCG(0, 1) = 0.0000024325585067;
-    last_rightCG(0, 2) = 0.0000224597409002;
-    last_rightCG(1, 0) = 0.0000024325585067;
-    last_rightCG(1, 1) = 0.9751478756246087;
-    last_rightCG(1, 2) = -1.1680096443424322;
-    last_rightCG(2, 0) = 0.0000224597409002;
-    last_rightCG(2, 1) = -1.1680096443424322;
-    last_rightCG(2, 2) = 2.4220916473065928;
+    last_rightCG(0, 0) = 1.0000000000000000;
+    last_rightCG(0, 1) = -0.0000000000245174;
+    last_rightCG(0, 2) = 0.0000000000238164;
+    last_rightCG(1, 0) = -0.0000000000245174;
+    last_rightCG(1, 1) = 1.0032478187668283;
+    last_rightCG(1, 2) = -0.6452190649525481;
+    last_rightCG(2, 0) = 0.0000000000238164;
+    last_rightCG(2, 1) = -0.6452190649525481;
+    last_rightCG(2, 2) = 1.4041300574425668;
 
 
 
@@ -2014,9 +2015,9 @@ namespace
     // define last_values to be set for the viscoplastic law (Anand)
     if (iso_mat->debug_get_viscoplastic_law()->material_type() == FourC::Core::Materials::mvl_Anand)
     {
-      double last_flow_resistance = 1.9214267460317709;
+      double last_flow_resistance = 1.6691891504514473;
 
-      double last_plastic_strain_vp = 0.6438144806910731;
+      double last_plastic_strain_vp = 0.3570093574153679;
       // set the values at the 0-th GP
       std::dynamic_pointer_cast<Mat::Viscoplastic::Anand>(iso_mat->debug_get_viscoplastic_law())
           ->debug_set_last_values(0, last_flow_resistance, last_plastic_strain_vp);
@@ -2026,12 +2027,12 @@ namespace
     current_defgrad(0, 0) = 1.0000000000000000;
     current_defgrad(0, 1) = 0.0000000000000000;
     current_defgrad(0, 2) = 0.0000000000000000;
-    current_defgrad(1, 0) = 0.0000096132899617;
-    current_defgrad(1, 1) = 0.9993743454694080;
-    current_defgrad(1, 2) = -1.0591218023102353;
-    current_defgrad(2, 0) = 0.0000341191046689;
-    current_defgrad(2, 1) = -0.0002784383827469;
-    current_defgrad(2, 2) = 1.0004852878839001;
+    current_defgrad(1, 0) = 0.0013654651885799;
+    current_defgrad(1, 1) = 1.8343491804964307;
+    current_defgrad(1, 2) = -1.4944084762339682;
+    current_defgrad(2, 0) = -0.0000100037981952;
+    current_defgrad(2, 1) = 0.3725156769425830;
+    current_defgrad(2, 2) = -0.2637723780399193;
 
 
 
