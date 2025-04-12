@@ -2989,9 +2989,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       timint_analysis_utils.eval_time_ = timint_analysis_utils.eval_teuchos_timer_.stop();
       // timint analysis: set predictor interpolation factors (the one
       // obtained from the predictor adaptation and the optimal one)
-      timint_analysis_utils.pred_adapt_interp_factor_ = pred_interp_factors_.current_xi_[0];
-      timint_analysis_utils.optimal_pred_adapt_interp_factor_ =
-          compute_optimal_pred_interp_factor(0);
+      timint_analysis_utils.curr_pred_interp_factor_ = pred_interp_factors_.current_xi_[0];
+      timint_analysis_utils.curr_max_pred_interp_factor_ = pred_interp_factors_.current_max_xi_[0];
+      timint_analysis_utils.optimal_pred_interp_factor_ = compute_optimal_pred_interp_factor(0);
 
       // timint analysis: update_total_values
       timint_analysis_utils.update_total();
@@ -3987,7 +3987,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   //          factor, then we need to check this directly before
   //          computing the other predictor extremum and interpolating
   //          -> HERE
-  //               --> 2). If we use the last predictor interpolation
+  //           --> 2). If we use the last predictor interpolation
   //          factor, then we check that value first and only then the
   //          elastic predictor -> SEE BELOW
   bool eval_elastic_pred = check_original_pred && (!parameter()->use_last_pred_adapt_fact());
@@ -4003,6 +4003,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // if the original predictor can be evaluated: return it
     if (err_status == ErrorType::NoErrors)
     {
+      // adapt current interpolation factor to 0.0; the maximum
+      // interpolation factor
+      // does not have to be adapted
       pred_interp_factors_.current_xi_[gp_] = 0.0;
       pred_interp_factors_.pred_ = original_pred;
 
@@ -4114,7 +4117,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       // if the original predictor can be evaluated: return it
       if (err_status == ErrorType::NoErrors)
       {
+        // adapt current interpolation factor to 0.0; the maximum
+        // interpolation factor
+        // does not have to be adapted
+        pred_interp_factors_.current_xi_[gp_] = 0.0;
         pred_interp_factors_.pred_ = original_pred;
+
 
         // timint analysis actions
         if (parameter()->analyze_timint())
@@ -4319,6 +4327,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 #endif
     }
   }
+
+
+  // update the maximum interpolation factor (if required - this is
+  // checked within the update function)
+  pred_interp_factors_.update_current_max_xi(gp_);
 
   // wrap adapted predictor
   pred_interp_factors_.pred_ = wrap_unknowns(iFin_adapt_pred, plastic_strain_adapt_pred);
@@ -4820,6 +4833,9 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
   extended_error_string += "last_xi (predictor adaptation): \n";
   extended_error_string += "Double<1,1> \n";
   temp_ostream << pred_interp_factors_.last_xi_[gp_] << std::endl;
+  extended_error_string += "last_max_xi (predictor adaptation): \n";
+  extended_error_string += "Double<1,1> \n";
+  temp_ostream << pred_interp_factors_.last_max_xi_[gp_] << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
   extended_error_string += std::string(10, '.') + "\n";
@@ -4855,7 +4871,7 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantities(const int gp,
     const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
     const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
-    const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi)
+    const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi, const double last_max_xi)
 {
   time_step_quantities_.last_plastic_defgrd_inverse_[gp] = last_plastic_defgrad_inverse;
   time_step_quantities_.last_substep_plastic_defgrd_inverse_[gp] = last_plastic_defgrad_inverse;
@@ -4864,6 +4880,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantitie
   time_step_quantities_.last_defgrad_[gp] = last_defgrad;
   time_step_quantities_.last_rightCG_[gp] = last_rightCG;
   pred_interp_factors_.last_xi_[gp] = last_xi;
+  pred_interp_factors_.last_max_xi_[gp] = last_max_xi;
 
   // compute the material stretch and the rotation tensor for the
   // inverse inelastic defgrad
