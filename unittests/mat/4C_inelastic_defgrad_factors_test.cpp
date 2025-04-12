@@ -313,11 +313,11 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", 1.0e13);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e13);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("INTERP_FACT_PRED_ADAPT", 0.5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USER_PRED_INTERP_FACT", 0.5);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LINEARIZATION",
@@ -354,12 +354,12 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_INCR", 10686474581524.4628906250000000);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_DERIV_INCR", 10686474581524.4628906250000000);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("INTERP_FACT_PRED_ADAPT", 0.5);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("USER_PRED_INTERP_FACT", 0.5);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LINEARIZATION",
@@ -1221,10 +1221,10 @@ namespace
       inelastic_defgrad_debug_vplast_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_debug_vplast_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_debug_vplast_data.add("USE_SUBSTEPPING", false);
-      inelastic_defgrad_debug_vplast_data.add("MAX_HALVE_NUM_SUBSTEP", 1);
+      inelastic_defgrad_debug_vplast_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
       inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
       inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
-      inelastic_defgrad_debug_vplast_data.add("INTERP_FACT_PRED_ADAPT", 0.5);
+      inelastic_defgrad_debug_vplast_data.add("USER_PRED_INTERP_FACT", 0.5);
       inelastic_defgrad_debug_vplast_data.add("MAX_NUM_PRED_ADAPT", 10);
       inelastic_defgrad_debug_vplast_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_debug_vplast_data.add("LINEARIZATION",
