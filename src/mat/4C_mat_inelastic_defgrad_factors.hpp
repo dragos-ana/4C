@@ -1544,7 +1544,8 @@ namespace Mat
     void debug_set_last_quantities(const int gp,
         const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
         const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
-        const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi);
+        const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi,
+        const double last_max_xi);
 
     /*!
      * @brief Get the utilized viscoplastic law object.
@@ -1717,19 +1718,31 @@ namespace Mat
       //! interpolation factor set by the user
       const double xi_user_;
 
-      //! current interpolation factors \f$ \xi \f$ (saved for all GP)
+      //! interpolation factor \f$ \xi \f$ (saved for all GP) for the
+      //! current evaluation (current time step, current global iteration)
       std::vector<double> current_xi_;
 
-      //! last interpolation factors \f$ \xi_n \f$ (saved for all GP)
+      //! maximum interpolation factor \f$ \xi_{\mathrm{max}} \f$ (saved for all GP) for the
+      //! current evaluation (maximum over current time step)
+      std::vector<double> current_max_xi_;
+
+      //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
+      //! evaluated during the last global iteration of the previous
+      //! time step (previous time step, last global iteration)
       std::vector<double> last_xi_;
 
+      //! maximum interpolation factor \f$ \xi_{n,\mathrm{max}} \f$
+      //! (saved for all GP) evaluated during the last time step
+      //! (maximum over previous time step)
+      std::vector<double> last_max_xi_;
+
       //! lower interpolation factor (\f$ \xi_{\text{l}} \f$):
-      //! effectively, this is the lower factor for which the predictor
+      //! effectively, this is the lower bound for which the predictor
       //! leads to a numerically evaluable state
       double xi_l_;
 
       //! upper interpolation factor (\f$ \xi_{\text{u}} \f$):
-      //! effectively, this is the upper factor for which the predictor
+      //! effectively, this is the upper bound for which the predictor
       //! leads to plastic strain rate == 0.0
       double xi_u_;
 
@@ -1739,7 +1752,8 @@ namespace Mat
       //! maximum allowed number of predictor adaptations
       const unsigned int max_num_pred_adapt_;
 
-      //! current predictor
+      //! current predictor containing the inverse inelastic deformation
+      //! gradient (components 0-8) and the plastic strain (component 9)
       Core::LinAlg::Matrix<10, 1> pred_;
 
       //! constructor
@@ -1752,7 +1766,9 @@ namespace Mat
             pred_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}}
       {
         last_xi_.resize(1, 0.0);
+        last_max_xi_.resize(1, 0.0);
         current_xi_.resize(1, 0.0);
+        current_max_xi_.resize(1, 0.0);
       };
 
       //! setup method: set the correct number of Gauss Points to track the internal variables of
@@ -1760,7 +1776,9 @@ namespace Mat
       void setup(const int num_gp)
       {
         last_xi_.resize(num_gp, last_xi_[0]);
+        last_max_xi_.resize(num_gp, last_max_xi_[0]);
         current_xi_.resize(num_gp, current_xi_[0]);
+        current_max_xi_.resize(num_gp, current_max_xi_[0]);
       }
 
       //! preevaluate method: reset the non-const variables of the class at specific GP
@@ -1772,20 +1790,38 @@ namespace Mat
         num_of_pred_adapt_ = 0;
       }
 
-      //! update method: update the internal variables of the class
-      void update() { last_xi_ = current_xi_; }
+      //! update method: update the internal variables of the predictor
+      //! interapolation class
+      void update()
+      {
+        last_xi_ = current_xi_;
+        last_max_xi_ = current_max_xi_;
+      }
 
       //! pack method
       void pack(Core::Communication::PackBuffer& data) const
       {
         Core::Communication::add_to_pack(data, last_xi_);
+        Core::Communication::add_to_pack(data, last_max_xi_);
       }
 
       //! unpack method
       void unpack(Core::Communication::UnpackBuffer& buffer)
       {
         Core::Communication::extract_from_pack(buffer, last_xi_);
+        Core::Communication::extract_from_pack(buffer, last_max_xi_);
         current_xi_ = last_xi_;
+        current_max_xi_ = last_max_xi_;
+      }
+
+      //! update the maximum interpolation factor in the current time
+      //! step evaluation for the given Gauss point
+      void update_current_max_xi(const int gp)
+      {
+        if (current_xi_[gp] > current_max_xi_[gp])
+        {
+          current_max_xi_[gp] = current_xi_[gp];
+        }
       }
     };
     //! instance of PredInterpFactors
