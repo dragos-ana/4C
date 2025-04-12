@@ -770,14 +770,14 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       max_plastic_strain_incr_(matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_INCR")),
       max_plastic_strain_deriv_incr_(
           matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
-      bool_pred_adapt_(matdata.parameters.get<bool>("USE_PRED_ADAPT")),
-      bool_use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
-      bool_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
-      bool_substep_(matdata.parameters.get<bool>("USE_SUBSTEPPING")),
-      bool_analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
-      interp_factor_pred_adapt_(matdata.parameters.get<double>("INTERP_FACT_PRED_ADAPT")),
+      use_pred_adapt_(matdata.parameters.get<bool>("USE_PRED_ADAPT")),
+      use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
+      use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
+      use_substepping_(matdata.parameters.get<bool>("USE_SUBSTEPPING")),
+      analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
+      user_pred_interp_fact_(matdata.parameters.get<double>("USER_PRED_INTERP_FACT")),
       max_num_pred_adapt_(matdata.parameters.get<int>("MAX_NUM_PRED_ADAPT")),
-      max_halve_number_(matdata.parameters.get<int>("MAX_HALVE_NUM_SUBSTEP")),
+      max_substepping_halve_num_(matdata.parameters.get<int>("MAX_SUBSTEPPING_HALVE_NUM")),
       mat_exp_calc_method_(
           matdata.parameters.get<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD")),
       mat_exp_deriv_calc_method_(
@@ -789,7 +789,7 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD"))
 {
-  if (max_halve_number_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
+  if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
 }
 
 
@@ -1782,8 +1782,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       viscoplastic_law_(std::move(viscoplastic_law)),
       fiber_reader_(std::move(fiber_reader)),
       tensor_interpolator_{init_tensor_interpolator()},
-      pred_interp_factors_(
-          parameter()->interp_factor_pred_adapt(), parameter()->max_num_pred_adapt())
+      pred_interp_factors_(parameter()->user_pred_interp_fact(), parameter()->max_num_pred_adapt())
 {
   // set time step size to 0.0 (this is set to the correct and current value in the preevaluate
   // method)
@@ -1828,7 +1827,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       1, Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero});
 
   // analysis: initialize csv writer
-  if (parameter()->bool_analyze_timint()) timint_analysis_utils.init_csv_writer();
+  if (parameter()->analyze_timint()) timint_analysis_utils.init_csv_writer();
 
 
 #if defined(DEBUGVPLAST_TIMINT) || defined(DEBUGVPLAST_INELDEFGRAD) || \
@@ -1863,6 +1862,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   time_step_quantities_.last_substep_plastic_strain_[gp_] =
       time_step_quantities_.last_plastic_strain_[gp_];
 
+  // set predictor interpolation factors for the predictor adaptation routine
+  if (parameter()->use_pred_adapt())
+  {
+    // set to the last interpolation factor from the previous substep
+    // when specified so
+    if (parameter()->use_last_pred_adapt_fact())
+    {
+      pred_interp_factors_.current_xi_[gp_] = pred_interp_factors_.last_xi_[gp_];
+    }
+    // otherwise set by default to 0.0 (=elastic predictor)
+    else
+    {
+      pred_interp_factors_.current_xi_[gp_] = 0.0;
+    }
+  }
+
   // call preevaluate method of the viscoplastic law
   viscoplastic_law_->pre_evaluate(gp);
 
@@ -1871,7 +1886,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
 
 
   // timint analysis: start evaluation if it has not already started
-  if (parameter()->bool_analyze_timint() && !(timint_analysis_utils.pre_eval_called_))
+  if (parameter()->analyze_timint() && !(timint_analysis_utils.pre_eval_called_))
   {
     FOUR_C_ASSERT_ALWAYS(ele_gid_ == 0,
         "We only want to use the time integration analysis for 1D simulations employing a single "
@@ -2570,8 +2585,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
   // declare error status (no errors)
   ErrorType err_status = ErrorType::NoErrors;
 
-  // recompute the state to make sure that everything is evaluated properly after circumventing the
-  // stiffness evaluation
+  // recompute the state to make sure that everything is evaluated properly after circumventing
+  // the stiffness evaluation
   state_quantities_ =
       evaluate_state_quantities(CredM, time_step_quantities_.current_plastic_defgrd_inverse_[gp_],
           time_step_quantities_.current_plastic_strain_[gp_], err_status, time_step_settings_.dt_,
@@ -2881,20 +2896,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     // perform time integration via the Local Newton-Raphson Loop (LNL), using the elastic
     // predictor
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
-
     Core::LinAlg::Matrix<10, 1> x_adapted{x};
-    if (parameter()->bool_pred_adapt())
+    if (parameter()->use_pred_adapt())
     {
-      // set the predictor interpolation factor, depending on what the user has chosen
-      if (parameter()->bool_use_last_pred_adapt_fact())
-      {
-        pred_interp_factors_.current_xi_[gp_] = pred_interp_factors_.last_xi_[gp_];
-      }
-      else
-      {
-        pred_interp_factors_.current_xi_[gp_] = 0.0;
-      }
-
       x_adapted = adapt_predictor_local_newton_loop(x, FredM);
       ++pred_interp_factors_.num_of_pred_adapt_;
     }
@@ -2908,7 +2912,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
 #endif
 
     // get solution via time integration (Local Newton Loop LNL)
-    if (parameter()->bool_analyze_timint())  // timint analysis: start timer
+    if (parameter()->analyze_timint())  // timint analysis: start timer
       timint_analysis_utils.eval_teuchos_timer_LNL_.start(true);
     Core::LinAlg::Matrix<10, 1> sol = local_newton_loop(FredM, x_adapted, err_status);
 
@@ -2917,7 +2921,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     if (err_status != ErrorType::NoErrors)
     {
       // timint analysis output routine with LNL error
-      if (parameter()->bool_analyze_timint())
+      if (parameter()->analyze_timint())
         timint_analysis_utils.output_error_local_newton_loop(substep_params_.substep_counter_);
 
       // output error and then throw (in order to display the error on
@@ -2928,7 +2932,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     else
     {
       // timint analysis: add number of substeps and stop started timer
-      if (parameter()->bool_analyze_timint())
+      if (parameter()->analyze_timint())
       {
         // timint analysis: add number of substeps to timint_analysis_utils
         timint_analysis_utils.eval_num_of_LNL_steps_ += 1;
@@ -2973,7 +2977,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 {
   // timint analysis: get interpolation factors: from predictor
   // adaptation and optimal (1D)
-  if (parameter()->bool_analyze_timint())
+  if (parameter()->analyze_timint())
   {
     if (timint_analysis_utils.num_update_calls_ ==
         Global::Problem::instance()->get_dis("structure")->num_global_elements() - 1)
@@ -3487,7 +3491,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     substep_params_.iter_ = 0;
 
     // get the right Cauchy-Green tensor of the current substep
-    if (parameter()->bool_substep())
+    if (parameter()->use_substepping())
     {
       curr_CM = tensor_interpolator_.get_interpolated_matrix(ref_matrices_, ref_locs_,
           (substep_params_.t_ + substep_params_.curr_dt_) / time_step_settings_.dt_,
@@ -3523,7 +3527,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       ++substep_params_.iter_;
 
       // timint analysis: increment iterations
-      if (parameter()->bool_analyze_timint()) ++timint_analysis_utils.eval_num_of_iters_;
+      if (parameter()->analyze_timint()) ++timint_analysis_utils.eval_num_of_iters_;
 
 
 #ifdef DEBUGVPLAST_TIMINT
@@ -3590,7 +3594,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         }
 
         // timint analysis actions
-        if (parameter()->bool_analyze_timint())
+        if (parameter()->analyze_timint())
         {
           // add number of times the step size of the
           // line search algorithm deviates from 1.0 in the last iter
@@ -3612,7 +3616,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       if (substep_params_.iter_ > max_iter)
       {
         // substepping procedure
-        if (parameter()->bool_substep())
+        if (parameter()->use_substepping())
         {
           new_substep_status = prepare_new_substep(sol, curr_CM);
           // if the halving number was exceeded --> return with error
@@ -3669,16 +3673,16 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       }
 
       // compute line search parameter
-      if (parameter()->bool_line_search())
+      if (parameter()->use_line_search())
       {
         // timint analysis: start timer for line search
-        if (parameter()->bool_analyze_timint())
+        if (parameter()->analyze_timint())
           timint_analysis_utils.eval_teuchos_timer_line_search_.start(true);
 
         alpha = get_line_search_parameter(sol, curr_CM, residual, tolNR, dx, err_status);
 
         // timint analysis: increment number of searches and stop timer
-        if (parameter()->bool_analyze_timint())
+        if (parameter()->analyze_timint())
         {
           timint_analysis_utils.eval_time_line_search_ +=
               timint_analysis_utils.eval_teuchos_timer_line_search_.stop();
@@ -3935,7 +3939,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   const double zero_tol = 1.0e-8;  // tolerance used for checking if a value is numerically 0
 
   // timint analysis actions
-  if (parameter()->bool_analyze_timint())
+  if (parameter()->analyze_timint())
   {
     // timint analysis: start timer
     timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
@@ -3983,7 +3987,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   //               --> 2). If we use the last predictor interpolation
   //          factor, then we check that value first and only then the
   //          elastic predictor -> SEE BELOW
-  bool eval_elastic_pred = check_original_pred && (!parameter()->bool_use_last_pred_adapt_fact());
+  bool eval_elastic_pred = check_original_pred && (!parameter()->use_last_pred_adapt_fact());
   if (eval_elastic_pred)
   {
     iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
@@ -4000,7 +4004,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       pred_interp_factors_.pred_ = original_pred;
 
       // timint analysis actions
-      if (parameter()->bool_analyze_timint())
+      if (parameter()->analyze_timint())
       {
         // timint analysis: stop timer
         timint_analysis_utils.eval_time_pred_adapt_ +=
@@ -4088,7 +4092,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     //               --> 2). If we use the last predictor interpolation
     //          factor, then we check that value first and only then the
     //          elastic predictor -> HERE
-    eval_elastic_pred = check_original_pred && (parameter()->bool_use_last_pred_adapt_fact()) &&
+    eval_elastic_pred = check_original_pred && (parameter()->use_last_pred_adapt_fact()) &&
                         ((pred_adapt_step_counter == 2) ||
                             (std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
 
@@ -4110,7 +4114,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
         pred_interp_factors_.pred_ = original_pred;
 
         // timint analysis actions
-        if (parameter()->bool_analyze_timint())
+        if (parameter()->analyze_timint())
         {
           // timint analysis: stop timer
           timint_analysis_utils.eval_time_pred_adapt_ +=
@@ -4327,7 +4331,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 #endif
 
   // timint analysis actions
-  if (parameter()->bool_analyze_timint())
+  if (parameter()->analyze_timint())
   {
     // timint analysis: stop timer
     timint_analysis_utils.eval_time_pred_adapt_ +=
@@ -4690,11 +4694,11 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
 #endif
 
   // timint analysis: add error
-  if (parameter()->bool_analyze_timint())
+  if (parameter()->analyze_timint())
     ++timint_analysis_utils.eval_error_map_[static_cast<ErrorType>(err_status)];
 
   // ERROR MANAGEMENT STRATEGY 1: substepping procedure
-  if (parameter()->bool_substep())
+  if (parameter()->use_substepping())
   {
     const bool new_substep_status = prepare_new_substep(sol, curr_CM);
     if (!new_substep_status)
@@ -4708,7 +4712,7 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
   }
 
   // ERROR MANAGEMENT STRATEGY 2: reset predictor of the solution
-  if (parameter()->bool_pred_adapt())
+  if (parameter()->use_pred_adapt())
   {
     pred_interp_factors_.xi_l_ = pred_interp_factors_.current_xi_[gp_];
     pred_interp_factors_.current_xi_[gp_] =
@@ -4731,14 +4735,14 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
         pred_interp_factors_.pred_, time_step_quantities_.current_defgrad_[gp_], false);
 
     // timint analysis: increment number of repredictorizations
-    if (parameter()->bool_analyze_timint()) ++timint_analysis_utils.eval_num_of_repredict_;
+    if (parameter()->analyze_timint()) ++timint_analysis_utils.eval_num_of_repredict_;
 
     // go to next iteration
     return ErrorAction::NextIter;
   }
 
   // timint analysis: write to csv
-  if (parameter()->bool_analyze_timint())
+  if (parameter()->analyze_timint())
   {
     timint_analysis_utils.eval_time_ = timint_analysis_utils.eval_teuchos_timer_.stop();
     timint_analysis_utils.update_total();

@@ -327,25 +327,22 @@ namespace Mat
       [[nodiscard]] MatBehavior mat_behavior() const { return mat_behavior_; };
       //! get boolean: use predictor adaptation before and in the Local
       //! Newton Loop? (true: yes, false: no)
-      [[nodiscard]] bool bool_pred_adapt() const { return bool_pred_adapt_; };
+      [[nodiscard]] bool use_pred_adapt() const { return use_pred_adapt_; };
       //! get boolean: use the predictor interpolation factor from the predictor adaptation
       //! performed in the previous step at each GP to boost the performance? (true: yes, false: no)
-      [[nodiscard]] bool bool_use_last_pred_adapt_fact() const
-      {
-        return bool_use_last_pred_adapt_fact_;
-      };
+      [[nodiscard]] bool use_last_pred_adapt_fact() const { return use_last_pred_adapt_fact_; };
       //! get boolean: use line search to avoid negative plastic strains
       //! in the Local Newton Loop? (true: yes, false: no)
-      [[nodiscard]] bool bool_line_search() const { return bool_line_search_; };
+      [[nodiscard]] bool use_line_search() const { return use_line_search_; };
       //! get boolean: use substepping in the time integration scheme? (true: yes, false: no)
-      [[nodiscard]] bool bool_substep() const { return bool_substep_; };
+      [[nodiscard]] bool use_substepping() const { return use_substepping_; };
       //! get boolean: analyze time integration scheme and write
       //! output to csv? (true: yes, false: no)
-      [[nodiscard]] bool bool_analyze_timint() const { return bool_analyze_timint_; };
+      [[nodiscard]] bool analyze_timint() const { return analyze_timint_; };
       //! get maximum number of times a time step can be halved into smaller and smaller substeps
       [[nodiscard]] unsigned int max_halve_number() const
       {
-        return static_cast<unsigned int>(max_halve_number_);
+        return static_cast<unsigned int>(max_substepping_halve_num_);
       }
       //! get the type of time integration for the evolution equations
       //! of history variables
@@ -363,28 +360,24 @@ namespace Mat
         return max_plastic_strain_deriv_incr_;
       }
       //! get user-specified interpolation factor for the predictor adaptation
-      [[nodiscard]] double interp_factor_pred_adapt() const { return interp_factor_pred_adapt_; }
+      [[nodiscard]] double user_pred_interp_fact() const { return user_pred_interp_fact_; }
       //! get user-specified interpolation factor for the predictor adaptation
       [[nodiscard]] int max_num_pred_adapt() const { return max_num_pred_adapt_; }
-
       //! get computation method for the matrix exponential
       [[nodiscard]] Core::LinAlg::MatrixExpCalcMethod mat_exp_calc_method() const
       {
         return mat_exp_calc_method_;
       }
-
       //! get computation method for the first derivative of the matrix exponential
       [[nodiscard]] Core::LinAlg::GenMatrixExpFirstDerivCalcMethod mat_exp_deriv_calc_method() const
       {
         return mat_exp_deriv_calc_method_;
       }
-
       //! get computation method for the matrix logarithm
       [[nodiscard]] Core::LinAlg::MatrixLogCalcMethod mat_log_calc_method() const
       {
         return mat_log_calc_method_;
       }
-
       //! get computation method for the first derivative of the matrix logarithm
       [[nodiscard]] Core::LinAlg::GenMatrixLogFirstDerivCalcMethod mat_log_deriv_calc_method() const
       {
@@ -423,25 +416,25 @@ namespace Mat
       const double max_plastic_strain_deriv_incr_;
 
       //! boolean: use predictor adaptation? (true: yes, false: no)
-      const bool bool_pred_adapt_;
+      const bool use_pred_adapt_;
 
       //! boolean: use predictor adaptation factor from the previous time step at the GP as a
       //! performance-boost?
-      const bool bool_use_last_pred_adapt_fact_;
+      const bool use_last_pred_adapt_fact_;
 
       //! boolean: use line search to avoid negative plastic strains in
       //! the Local Newton Loop? (true: yes, false: no)
-      const bool bool_line_search_;
+      const bool use_line_search_;
 
       //! boolean: use substepping? (true: yes, false: no)
-      const bool bool_substep_;
+      const bool use_substepping_;
 
       //! boolean: analyze time integration and write output to csv?
-      const bool bool_analyze_timint_;
+      const bool analyze_timint_;
 
       //! user-specified interpolation factor \f$ \xi_{\mathrm{user}}
       //! \f$ utilized in the predictor adaptation
-      const double interp_factor_pred_adapt_;
+      const double user_pred_interp_fact_;
 
       //! maximum number of predictor adaptations and
       //! repredictorizations allowed in a single Local Newton Loop
@@ -450,7 +443,7 @@ namespace Mat
 
       //! maximum number of times the given time step can be halved before reaching the minimum
       //! allowed substep length
-      const int max_halve_number_;
+      const int max_substepping_halve_num_;
 
       //! utilized computation method for the matrix exponential
       const Core::LinAlg::MatrixExpCalcMethod mat_exp_calc_method_;
