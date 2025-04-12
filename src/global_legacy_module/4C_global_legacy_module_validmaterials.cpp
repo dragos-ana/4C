@@ -2803,9 +2803,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description =
                         "boolean: use substepping in the Local Newton Loop? (true: yes, false: no)",
                     .default_value = false}),
-            parameter<int>("MAX_HALVE_NUM_SUBSTEP",
+            parameter<int>("MAX_SUBSTEPPING_HALVE_NUM",
                 {.description = "maximum number of times the global time step can "
-                                "be halved in the substepping procedure",
+                                "be halved in the substepping procedure (default: 10)",
                     .default_value = 10}),
             parameter<double>("MAX_PLASTIC_STRAIN_INCR",
                 {.description = "maximum evaluable plastic strain increment, "
@@ -2821,10 +2821,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow "
                         "errors",
                     .default_value = std::exp(30.0)}),
-            parameter<double>("INTERP_FACT_PRED_ADAPT",
+            parameter<double>("USER_PRED_INTERP_FACT",
                 {.description =
                         "interpolation factor $ \\xi_{\\text{user}}$ utilized in the predictor "
-                        "adaptation (default: 0.5)",
+                        "adaptation for scanning the interval of the predictor extrema (default: "
+                        "0.5)",
                     .default_value = 0.5}),
             parameter<int>("MAX_NUM_PRED_ADAPT",
                 {.description =
@@ -2833,10 +2834,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "until error is thrown (default: 10)",
                     .default_value = 10}),
             parameter<bool>("USE_LAST_PRED_ADAPT_FACT",
-                {.description =
-                        "utilize the predictor interpolation factor from the predictor adaptation "
-                        "of the "
-                        "previous time step at each GP to boost the performance? (default: true)",
+                {.description = "utilize the predictor interpolation factor from the last "
+                                "predictor adaptation "
+                                "of the "
+                                "previous time step at each GP to boost the predictor adaptation? "
+                                "(default: e)",
                     .default_value = true}),
             parameter<bool>("ANALYZE_TIMINT",
                 {.description = "boolean: analyze the time integration scheme in regards "
@@ -2854,26 +2856,21 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         LinearizationType::analytic}),
             parameter<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD",
-                {.description =
-                        "chosen computation method for matrix exponential (default | taylor_series "
-                        "| spectral_decomp )",
+                {.description = "chosen computation method for matrix exponential",
                     .default_value = Core::LinAlg::MatrixExpCalcMethod::default_method}),
             parameter<Core::LinAlg::MatrixLogCalcMethod>("MATRIX_LOG_CALC_METHOD",
-                {.description = "chosen computation method for matrix logarithm (default_series | "
-                                "taylor_series "
-                                "| gregory_series | spectral_decomp | inv_scal_square )",
+                {.description = "chosen computation method for matrix logarithm",
                     .default_value = Core::LinAlg::MatrixLogCalcMethod::inv_scal_square}),
             parameter<Core::LinAlg::GenMatrixExpFirstDerivCalcMethod>(
                 "MATRIX_EXP_DERIV_CALC_METHOD",
                 {.description = "chosen computation method for the first derivative of the matrix "
-                                "exponential (default | taylor_series)",
+                                "exponential",
                     .default_value =
                         Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::default_method}),
             parameter<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
                 "MATRIX_LOG_DERIV_CALC_METHOD",
                 {.description = "chosen computation method for the first derivative of the matrix "
-                                "logarithm (default_series | taylor_series | gregory_series | "
-                                "pade_part_fract)",
+                                "logarithm",
                     .default_value =
                         Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract}),
         },
