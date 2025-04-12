@@ -2032,10 +2032,11 @@ namespace
 
 
     double last_xi = 0.0;
+    double last_max_xi = 0.0;
 
     // set the values at the 0-th GP
-    iso_mat->debug_set_last_quantities(
-        0, last_plastic_defgrd_inverse, last_plastic_strain, last_defgrad, last_rightCG, last_xi);
+    iso_mat->debug_set_last_quantities(0, last_plastic_defgrd_inverse, last_plastic_strain,
+        last_defgrad, last_rightCG, last_xi, last_max_xi);
 
 
     // define last_values to be set for the viscoplastic law (Anand)
