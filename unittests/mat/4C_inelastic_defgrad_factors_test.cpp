@@ -508,8 +508,11 @@ namespace
       param_list_transv_isotrop_vplast_refJC.set<double>("delta time", 1.0e-6);
       // call pre_evaluate
       transv_isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
+      transv_isotrop_vplast_refJC_->prepare_non_repeat_tasks();
       isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
+      isotrop_vplast_refJC_->prepare_non_repeat_tasks();
       isotrop_vplast_Anand_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
+      isotrop_vplast_Anand_->prepare_non_repeat_tasks();
     }
 
     void set_up_state_quantities_solution()
@@ -1336,6 +1339,7 @@ namespace
       param_list_debug_vplast.set<double>("delta time", 5.0e-3);
       // call pre_evaluate
       debug_vplast_->pre_evaluate(param_list_debug_vplast, 0, 0);
+      debug_vplast_->prepare_non_repeat_tasks();
     }
 
     // deformation gradient
@@ -2070,6 +2074,7 @@ namespace
     param_list.set<double>("delta time", 0.005);
     // call pre_evaluate
     iso_mat->pre_evaluate(param_list, 0, 0);
+    iso_mat->prepare_non_repeat_tasks();
 
     // set boolean for updating history variables
     iso_mat->debug_set_update_hist_var(true);
