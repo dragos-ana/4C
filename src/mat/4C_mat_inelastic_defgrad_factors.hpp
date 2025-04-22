@@ -2092,6 +2092,19 @@ namespace Mat
      */
     double compute_optimal_pred_interp_factor(const int gp);
 
+    /*
+     * Perform all non-repeatable pre-evaluation tasks, i.e., all
+     * tasks which shall not be repeated in case of the redundant
+     * evaluate call, see Issue #121 at
+     * https://github.com/4C-multiphysics/4C/issues/121. This means that
+     * the current, public pre-evaluate method performs only the safe
+     * repeatable pre-evaluation tasks.
+     * This also means that we call this pre_evaluate method within
+     * evaluate_inverse_inelastic_defgrad, and only if we are not in the
+     * redundant call (see quick-fix PR #131 at https://github.com/4C-multiphysics/4C/pull/131).
+     */
+    void prepare_non_repeat_tasks();
+
     /*!
      * @brief Get an extensive error message to be displayed when the
      * simulation terminates. This is used for debugging the time
