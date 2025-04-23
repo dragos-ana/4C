@@ -1580,7 +1580,6 @@ namespace Mat
     };
     ConstMatTensors const_mat_tensors_;
 
-
     //! current Gauss Point
     int gp_;
     //! current element ID
@@ -1726,6 +1725,10 @@ namespace Mat
       //! current evaluation (maximum over current time step)
       std::vector<double> current_max_xi_;
 
+      //! optimal interpolation factor \f$ \xi_{\mathrm{opt}} \f$ (saved only for GP 0) for the
+      //! current evaluation (current time step, current global iteration)
+      double current_optimal_xi_;
+
       //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
       //! evaluated during the last global iteration of the previous
       //! time step (previous time step, last global iteration)
@@ -1812,6 +1815,7 @@ namespace Mat
         Core::Communication::extract_from_pack(buffer, last_max_xi_);
         current_xi_ = last_xi_;
         current_max_xi_ = last_max_xi_;
+        current_optimal_xi_ = 0.0;
       }
 
       //! update the maximum interpolation factor in the current time
@@ -1860,6 +1864,17 @@ namespace Mat
     };
     SubstepParams substep_params_;
 
+    //! struct containing various settings for the Local Newton-Raphson
+    //! Loop used for time integration of the viscoplasticity equations
+    struct LocalNewtonSettings
+    {
+      //! convergence tolerance of the Local Newton Loop
+      const double tol_ = 1.0e-8;
+
+      //! maximum nuzmber of Local Newton Loop iterations
+      const unsigned max_iter_ = 200;
+    };
+    LocalNewtonSettings lnl_settings_;
 
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
