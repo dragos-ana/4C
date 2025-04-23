@@ -2094,31 +2094,38 @@ namespace Mat
 
     /*!
      * @brief Compute optimal predictor interpolation factor of the current time step for given
-     * Gauss point
+     * Gauss point.
      * @note Called within
      * the update method, since the time step solution is only
      * known there for all GP. Currently, we regard this as relevant for
      * the time integration analysis of the 1D simulations,
      * where the optimal predictor interpolation factor can really be determined
-     * in a consistent manner.
+     * in a consistent manner. Inside the function, we also check
+     * whether the determined optimal predictor interpolation factor is
+     * consistent, i.e., if it satisfies the Local Newton Loop equations.
      *
      * @param[in] gp Gauss Point
      *
      */
     double compute_optimal_pred_interp_factor(const int gp);
 
-    /*
-     * Perform all non-repeatable pre-evaluation tasks, i.e., all
+    /*!
+     * @brief Perform all non-repeatable pre-evaluation tasks, i.e., all
      * tasks which shall not be repeated in case of the redundant
      * evaluate call, see Issue #121 at
-     * https://github.com/4C-multiphysics/4C/issues/121. This means that
+     * https://github.com/4C-multiphysics/4C/issues/121.
+     *
+     * @note This means that
      * the current, public pre-evaluate method performs only the safe
      * repeatable pre-evaluation tasks.
      * This also means that we call this pre_evaluate method within
      * evaluate_inverse_inelastic_defgrad, and only if we are not in the
-     * redundant call (see quick-fix PR #131 at https://github.com/4C-multiphysics/4C/pull/131).
+     * redundant call (see quick-fix PR #131 at
+     * https://github.com/4C-multiphysics/4C/pull/131).
+     *
      */
     void prepare_non_repeat_tasks();
+
 
     /*!
      * @brief Get an extensive error message to be displayed when the

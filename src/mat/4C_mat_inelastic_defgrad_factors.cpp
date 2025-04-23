@@ -2935,8 +2935,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     }
     else
     {
-      // timint analysis: add number of substeps, stop started timer and
-      // perform consistency check for the optimal interpolation factor
+      // timint analysis: add number of substeps and stop started timer
       if (parameter()->analyze_timint())
       {
         // timint analysis: add number of substeps to timint_analysis_utils
@@ -2956,124 +2955,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       time_step_quantities_.current_plastic_defgrd_inverse_[gp_] = iFinM;
       time_step_quantities_.current_plastic_strain_[gp_] = sol(9);
       time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
-    }
-
-
-    // timint analysis: consistency check: compute optimal predictor
-    // interpolation factor (for GP 0), get corresponding solution vector and
-    // check whether the residual is smaller than the tolerance of
-    // the LNL!
-    if (parameter()->analyze_timint())
-    {
-      if (gp_ == 0)
-      {
-        // save current state quantities and their derivatives (they may
-        // get affected during the following procedure: we can then
-        // simply reinstate them)
-        StateQuantities saved_state_quantities = state_quantities_;
-        StateQuantityDerivatives saved_state_quantity_derivs = state_quantity_derivatives_;
-
-
-        // get inverse plastic defgrad from the almost plastic predictor
-        Core::LinAlg::Matrix<3, 3> almost_plastic_pred_iFinM =
-            get_almost_plastic_pred_defgrad(FredM, time_step_quantities_.last_defgrad_[gp_],
-                time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
-                time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp_],
-                time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp_]);
-
-
-        // DEBUG
-        std::cout << "FredM" << std::endl;
-        FredM.print(std::cout);
-        std::cout << "current_defgrad" << std::endl;
-        time_step_quantities_.current_defgrad_[0].print(std::cout);
-        std::cout << "elastic_pred: " << std::endl;
-        time_step_quantities_.last_plastic_defgrd_inverse_[gp_].print(std::cout);
-        std::cout << "iFinM" << std::endl;
-        iFinM.print(std::cout);
-        std::cout << "almost_plastic_pred: " << std::endl;
-        almost_plastic_pred_iFinM.print(std::cout);
-        std::cout << "lnl_pred: " << std::endl;
-        pred_interp_factors_.pred_.print(std::cout);
-        std::cout << "current_xi: " << pred_interp_factors_.current_xi_[0] << std::endl;
-
-
-
-        // get optimal predictor interpolation factor
-        pred_interp_factors_.current_optimal_xi_ = compute_optimal_pred_interp_factor(gp_);
-        // interpolate inverse inelastic defgrad solution between the
-        // elastic and the almost plastic predictor with the optimal
-        // interpolation factor
-        std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
-            time_step_quantities_.last_plastic_defgrd_inverse_[gp_], almost_plastic_pred_iFinM};
-        std::vector<double> ref_locs{0.0, 1.0};
-        Core::LinAlg::TensorInterpolation::TensorInterpErrorType tensor_interp_err_status{
-            Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors};
-        Core::LinAlg::Matrix<3, 3> optimal_iFin =
-            tensor_interpolator_.get_interpolated_matrix(ref_matrices, ref_locs,
-                pred_interp_factors_.current_optimal_xi_, tensor_interp_err_status);
-        FOUR_C_ASSERT_ALWAYS(tensor_interp_err_status ==
-                                 Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
-            "Consistency check for the optimal interpolation factor: tensor interpolation "
-            "failed!");
-        // evaluate the equivalent stress given by this optimal
-        // inverse inelastic defgrad
-        StateQuantities optimal_state_quantities = evaluate_state_quantities(CredM, optimal_iFin,
-            1.0e8, err_status, time_step_settings_.dt_,
-            StateQuantityEvalType::PlasticStrainRateOnly);  // we use a large value for the
-                                                            // plastic strain to make the plastic
-                                                            // strain rate evaluable
-        FOUR_C_ASSERT_ALWAYS(
-            err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
-            "Consistency check for the optimal interpolation factor: computation of state "
-            "failed!");
-
-        // DEBUG
-        std::cout << "sol" << std::endl;
-        sol.print(std::cout);
-        std::cout << "FredM" << std::endl;
-        FredM.print(std::cout);
-        std::cout << "current_optimal_xi: " << std::endl;
-        std::cout << pred_interp_factors_.current_optimal_xi_ << std::endl;
-        std::cout << "optimal_iFin" << std::endl;
-        optimal_iFin.print(std::cout);
-
-
-
-        // consistently compute the equivalent plastic strain via
-        // integration of the flow rule based on
-        // this optimal inverse inelastic defgrad
-        double optimal_plastic_strain =
-            integrate_plastic_strain(optimal_state_quantities.curr_equiv_stress_,
-                time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, err_status);
-        FOUR_C_ASSERT_ALWAYS(
-            err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
-            "Consistency check for the optimal interpolation factor: computation of consistent "
-            "plastic strain "
-            "failed!");
-
-        // create common optimal solution vector
-        Core::LinAlg::Matrix<10, 1> optimal_sol =
-            wrap_unknowns(optimal_iFin, optimal_plastic_strain);
-
-
-        // compute residual of the optimal solution
-        Core::LinAlg::Matrix<10, 1> optimal_res = calculate_local_newton_loop_residual(CredM,
-            optimal_sol, time_step_quantities_.last_plastic_defgrd_inverse_[0],
-            time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, err_status);
-
-        // assert whether the residual is smaller than the tolerance
-        // of the LNL!
-        FOUR_C_ASSERT_ALWAYS(optimal_res.norm2() <= (lnl_settings_.tol_ * 10),
-            "The determined optimal solution doesn't satisfy the LNL equations! The residual "
-            "norm is {} > {} (LNL tolerance)!",
-            optimal_res.norm2(), std::to_string(lnl_settings_.tol_ * 10));
-
-
-        // reinstate saved quantities
-        state_quantities_ = saved_state_quantities;
-        state_quantity_derivatives_ = saved_state_quantity_derivs;
-      }
     }
   }
 
@@ -4194,10 +4075,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
           time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp_],
           time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp_]);
 
-  // DEBUG
-  std::cout << "--> adapt_pred: almost_plastic_pred_iFinM" << std::endl;
-  almost_plastic_pred_iFinM.print(std::cout);
-
   // initialize reference matrices and locations for the interpolation
   std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
       time_step_quantities_.last_plastic_defgrd_inverse_[gp_], almost_plastic_pred_iFinM};
@@ -5236,8 +5113,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
   // set loop settings
   unsigned int iter = 0;
-  const unsigned int max_iter = 100;
-  const double tol = 1.0e-10;
+  const unsigned int max_iter = 200;
+  const double tol = 1.0e-15;
   // set initial value (predictor) for the optimal interpolation
   // factor
   double optimal_interp_factor = 0.5;
@@ -5280,8 +5157,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
     // check convergence
     if (std::abs(residual) < tol)
     {
-      // return the optimal interpolation factor
-      return optimal_interp_factor;
+      // break out of loop
+      break;
     }
 
     // compute the jacobian
@@ -5324,6 +5201,91 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
       optimal_interp_factor = temp;
     }
   }
+
+  // -------------------- Consistency Check --------------------  //
+  // compute optimal predictor interpolation factor (for GP 0), get corresponding solution vector
+  // and check whether the residual is smaller than the tolerance of the LNL!
+  // -------------------------------------------------------------//
+
+
+  // save current state quantities and their derivatives (they may
+  // get affected during the following procedure: we can then
+  // simply reinstate them)
+  StateQuantities saved_state_quantities = state_quantities_;
+  StateQuantityDerivatives saved_state_quantity_derivs = state_quantity_derivatives_;
+
+  // interpolate inverse inelastic defgrad solution between the
+  // elastic and the almost plastic predictor with the optimal
+  // interpolation factor
+  Core::LinAlg::Matrix<3, 3> optimal_iFin = tensor_interpolator_.get_interpolated_matrix(
+      ref_matrices, ref_locs, optimal_interp_factor, err_type);
+  FOUR_C_ASSERT_ALWAYS(
+      err_type == Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: tensor interpolation "
+      "failed!");
+
+  // declare evaluation errors required below for computing the state
+  // quantities and their derivatives
+  ErrorType eval_err_type{ErrorType::NoErrors};
+
+  // evaluate the equivalent stress given by this optimal
+  // inverse inelastic defgrad
+  StateQuantities optimal_state_quantities =
+      evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp], optimal_iFin, 1.0e8,
+          eval_err_type, time_step_settings_.dt_,
+          StateQuantityEvalType::PlasticStrainRateOnly);  // we use a large value for the
+                                                          // plastic strain to make the plastic
+                                                          // strain rate evaluable
+  FOUR_C_ASSERT_ALWAYS(
+      eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: computation of state "
+      "failed!");
+
+  // consistently compute the equivalent plastic strain via
+  // integration of the flow rule based on
+  // this optimal inverse inelastic defgrad
+  double optimal_plastic_strain =
+      integrate_plastic_strain(optimal_state_quantities.curr_equiv_stress_,
+          time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, eval_err_type);
+  FOUR_C_ASSERT_ALWAYS(
+      eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: computation of consistent "
+      "plastic strain "
+      "failed!");
+
+  // create common optimal solution vector
+  Core::LinAlg::Matrix<10, 1> optimal_sol = wrap_unknowns(optimal_iFin, optimal_plastic_strain);
+
+  // compute residual of the optimal solution
+  Core::LinAlg::Matrix<10, 1> optimal_res =
+      calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp], optimal_sol,
+          time_step_quantities_.last_plastic_defgrd_inverse_[0],
+          time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, eval_err_type);
+  FOUR_C_ASSERT_ALWAYS(
+      eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: residual computation failed!");
+
+  // timint analysis: save the LNL residual (has to be done here because
+  // we only have this residual here
+  if (parameter()->analyze_timint())
+  {
+    timint_analysis_utils.lnl_res_optimal_pred_interp_factor_ = optimal_res.norm2();
+  }
+
+  // assert whether the residual is smaller than the tolerance
+  // of the LNL! The check is currently DISABLED via multiplication of
+  // the tolerance with a high number - to be able to determine and
+  // output all computed residual values
+  FOUR_C_ASSERT_ALWAYS(optimal_res.norm2() <= (lnl_settings_.tol_ * 1e8),
+      "The determined optimal solution doesn't satisfy the LNL equations! The residual "
+      "norm is {} > {} (LNL tolerance)!",
+      optimal_res.norm2(), std::to_string(lnl_settings_.tol_));
+
+  // reinstate saved quantities
+  state_quantities_ = saved_state_quantities;
+  state_quantity_derivatives_ = saved_state_quantity_derivs;
+
+
 
   return optimal_interp_factor;
 }
