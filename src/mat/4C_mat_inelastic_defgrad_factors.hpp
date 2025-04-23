@@ -1580,7 +1580,6 @@ namespace Mat
     };
     ConstMatTensors const_mat_tensors_;
 
-
     //! current Gauss Point
     int gp_;
     //! current element ID
@@ -1726,6 +1725,10 @@ namespace Mat
       //! current evaluation (maximum over current time step)
       std::vector<double> current_max_xi_;
 
+      //! optimal interpolation factor \f$ \xi_{\mathrm{opt}} \f$ (saved only for GP 0) for the
+      //! current evaluation (current time step, current global iteration)
+      double current_optimal_xi_;
+
       //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
       //! evaluated during the last global iteration of the previous
       //! time step (previous time step, last global iteration)
@@ -1812,6 +1815,7 @@ namespace Mat
         Core::Communication::extract_from_pack(buffer, last_max_xi_);
         current_xi_ = last_xi_;
         current_max_xi_ = last_max_xi_;
+        current_optimal_xi_ = 0.0;
       }
 
       //! update the maximum interpolation factor in the current time
@@ -1860,6 +1864,17 @@ namespace Mat
     };
     SubstepParams substep_params_;
 
+    //! struct containing various settings for the Local Newton-Raphson
+    //! Loop used for time integration of the viscoplasticity equations
+    struct LocalNewtonSettings
+    {
+      //! convergence tolerance of the Local Newton Loop
+      const double tol_ = 1.0e-8;
+
+      //! maximum nuzmber of Local Newton Loop iterations
+      const unsigned max_iter_ = 200;
+    };
+    LocalNewtonSettings lnl_settings_;
 
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
@@ -2079,31 +2094,38 @@ namespace Mat
 
     /*!
      * @brief Compute optimal predictor interpolation factor of the current time step for given
-     * Gauss point
+     * Gauss point.
      * @note Called within
      * the update method, since the time step solution is only
      * known there for all GP. Currently, we regard this as relevant for
      * the time integration analysis of the 1D simulations,
      * where the optimal predictor interpolation factor can really be determined
-     * in a consistent manner.
+     * in a consistent manner. Inside the function, we also check
+     * whether the determined optimal predictor interpolation factor is
+     * consistent, i.e., if it satisfies the Local Newton Loop equations.
      *
      * @param[in] gp Gauss Point
      *
      */
     double compute_optimal_pred_interp_factor(const int gp);
 
-    /*
-     * Perform all non-repeatable pre-evaluation tasks, i.e., all
+    /*!
+     * @brief Perform all non-repeatable pre-evaluation tasks, i.e., all
      * tasks which shall not be repeated in case of the redundant
      * evaluate call, see Issue #121 at
-     * https://github.com/4C-multiphysics/4C/issues/121. This means that
+     * https://github.com/4C-multiphysics/4C/issues/121.
+     *
+     * @note This means that
      * the current, public pre-evaluate method performs only the safe
      * repeatable pre-evaluation tasks.
      * This also means that we call this pre_evaluate method within
      * evaluate_inverse_inelastic_defgrad, and only if we are not in the
-     * redundant call (see quick-fix PR #131 at https://github.com/4C-multiphysics/4C/pull/131).
+     * redundant call (see quick-fix PR #131 at
+     * https://github.com/4C-multiphysics/4C/pull/131).
+     *
      */
     void prepare_non_repeat_tasks();
+
 
     /*!
      * @brief Get an extensive error message to be displayed when the
