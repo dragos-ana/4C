@@ -1842,7 +1842,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   // set minimum substep length
   time_step_settings_.min_dt_ =
       time_step_settings_.dt_ / std::pow(2.0, parameter()->max_halve_number());
+}
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks()
+{
   // set last substep values (last converged state) as the last time step values --> required, as
   // these are used in the EvaluateAdditionalCMat method (in the case where there is no plastic
   // deformation, these would not be updated correctly otherwise)
@@ -1864,16 +1869,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
     else
     {
       pred_interp_factors_.current_xi_[gp_] = 0.0;
-      // DEBUG
-      std::cout << "Was this called again??? GP: " << gp_ << std::endl;
     }
   }
 
   // call preevaluate method of the viscoplastic law
-  viscoplastic_law_->pre_evaluate(gp);
+  viscoplastic_law_->pre_evaluate(gp_);
 
   // preevaluate predictor adaptation factors
-  pred_interp_factors_.pre_evaluate(gp);
+  pred_interp_factors_.pre_evaluate(gp_);
 
 
   // timint analysis: start evaluation if it has not already started
@@ -1891,6 +1894,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
     timint_analysis_utils.sim_time_ += time_step_settings_.dt_;
   }
 }
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -2792,12 +2796,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   // given reduced deformation gradient
   Core::LinAlg::Matrix<3, 3> diff_defgrad{Core::LinAlg::Initialization::zero};
   diff_defgrad.update(1.0, FredM, -1.0, time_step_quantities_.current_defgrad_[gp_], 0.0);
-  if (diff_defgrad.norm2() == 0.0)
+  if (diff_defgrad.norm2() <= 1.0e-16)
   {
     // return the already computed current_ value
     iFinM = time_step_quantities_.current_plastic_defgrd_inverse_[gp_];
     return;
   }
+
+
+  // perform non-repeatable pre-evaluation tasks (non-repeatable: not
+  // called in the redundant evaluate call, which is already handled
+  // above!)
+  prepare_non_repeat_tasks();
 
 #if defined(DEBUGVPLAST_INELDEFGRAD) || defined(DEBUGVPLAST_TIMINT)
   if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4758,9 +4768,6 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
         pred_interp_factors_.xi_user_ * (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
     ++pred_interp_factors_.num_of_pred_adapt_;
 
-    // DEBUG
-    std::cout << "REPREDICTORIZATION: ele_gid: " << ele_gid_ << "; gp: " << gp_ << std::endl;
-
     // check whether predictor adaptation still possible
     if (pred_interp_factors_.num_of_pred_adapt_ > pred_interp_factors_.max_num_pred_adapt_)
     {
@@ -4928,6 +4935,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::register_output_data_nam
   names_and_size["equiv_stress"] = 1;
   names_and_size["defgrad"] = 9;
   names_and_size["rightCG"] = 9;
+  names_and_size["xi"] = 9;
+  names_and_size["max_xi"] = 9;
   viscoplastic_law_->register_output_data_names(names_and_size);
 }
 
@@ -4995,6 +5004,22 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
       {
         data(gp, col) = temp9x1(col);
       }
+    }
+    return true;
+  }
+  else if (name == "xi")
+  {
+    for (int gp = 0; gp < static_cast<int>(pred_interp_factors_.current_xi_.size()); ++gp)
+    {
+      data(gp, 0) = pred_interp_factors_.current_xi_[gp];
+    }
+    return true;
+  }
+  else if (name == "max_xi")
+  {
+    for (int gp = 0; gp < static_cast<int>(pred_interp_factors_.current_max_xi_.size()); ++gp)
+    {
+      data(gp, 0) = pred_interp_factors_.current_max_xi_[gp];
     }
     return true;
   }
