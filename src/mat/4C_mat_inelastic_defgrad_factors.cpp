@@ -1889,6 +1889,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     {
       pred_interp_factors_.current_xi_[gp_] = 0.0;
     }
+
+    pred_interp_factors_.current_max_xi_[gp_] = 0.0;
+    pred_interp_factors_.current_optimal_xi_ = 0.0;
   }
 
   // preevaluate predictor adaptation factors
@@ -3478,9 +3481,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   Core::LinAlg::Matrix<3, 3> CM(Core::LinAlg::Initialization::zero);
   CM.multiply_tn(1.0, defgrad, defgrad, 0.0);
 
-  // set convergence tolerance for LNL and declare LNL matrices, vectors
-  const double tolNR = 1.0e-8;
-  const unsigned max_iter = 200;
+  //  declare LNL matrices, vectors
   // Jacobian matrix
   Core::LinAlg::Matrix<10, 10> jacMat(Core::LinAlg::Initialization::zero);
   // increment of the solution variables
@@ -3601,7 +3602,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
 
       // check convergence
-      if (residualNorm2 < tolNR)
+      if (residualNorm2 < lnl_settings_.tol_)
       {
 #ifdef DEBUGVPLAST_TIMINT
         if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -3650,7 +3651,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // check if maximum iteration is reached: if we have halved the time step the maximum
       // number of times, throw error and finish execution. Otherwise throw exception and
       // proceed with a smaller time step in the substepping scheme!
-      if (substep_params_.iter_ > max_iter)
+      if (substep_params_.iter_ > lnl_settings_.max_iter_)
       {
         // substepping procedure
         if (parameter()->use_substepping())
@@ -3716,7 +3717,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         if (parameter()->analyze_timint())
           timint_analysis_utils.eval_teuchos_timer_line_search_.start(true);
 
-        alpha = get_line_search_parameter(sol, curr_CM, residual, tolNR, dx, err_status);
+        alpha =
+            get_line_search_parameter(sol, curr_CM, residual, lnl_settings_.tol_, dx, err_status);
 
         // timint analysis: increment number of searches and stop timer
         if (parameter()->analyze_timint())
@@ -4969,7 +4971,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
-        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
+         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrd_inverse_[gp], temp9x1);
@@ -4984,7 +4986,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-        ++gp)
+         ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_plastic_strain_[gp];
     }
@@ -5129,8 +5131,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
   // set loop settings
   unsigned int iter = 0;
-  const unsigned int max_iter = 100;
-  const double tol = 1.0e-10;
+  const unsigned int max_iter = 200;
+  const double tol = 1.0e-15;
   // set initial value (predictor) for the optimal interpolation
   // factor
   double optimal_interp_factor = 0.5;
@@ -5173,8 +5175,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
     // check convergence
     if (std::abs(residual) < tol)
     {
-      // return the optimal interpolation factor
-      return optimal_interp_factor;
+      // break out of loop
+      break;
     }
 
     // compute the jacobian
@@ -5217,6 +5219,91 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
       optimal_interp_factor = temp;
     }
   }
+
+  // -------------------- Consistency Check --------------------  //
+  // compute optimal predictor interpolation factor (for GP 0), get corresponding solution vector
+  // and check whether the residual is smaller than the tolerance of the LNL!
+  // -------------------------------------------------------------//
+
+
+  // save current state quantities and their derivatives (they may
+  // get affected during the following procedure: we can then
+  // simply reinstate them)
+  StateQuantities saved_state_quantities = state_quantities_;
+  StateQuantityDerivatives saved_state_quantity_derivs = state_quantity_derivatives_;
+
+  // interpolate inverse inelastic defgrad solution between the
+  // elastic and the almost plastic predictor with the optimal
+  // interpolation factor
+  Core::LinAlg::Matrix<3, 3> optimal_iFin = tensor_interpolator_.get_interpolated_matrix(
+      ref_matrices, ref_locs, optimal_interp_factor, err_type);
+  FOUR_C_ASSERT_ALWAYS(
+      err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: tensor interpolation "
+      "failed!");
+
+  // declare evaluation errors required below for computing the state
+  // quantities and their derivatives
+  ErrorType eval_err_type{ErrorType::NoErrors};
+
+  // evaluate the equivalent stress given by this optimal
+  // inverse inelastic defgrad
+  StateQuantities optimal_state_quantities =
+      evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp], optimal_iFin, 1.0e8,
+          eval_err_type, time_step_settings_.dt_,
+          StateQuantityEvalType::PlasticStrainRateOnly);  // we use a large value for the
+                                                          // plastic strain to make the plastic
+                                                          // strain rate evaluable
+  FOUR_C_ASSERT_ALWAYS(
+      eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: computation of state "
+      "failed!");
+
+  // consistently compute the equivalent plastic strain via
+  // integration of the flow rule based on
+  // this optimal inverse inelastic defgrad
+  double optimal_plastic_strain =
+      integrate_plastic_strain(optimal_state_quantities.curr_equiv_stress_,
+          time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, eval_err_type);
+  FOUR_C_ASSERT_ALWAYS(
+      eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: computation of consistent "
+      "plastic strain "
+      "failed!");
+
+  // create common optimal solution vector
+  Core::LinAlg::Matrix<10, 1> optimal_sol = wrap_unknowns(optimal_iFin, optimal_plastic_strain);
+
+  // compute residual of the optimal solution
+  Core::LinAlg::Matrix<10, 1> optimal_res =
+      calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp], optimal_sol,
+          time_step_quantities_.last_plastic_defgrd_inverse_[0],
+          time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, eval_err_type);
+  FOUR_C_ASSERT_ALWAYS(
+      eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
+      "Consistency check for the optimal interpolation factor: residual computation failed!");
+
+  // timint analysis: save the LNL residual (has to be done here because
+  // we only have this residual here
+  if (parameter()->analyze_timint())
+  {
+    timint_analysis_utils.lnl_res_optimal_pred_interp_factor_ = optimal_res.norm2();
+  }
+
+  // assert whether the residual is smaller than the tolerance
+  // of the LNL! The check is currently DISABLED via multiplication of
+  // the tolerance with a high number - to be able to determine and
+  // output all computed residual values
+  FOUR_C_ASSERT_ALWAYS(optimal_res.norm2() <= (lnl_settings_.tol_ * 1e8),
+      "The determined optimal solution doesn't satisfy the LNL equations! The residual "
+      "norm is {} > {} (LNL tolerance)!",
+      optimal_res.norm2(), std::to_string(lnl_settings_.tol_));
+
+  // reinstate saved quantities
+  state_quantities_ = saved_state_quantities;
+  state_quantity_derivatives_ = saved_state_quantity_derivs;
+
+
 
   return optimal_interp_factor;
 }
