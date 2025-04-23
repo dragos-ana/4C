@@ -272,6 +272,9 @@ namespace Mat
       //! time step)
       double optimal_pred_interp_factor_ = 0;
 
+      //! LNL residual obtained from the optimal predictor interpolation factor
+      double lnl_res_optimal_pred_interp_factor_ = 0;
+
       //! timer for the current timestep evaluation, from the start of preevaluate to the end of
       //! update
       Teuchos::Time eval_teuchos_timer_{
@@ -415,6 +418,7 @@ namespace Mat
         curr_pred_interp_factor_ = -1.0;
         curr_max_pred_interp_factor_ = -1.0;
         optimal_pred_interp_factor_ = -1.0;
+        lnl_res_optimal_pred_interp_factor_ = -1.0;
       }
 
       //! initialize csv_writer
@@ -472,6 +476,8 @@ namespace Mat
             "iterations)",
             1, 16);
         csv_writer_->register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
+        csv_writer_->register_data_vector(
+            "LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
         for (const auto& [key, value] : ErrorNames)
         {
           csv_writer_->register_data_vector(
@@ -577,6 +583,9 @@ namespace Mat
              "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_)};
         output_data["Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
             static_cast<double>(optimal_pred_interp_factor_)};
+        output_data["LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
+            static_cast<double>(lnl_res_optimal_pred_interp_factor_)};
+
 
         // write output data to csv
         csv_writer_->write_data_to_file(sim_time_, sim_timestep_, output_data);
