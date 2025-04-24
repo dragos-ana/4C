@@ -5129,7 +5129,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   // set loop settings
   unsigned int iter = 0;
   const unsigned int max_iter = 200;
-  const double tol = 1.0e-15;
+  const double tol = 1.0e-8;
   // set initial value (predictor) for the optimal interpolation
   // factor
   double optimal_interp_factor = 0.5;
