@@ -4969,7 +4969,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
-         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
+        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrd_inverse_[gp], temp9x1);
@@ -4984,7 +4984,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_plastic_strain_[gp];
     }
@@ -5124,8 +5124,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   Core::LinAlg::Matrix<3, 3> interp_iFinM{Core::LinAlg::Initialization::zero};
   Core::LinAlg::Matrix<3, 3> interp_U{Core::LinAlg::Initialization::zero};
   double interp_first_stretch = 0.0;
-  Core::LinAlg::TensorInterpolation::TensorInterpErrorType err_type =
-      Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors;
+  Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType err_type =
+      Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors;
 
   // set loop settings
   unsigned int iter = 0;
@@ -5158,7 +5158,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
     interp_iFinM = tensor_interpolator_.get_interpolated_matrix(
         ref_matrices, ref_locs, optimal_interp_factor, err_type);
     FOUR_C_ASSERT_ALWAYS(
-        err_type == Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
+        err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
         "Could not interpolate inverse inelastic defgrad for interpolation factor {} within the "
         "optimal interpolation factor computation of gp {}",
         optimal_interp_factor, gp);
@@ -5182,7 +5182,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
         ref_matrices, ref_locs, optimal_interp_factor, err_type)(0,
         0);  // due to diagonality, this should be the first component of the interpolation gradient
     FOUR_C_ASSERT_ALWAYS(
-        err_type == Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
+        err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
         "Could not compute the jacobian of the interpolation for interpolation factor {} within "
         "the "
         "optimal interpolation factor computation of gp {}",
@@ -5236,7 +5236,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   Core::LinAlg::Matrix<3, 3> optimal_iFin = tensor_interpolator_.get_interpolated_matrix(
       ref_matrices, ref_locs, optimal_interp_factor, err_type);
   FOUR_C_ASSERT_ALWAYS(
-      err_type == Core::LinAlg::TensorInterpolation::TensorInterpErrorType::NoErrors,
+      err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
       "Consistency check for the optimal interpolation factor: tensor interpolation "
       "failed!");
 
