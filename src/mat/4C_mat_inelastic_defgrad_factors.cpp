@@ -3566,7 +3566,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #ifdef DEBUGVPLAST_TIMINT
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
-        std::cout << "-> iter: " << substep_params_.iter_ << "/" << max_iter << std::endl;
+        std::cout << "-> iter: " << substep_params_.iter_ << "/" << lnl_settings_.max_iter_
+                  << std::endl;
       }
 #endif
 
@@ -3589,7 +3590,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #ifdef DEBUGVPLAST_TIMINT
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
-        std::cout << "residual: " << residualNorm2 << " versus " << tolNR << std::endl;
+        std::cout << "residual: " << residualNorm2 << " versus " << lnl_settings_.tol_ << std::endl;
       }
 
 #endif
