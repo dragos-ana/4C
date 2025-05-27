@@ -568,10 +568,10 @@ namespace
   // define ele_gid to be debugged
   // const std::vector<int> debug_ele_gid_vec{606, 607, 622, 623, 638, 639};
   // const std::vector<int> debug_ele_gid_vec{21304};
-  const std::vector<int> debug_ele_gid_vec{6401};
+  const std::vector<int> debug_ele_gid_vec{0};
   // const std::vector<int> debug_gp_vec{-1};
   // const std::vector<int> debug_gp_vec{25};
-  const std::vector<int> debug_gp_vec{2};
+  const std::vector<int> debug_gp_vec{0};
   bool debug_output_ele_gp(const std::vector<int>& ele_gid_vec, const std::vector<int>& gp_vec,
       const int ele_gid, const int gp)
 
@@ -3568,7 +3568,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #ifdef DEBUGVPLAST_TIMINT
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
-        std::cout << "-> iter: " << substep_params_.iter_ << "/" << max_iter << std::endl;
+        std::cout << "-> iter: " << substep_params_.iter_ << "/" << lnl_settings_.max_iter_
+                  << std::endl;
       }
 #endif
 
@@ -3591,7 +3592,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #ifdef DEBUGVPLAST_TIMINT
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
-        std::cout << "residual: " << residualNorm2 << " versus " << tolNR << std::endl;
+        std::cout << "residual: " << residualNorm2 << " versus " << lnl_settings_.tol_ << std::endl;
       }
 
 #endif
@@ -4277,7 +4278,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     }
 #endif
 
-
+    // compute plastic strain rate: if 0.0 for
+    // the current plasticity state, then we are "under" the yield
+    // surface -> we stop the evaluation of the current state and
+    // directly proceed to adapt the lower bound of the interpolation
+    // factor
+    if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_settings_.dt_) <=
+        zero_tol)
+    {
+      err_status = ErrorType::UnderYieldSurface;
+    }
 
     // evaluate derivatives of the state quantities
     if (err_status == ErrorType::NoErrors)
@@ -4321,6 +4331,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
       state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, plastic_strain_adapt_pred,
           err_status, time_step_settings_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+      // compute plastic strain rate: if 0.0 for
+      // the current plasticity state, then we are "under" the yield
+      // surface -> we stop the evaluation of the current state and
+      // directly proceed to adapt the lower bound of the interpolation
+      // factor
+      if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_settings_.dt_) <=
+          zero_tol)
+      {
+        err_status = ErrorType::UnderYieldSurface;
+      }
     }
 
     // reevaluate the plastic strain rate derivatives
@@ -4336,44 +4356,45 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // \leftarrow  \xi_{\text{curr}} \xi_{\text{user}}\f$
     if (err_status != ErrorType::NoErrors)
     {
-      // adapt the lower bound of the xi parameter and recompute
-      // interpolation factor
-      pred_interp_factors_.xi_l_ = pred_interp_factors_.current_xi_[gp_];
-      pred_interp_factors_.current_xi_[gp_] =
-          pred_interp_factors_.xi_l_ +
-          pred_interp_factors_.xi_user_ * (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
+      if (err_status ==
+          ErrorType::UnderYieldSurface)  // check whether we are "under" the yield surface:
+      // if the plastic strain rate is 0.0 (the adapted predictor maps the stress
+      // "under" the yield surface): set \f$ \xi_{\text{curr}} \leftarrow
+      // \xi_{\text{curr}} + \xi_{\text{user}} ( 1.0 - \xi_{\text{curr}})
+      // \f$
+      {
+        // adapt the upper bound of the parameter xi and recompute the
+        // interpolation factor
+        pred_interp_factors_.xi_u_ = pred_interp_factors_.current_xi_[gp_];
+        pred_interp_factors_.current_xi_[gp_] =
+            pred_interp_factors_.xi_l_ +
+            pred_interp_factors_.xi_user_ *
+                (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
 
 #ifdef DEBUGVPLAST_TIMINT
-      if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
-      {
-        std::cout << "Adapted xi_l_ to " << pred_interp_factors_.xi_l_ << std::endl;
-      }
+        if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+        {
+          std::cout << "Adapted xi_u_ to " << pred_interp_factors_.xi_u_ << std::endl;
+        }
 #endif
-
-
-
-      continue;
-    }
-
-    // if the plastic strain rate is 0.0 (the adapted predictor maps the stress
-    // "under" the yield surface): set \f$ \xi_{\text{curr}} \leftarrow
-    // \xi_{\text{curr}} + \xi_{\text{user}} ( 1.0 - \xi_{\text{curr}})
-    // \f$
-    if (state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_settings_.dt_ <= 0.0)
-    {
-      // adapt the upper bound of the parameter xi and recompute the
-      // interpolation factor
-      pred_interp_factors_.xi_u_ = pred_interp_factors_.current_xi_[gp_];
-      pred_interp_factors_.current_xi_[gp_] =
-          pred_interp_factors_.xi_l_ +
-          pred_interp_factors_.xi_user_ * (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
+      }
+      else  // there is "too much" plastic strain rate -> leads to overflow error
+      {
+        // adapt the lower bound of the xi parameter and recompute
+        // interpolation factor
+        pred_interp_factors_.xi_l_ = pred_interp_factors_.current_xi_[gp_];
+        pred_interp_factors_.current_xi_[gp_] =
+            pred_interp_factors_.xi_l_ +
+            pred_interp_factors_.xi_user_ *
+                (pred_interp_factors_.xi_u_ - pred_interp_factors_.xi_l_);
 
 #ifdef DEBUGVPLAST_TIMINT
-      if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
-      {
-        std::cout << "Adapted xi_u_ to " << pred_interp_factors_.xi_u_ << std::endl;
-      }
+        if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+        {
+          std::cout << "Adapted xi_l_ to " << pred_interp_factors_.xi_l_ << std::endl;
+        }
 #endif
+      }
     }
   }
 
@@ -5123,8 +5144,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   Core::LinAlg::Matrix<3, 3> interp_iFinM{Core::LinAlg::Initialization::zero};
   Core::LinAlg::Matrix<3, 3> interp_U{Core::LinAlg::Initialization::zero};
   double interp_first_stretch = 0.0;
-  Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType err_type =
-      Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors;
+  Core::LinAlg::TensorInterpolationErrorType err_type =
+      Core::LinAlg::TensorInterpolationErrorType::NoErrors;
 
   // set loop settings
   unsigned int iter = 0;
@@ -5156,8 +5177,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
     // interpolate the inverse inelastic defgrad
     interp_iFinM = tensor_interpolator_.get_interpolated_matrix(
         ref_matrices, ref_locs, optimal_interp_factor, err_type);
-    FOUR_C_ASSERT_ALWAYS(
-        err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
+    FOUR_C_ASSERT_ALWAYS(err_type == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
         "Could not interpolate inverse inelastic defgrad for interpolation factor {} within the "
         "optimal interpolation factor computation of gp {}",
         optimal_interp_factor, gp);
@@ -5180,8 +5200,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
     jacobian = tensor_interpolator_.get_interpolation_gradient(
         ref_matrices, ref_locs, optimal_interp_factor, err_type)(0,
         0);  // due to diagonality, this should be the first component of the interpolation gradient
-    FOUR_C_ASSERT_ALWAYS(
-        err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
+    FOUR_C_ASSERT_ALWAYS(err_type == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
         "Could not compute the jacobian of the interpolation for interpolation factor {} within "
         "the "
         "optimal interpolation factor computation of gp {}",
@@ -5234,8 +5253,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   // interpolation factor
   Core::LinAlg::Matrix<3, 3> optimal_iFin = tensor_interpolator_.get_interpolated_matrix(
       ref_matrices, ref_locs, optimal_interp_factor, err_type);
-  FOUR_C_ASSERT_ALWAYS(
-      err_type == Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors,
+  FOUR_C_ASSERT_ALWAYS(err_type == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
       "Consistency check for the optimal interpolation factor: tensor interpolation "
       "failed!");
 

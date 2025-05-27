@@ -65,6 +65,8 @@ namespace Mat
       FailedLogEval,        ///< failed evaluation of the matrix logarithm or its derivative
       FailedExpEval,        ///< failed evaluation of the matrix exponential or its derivative
       FailedRightCGInterp,  ///< failed interpolation of the right Cauchy-Green tensor
+      UnderYieldSurface,    ///< mechanical state is "under" the yield surface, i.e., the evaluated
+                            ///< stress is smaller than the yield stress
     };
 
     /// enum class for error management actions in InelasticDefgradTransvIsotropElastViscoplast
@@ -132,6 +134,10 @@ namespace Mat
                  "the "
                  "right Cauchy-Green deformation tensor";
           break;
+        case ErrorType::UnderYieldSurface:
+          return "Error in InelasticDefgradTransvIsotropElastViscoplast: we are 'under' the yield "
+                 "surface, sigma < sigma_yield!";
+          break;
         default:
           FOUR_C_THROW("to_string(ErrorType): You should not be here!");
       }
@@ -176,6 +182,7 @@ namespace Mat
         {ErrorType::FailedLogEval, "FailedLogEval"},
         {ErrorType::FailedExpEval, "FailedExpEval"},
         {ErrorType::FailedRightCGInterp, "FailedRightCGInterp"},
+        {ErrorType::UnderYieldSurface, "UnderYieldSurface"},
     };
 
     //! class containing utilities for analyzing the material time integration:
@@ -347,7 +354,7 @@ namespace Mat
           {ErrorType::FailedSolAnalytLinearization, 0},
           {ErrorType::FailedLogEval, 0},
           {ErrorType::FailedExpEval, 0},
-          {ErrorType::FailedRightCGInterp, 0},
+          {ErrorType::UnderYieldSurface, 0},
       };
 
       //! error map of the total evaluation
@@ -363,6 +370,7 @@ namespace Mat
           {ErrorType::FailedLogEval, 0},
           {ErrorType::FailedExpEval, 0},
           {ErrorType::FailedRightCGInterp, 0},
+          {ErrorType::UnderYieldSurface, 0},
       };
 
       //! runtime csv writer
@@ -410,7 +418,7 @@ namespace Mat
             {ErrorType::FailedSolAnalytLinearization, 0},
             {ErrorType::FailedLogEval, 0},
             {ErrorType::FailedExpEval, 0},
-            {ErrorType::FailedRightCGInterp, 0},
+            {ErrorType::UnderYieldSurface, 0},
         };
         eval_num_of_alpha_neq_1 = 0;
         eval_num_of_alpha_neq_1_last_iter = 0;
@@ -637,10 +645,10 @@ namespace Mat
       return stream;
     }
 
-    /// defines
-    // flag for debug output (viscoplastic material) related to
-    // time integration
-    // #define DEBUGVPLAST_TIMINT
+/// defines
+// flag for debug output (viscoplastic material) related to
+// time integration
+#define DEBUGVPLAST_TIMINT
 
     // flag for debug output (viscoplastic material) related to the
     // inverse inelastic defgrad computation; less detailed than
