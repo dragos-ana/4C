@@ -21,17 +21,21 @@
 #include "4C_mat_so3_material.hpp"
 #include "4C_mat_vplast_law.hpp"
 #include "4C_material_parameter_base.hpp"
+#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.fwd.hpp"
 
 #include <Teuchos_ParameterList.hpp>
 
+#include <array>
 #include <cmath>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
+
 FOUR_C_NAMESPACE_OPEN
+
 
 namespace Discret::Utils
 {
@@ -1879,17 +1883,89 @@ namespace Mat
     };
     SubstepParams substep_params_;
 
-    //! struct containing various settings for the Local Newton-Raphson
-    //! Loop used for time integration of the viscoplasticity equations
-    struct LocalNewtonSettings
+    //! struct containing settings and iteration data from the Local Newton-Raphson
+    //! Loop (time integration of the viscoplasticity equations)
+    //! (used for Gauss-Point output)
+    struct LocalNewtonData
     {
+      //! constructor of data
+      LocalNewtonData() { reset_all_iteration_data(); };
+
       //! convergence tolerance of the Local Newton Loop
-      const double tol_ = 1.0e-8;
+      static constexpr double tol_ = 1.0e-8;
 
       //! maximum nuzmber of Local Newton Loop iterations
-      const unsigned max_iter_ = 200;
+      static constexpr unsigned max_iter_ = 200;
+
+      // enum class: success status of single iterations
+      enum class IterationStatus
+      {
+        evaluation_successful,  // residual could be evaluated without errors
+        evaluation_failed,      // residual evaluation failed
+        converged,              // LNL converged in this iteration
+        not_evaluated,  // the iteration has not been evaluated (after reset, or when a previous
+                        // iteration has already converged)
+        final_error,    // the LNL has finally failed after performing all possible error management
+                        // actions or/and after the maximum number of
+                        // iterations was reached
+
+      };
+
+      // enum to double conversion for the success status of single
+      // iterations IterationStatus (required for Gauss-Point output,
+      // which needs to be double)
+      static double iteration_status_enum_to_double(const IterationStatus iter_status)
+      {
+        switch (iter_status)
+        {
+          case IterationStatus::converged:
+            return 0.0;
+          case IterationStatus::final_error:
+            return 1.0;
+          case IterationStatus::not_evaluated:
+            return -1.0;
+          case IterationStatus::evaluation_successful:
+            return 2.0;
+          case IterationStatus::evaluation_failed:
+            return 3.0;
+          default:
+            FOUR_C_THROW("Unhandled IterationStatus {}", EnumTools::enum_name(iter_status));
+        }
+      }
+
+      //! success status of the iteration (can it even evaluate the
+      //! residual?)
+      std::array<IterationStatus, max_iter_> iter_status_;
+
+      //! all iteration values of the LNL residual
+      std::array<double, max_iter_> residual_;
+
+      //! all iteration values of the equivalent stress
+      std::array<double, max_iter_> equiv_stress_;
+
+      //! all iteration values of the plastic strain
+      std::array<double, max_iter_> plastic_strain_;
+
+      //! reset all arrays holding values for all iterations
+      void reset_all_iteration_data()
+      {
+        residual_.fill(-1.0);
+        equiv_stress_.fill(-1.0);
+        plastic_strain_.fill(-1.0);
+        iter_status_.fill(IterationStatus::not_evaluated);
+      }
+
+      //! set data for a given iteration iter
+      void set_iteration_data(const unsigned int iter, const IterationStatus iter_status,
+          const double residual, const double equiv_stress, const double plastic_strain)
+      {
+        residual_[iter] = residual;
+        iter_status_[iter] = iter_status;
+        equiv_stress_[iter] = equiv_stress;
+        plastic_strain_[iter] = plastic_strain;
+      }
     };
-    LocalNewtonSettings lnl_settings_;
+    LocalNewtonData lnl_data_;
 
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material

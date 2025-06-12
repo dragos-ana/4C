@@ -557,7 +557,6 @@ namespace
   }
 
 
-
 // DEBUG utils (InelasticDefgradTransvIsotropElastViscoplast)
 // define ele_gid to be debugged
 // const std::vector<int> debug_ele_gid_vec{606, 607, 622, 623, 638, 639};
@@ -3467,12 +3466,14 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     std::cout << std::string(40, '-') << std::endl;
     std::cout << std::string(5, '.') << "local_newton_loop" << std::endl;
   }
-
 #endif
 
   // auxiliaries
   Core::LinAlg::Matrix<10, 10> temp10x10(Core::LinAlg::Initialization::zero);
   Core::LinAlg::Matrix<10, 1> temp10x1(Core::LinAlg::Initialization::zero);
+
+  // reset all iteration data of the LNL -> we track it in this method afterwards
+  lnl_data_.reset_all_iteration_data();
 
   // calculate right Cauchy-Green deformation tensor
   Core::LinAlg::Matrix<3, 3> CM(Core::LinAlg::Initialization::zero);
@@ -3568,7 +3569,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #ifdef DEBUGVPLAST_TIMINT
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
-        std::cout << "-> iter: " << substep_params_.iter_ << "/" << lnl_settings_.max_iter_
+        std::cout << "-> iter: " << substep_params_.iter_ << "/" << lnl_data_.max_iter_
                   << std::endl;
       }
 #endif
@@ -3582,17 +3583,37 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // error management
       err_action = manage_evaluation_error(err_status, sol, curr_CM);
       if (err_action == ErrorAction::ReturnSolWithErrors)
-        return sol;
-      else if (err_action == ErrorAction::NextIter)
-        continue;
+      {
+        // append LNL data
+        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+            LocalNewtonData::IterationStatus::final_error, -1.0, 0.0, 0.0);
 
+        // return bad solution
+        return sol;
+      }
+      else if (err_action == ErrorAction::NextIter)
+      {
+        // append LNL data
+        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+            LocalNewtonData::IterationStatus::evaluation_failed, -1.0, 0.0, 0.0);
+
+        // proceed with next iteration after performing adjustments due
+        // to errors
+        continue;
+      }
       // 2-norm of the residual
       residualNorm2 = residual.norm2();
+
+      // append LNL data
+      lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+          LocalNewtonData::IterationStatus::evaluation_successful, residualNorm2,
+          state_quantities_.curr_equiv_stress_, sol(9));
+
 
 #ifdef DEBUGVPLAST_TIMINT
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
-        std::cout << "residual: " << residualNorm2 << " versus " << lnl_settings_.tol_ << std::endl;
+        std::cout << "residual: " << residualNorm2 << " versus " << lnl_data_.tol_ << std::endl;
       }
 
 #endif
@@ -3600,7 +3621,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
 
       // check convergence
-      if (residualNorm2 < lnl_settings_.tol_)
+      if (residualNorm2 < lnl_data_.tol_)
       {
 #ifdef DEBUGVPLAST_TIMINT
         if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -3649,7 +3670,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // check if maximum iteration is reached: if we have halved the time step the maximum
       // number of times, throw error and finish execution. Otherwise throw exception and
       // proceed with a smaller time step in the substepping scheme!
-      if (substep_params_.iter_ > lnl_settings_.max_iter_)
+      if (substep_params_.iter_ > lnl_data_.max_iter_)
       {
         // substepping procedure
         if (parameter()->use_substepping())
@@ -3715,8 +3736,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         if (parameter()->analyze_timint())
           timint_analysis_utils.eval_teuchos_timer_line_search_.start(true);
 
-        alpha =
-            get_line_search_parameter(sol, curr_CM, residual, lnl_settings_.tol_, dx, err_status);
+        alpha = get_line_search_parameter(sol, curr_CM, residual, lnl_data_.tol_, dx, err_status);
 
         // timint analysis: increment number of searches and stop timer
         if (parameter()->analyze_timint())
@@ -3759,6 +3779,12 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
 
 #endif
+
+  // append LNL data (for the successful last iteration)
+  lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+      LocalNewtonData::IterationStatus::converged, residualNorm2,
+      state_quantities_.curr_equiv_stress_, sol(9));
+
 
   // return the obtained solution
   return sol;
@@ -4970,7 +4996,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::register_output_data_nam
 {
   names_and_size["inverse_plastic_defgrad"] = 9;
   names_and_size["plastic_strain"] = 1;
+  names_and_size["plastic_strain_LNL"] =
+      lnl_data_.max_iter_;  // plastic strain in each local iteration of the LNL
   names_and_size["equiv_stress"] = 1;
+  names_and_size["equiv_stress_LNL"] = lnl_data_.max_iter_;
+  names_and_size["iter_status_LNL"] = lnl_data_.max_iter_;
+  names_and_size["residual_LNL"] = lnl_data_.max_iter_;
   names_and_size["defgrad"] = 9;
   names_and_size["rightCG"] = 9;
   names_and_size["xi"] = 1;
@@ -5010,6 +5041,18 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     }
     return true;
   }
+  else if (name == "plastic_strain_LNL")
+  {
+    for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
+        ++gp)
+    {
+      for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
+      {
+        data(gp, it) = lnl_data_.plastic_strain_[it];
+      }
+    }
+    return true;
+  }
   else if (name == "equiv_stress")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_stress_.size()); ++gp)
@@ -5018,6 +5061,43 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     }
     return true;
   }
+  else if (name == "equiv_stress_LNL")
+  {
+    for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
+        ++gp)
+    {
+      for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
+      {
+        data(gp, it) = lnl_data_.equiv_stress_[it];
+      }
+    }
+    return true;
+  }
+  else if (name == "iter_status_LNL")
+  {
+    for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
+        ++gp)
+    {
+      for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
+      {
+        data(gp, it) = LocalNewtonData::iteration_status_enum_to_double(lnl_data_.iter_status_[it]);
+      }
+    }
+    return true;
+  }
+  else if (name == "residual_LNL")
+  {
+    for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
+        ++gp)
+    {
+      for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
+      {
+        data(gp, it) = lnl_data_.residual_[it];
+      }
+    }
+    return true;
+  }
+
   else if (name == "defgrad")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_defgrad_.size()); ++gp)
@@ -5061,6 +5141,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     }
     return true;
   }
+
 
   return viscoplastic_law_->evaluate_output_data(name, data);
 }
@@ -5309,10 +5390,10 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   // of the LNL! The check is currently DISABLED via multiplication of
   // the tolerance with a high number - to be able to determine and
   // output all computed residual values
-  FOUR_C_ASSERT_ALWAYS(optimal_res.norm2() <= (lnl_settings_.tol_ * 1e8),
+  FOUR_C_ASSERT_ALWAYS(optimal_res.norm2() <= (lnl_data_.tol_ * 1e8),
       "The determined optimal solution doesn't satisfy the LNL equations! The residual "
       "norm is {} > {} (LNL tolerance)!",
-      optimal_res.norm2(), std::to_string(lnl_settings_.tol_));
+      optimal_res.norm2(), std::to_string(lnl_data_.tol_));
 
   // reinstate saved quantities
   state_quantities_ = saved_state_quantities;
