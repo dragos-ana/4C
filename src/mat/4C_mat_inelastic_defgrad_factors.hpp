@@ -30,6 +30,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -1649,15 +1650,17 @@ namespace Mat
     //! boolean to control whether the history variables should be updated during evaluation
     bool update_hist_var_ = true;
 
-    //! struct containing settings for time step lengths
-    struct TimeStepSettings
+    //! struct containing time step settings and time trackers
+    struct TimeStepTracker
     {
       //! time step length
       double dt_;
+      //! currently computed time instant \f$ t_{n+1} \f$
+      double tnp_;
       //! minimum substep length
       double min_dt_;
     };
-    TimeStepSettings time_step_settings_;
+    TimeStepTracker time_step_tracker_;
 
 
     //! struct containing quantities at the last and current time points (i.e., at \f[ t_n \f] and
@@ -1889,53 +1892,26 @@ namespace Mat
     struct LocalNewtonData
     {
       //! constructor of data
-      LocalNewtonData() { reset_all_iteration_data(); };
+      LocalNewtonData()
+      {
+        reset_all_iteration_data();
+        globiter_or_timestep_index_ = 0;
+      };
 
       //! convergence tolerance of the Local Newton Loop
       static constexpr double tol_ = 1.0e-8;
 
-      //! maximum nuzmber of Local Newton Loop iterations
+      //! maximum number of Local Newton Loop iterations
       static constexpr unsigned max_iter_ = 200;
 
-      // enum class: success status of single iterations
-      enum class IterationStatus
-      {
-        evaluation_successful,  // residual could be evaluated without errors
-        evaluation_failed,      // residual evaluation failed
-        converged,              // LNL converged in this iteration
-        not_evaluated,  // the iteration has not been evaluated (after reset, or when a previous
-                        // iteration has already converged)
-        final_error,    // the LNL has finally failed after performing all possible error management
-                        // actions or/and after the maximum number of
-                        // iterations was reached
-
-      };
-
-      // enum to double conversion for the success status of single
-      // iterations IterationStatus (required for Gauss-Point output,
-      // which needs to be double)
-      static double iteration_status_enum_to_double(const IterationStatus iter_status)
-      {
-        switch (iter_status)
-        {
-          case IterationStatus::converged:
-            return 0.0;
-          case IterationStatus::final_error:
-            return 1.0;
-          case IterationStatus::not_evaluated:
-            return -1.0;
-          case IterationStatus::evaluation_successful:
-            return 2.0;
-          case IterationStatus::evaluation_failed:
-            return 3.0;
-          default:
-            FOUR_C_THROW("Unhandled IterationStatus {}", EnumTools::enum_name(iter_status));
-        }
-      }
+      //! tracker for the global iteration (if we have output every
+      //! iteration) or the timestep index; increased by 1 every time
+      //! the Gauss point output routine is called
+      unsigned int globiter_or_timestep_index_;
 
       //! success status of the iteration (can it even evaluate the
       //! residual?)
-      std::array<IterationStatus, max_iter_> iter_status_;
+      std::array<LocalIterationStatus, max_iter_> iter_status_;
 
       //! all iteration values of the LNL residual
       std::array<double, max_iter_> residual_;
@@ -1952,11 +1928,11 @@ namespace Mat
         residual_.fill(-1.0);
         equiv_stress_.fill(-1.0);
         plastic_strain_.fill(-1.0);
-        iter_status_.fill(IterationStatus::not_evaluated);
+        iter_status_.fill(LocalIterationStatus::not_evaluated);
       }
 
       //! set data for a given iteration iter
-      void set_iteration_data(const unsigned int iter, const IterationStatus iter_status,
+      void set_iteration_data(const unsigned int iter, const LocalIterationStatus iter_status,
           const double residual, const double equiv_stress, const double plastic_strain)
       {
         residual_[iter] = residual;
@@ -1964,8 +1940,78 @@ namespace Mat
         equiv_stress_[iter] = equiv_stress;
         plastic_strain_[iter] = plastic_strain;
       }
+
+      //! storage for relevant iteration data when the LNL fails -> serves as
+      //! input for the csv writer
+      struct FailedLnlData
+      {
+        /// current time point \f$ t_{n+1} \f$
+        const double tnp;
+        /// previous time point \f$ t_{n} \f$
+        const double tn;
+        /// global element id
+        const int element_gid;
+        /// gauss point id
+        const int gauss_point;
+      };
+
+      //! write LNL iteration data to csv file, when the LNL fails
+      void write_failed_lnl_iteration_data_to_csv(const FailedLnlData& data)
+      {
+        // get structure discretization
+        std::shared_ptr<Core::FE::Discretization> structure_dis =
+            Global::Problem::instance()->get_dis("structure");
+
+        // check whether we are using a single processor! (no implementation for multiple processors
+        // yet, and also not really required)
+        int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+        FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+            "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+            "output "
+            "for multiple processors");
+
+        // create csv_writer and register its columns
+        Core::IO::RuntimeCsvWriter csv_writer{my_rank,
+            *Global::Problem::instance()->output_control_file(), "failed_lnl_iteration_data"};
+
+        // register data to be added
+        csv_writer.register_data_vector("previous_time", 1, 16);
+        csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+        csv_writer.register_data_vector("element_gid", 1, 16);
+        csv_writer.register_data_vector("gauss_point", 1, 16);
+        csv_writer.register_data_vector(
+            "residual_LNL_gp_" + std::to_string(data.gauss_point), 1, 16);
+        csv_writer.register_data_vector(
+            "iter_status_LNL_gp_" + std::to_string(data.gauss_point), 1, 16);
+        csv_writer.register_data_vector(
+            "equiv_stress_LNL_gp_" + std::to_string(data.gauss_point), 1, 16);
+        csv_writer.register_data_vector(
+            "plastic_strain_LNL_gp_" + std::to_string(data.gauss_point), 1, 16);
+
+        // write to csv
+        for (unsigned iter = 0; iter < max_iter_; ++iter)
+        {
+          std::map<std::string, std::vector<double>> output_data;
+          output_data["previous_time"] = {static_cast<double>(data.tn)};
+          output_data["globiter_or_timestep_index"] = {
+              static_cast<double>(globiter_or_timestep_index_)};
+          output_data["element_gid"] = {static_cast<double>(data.element_gid)};
+          output_data["gauss_point"] = {static_cast<double>(data.gauss_point)};
+          output_data["residual_LNL_gp_" + std::to_string((data.gauss_point))] = {
+              static_cast<double>(residual_[iter])};
+          output_data["iter_status_LNL_gp_" + std::to_string((data.gauss_point))] = {
+              static_cast<double>(iteration_status_enum_to_double(iter_status_[iter]))};
+          output_data["equiv_stress_LNL_gp_" + std::to_string((data.gauss_point))] = {
+              static_cast<double>(equiv_stress_[iter])};
+          output_data["plastic_strain_LNL_gp_" + std::to_string((data.gauss_point))] = {
+              static_cast<double>(plastic_strain_[iter])};
+
+          // write output data to csv
+          csv_writer.write_data_to_file(data.tnp, iter, output_data);
+        }
+      }
     };
-    LocalNewtonData lnl_data_;
+    mutable LocalNewtonData lnl_data_;
 
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
