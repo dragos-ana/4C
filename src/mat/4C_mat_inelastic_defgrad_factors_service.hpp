@@ -143,6 +143,43 @@ namespace Mat
       }
     }
 
+    /// enum class: success status of single Local Newton Loop iterations
+    enum class LocalIterationStatus
+    {
+      evaluation_successful,  // residual could be evaluated without errors
+      evaluation_failed,      // residual evaluation failed
+      converged,              // LNL converged in this iteration
+      not_evaluated,  // the iteration has not been evaluated (after reset, or when a previous
+                      // iteration has already converged)
+      final_error,    // the LNL has finally failed after performing all possible error management
+                      // actions or/and after the maximum number of
+                      // iterations was reached
+
+    };
+
+    /// enum to double conversion for the success status of single
+    /// iterations IterationStatus (required for Gauss-Point output,
+    /// which needs to be double)
+    inline double iteration_status_enum_to_double(const LocalIterationStatus iter_status)
+    {
+      switch (iter_status)
+      {
+        case LocalIterationStatus::converged:
+          return 0.0;
+        case LocalIterationStatus::final_error:
+          return 1.0;
+        case LocalIterationStatus::not_evaluated:
+          return -1.0;
+        case LocalIterationStatus::evaluation_successful:
+          return 2.0;
+        case LocalIterationStatus::evaluation_failed:
+          return 3.0;
+        default:
+          FOUR_C_THROW("Unhandled IterationStatus {}", EnumTools::enum_name(iter_status));
+      }
+    }
+
+
     /// enum class for material behavior types
     /// (InelasticDefgradTransvIsotropElastViscoplast)
     enum class MatBehavior

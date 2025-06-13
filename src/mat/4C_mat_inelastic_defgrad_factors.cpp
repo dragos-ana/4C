@@ -33,6 +33,7 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_function_of_time.hpp"
 
+#include <MueLu_KeepType.hpp>
 #include <Teuchos_ParameterList.hpp>
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 #include <Teuchos_Time.hpp>
@@ -555,6 +556,7 @@ namespace
     }
     return true;
   }
+
 
 
 // DEBUG utils (InelasticDefgradTransvIsotropElastViscoplast)
@@ -1786,9 +1788,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
 {
   // set time step size to 0.0 (this is set to the correct and current value in the preevaluate
   // method)
-  time_step_settings_.dt_ = 0.0;
+  time_step_tracker_.dt_ = 0.0;
   // set minimum substep length
-  time_step_settings_.min_dt_ = 0.0;
+  time_step_tracker_.min_dt_ = 0.0;
 
   // ----- set last_ and current_ variables referring to values at different time instants -----
   // for now: the number of Gauss points is unknown -> we set the values only for 1 Gauss point
@@ -1851,12 +1853,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
 
   // set time step
   FOUR_C_ASSERT(context.time_step_size, "Time step size not given in evaluation context.");
-  time_step_settings_.dt_ = *context.time_step_size;
+  time_step_tracker_.dt_ = *context.time_step_size;
+  FOUR_C_ASSERT(context.total_time, "Total time not given in evaluation context.");
+  time_step_tracker_.tnp_ = *context.total_time;
+
   // set minimum substep length
-  time_step_settings_.min_dt_ =
-      time_step_settings_.dt_ / std::pow(2.0, parameter()->max_halve_number());
-
-
+  time_step_tracker_.min_dt_ =
+      time_step_tracker_.dt_ / std::pow(2.0, parameter()->max_halve_number());
 
   // set last substep values (last converged state) as the last time step values --> required, as
   // these are used in the EvaluateAdditionalCMat method (in the case where there is no plastic
@@ -1909,7 +1912,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     timint_analysis_utils.reset();
     timint_analysis_utils.eval_teuchos_timer_.start(true);
     ++timint_analysis_utils.sim_timestep_;
-    timint_analysis_utils.sim_time_ += time_step_settings_.dt_;
+    timint_analysis_utils.sim_time_ += time_step_tracker_.dt_;
   }
 }
 
@@ -2056,7 +2059,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
   {
     // return with error
     err_status = ErrorType::OverflowError;
-    return StateQuantities{};
+    return state_quantities;
   }
 
   // calculate equivalent plastic strain rate using the viscoplastic law
@@ -2073,7 +2076,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
   if (err_status != ErrorType::NoErrors)
   {
     // return with error
-    return StateQuantities{};
+    return state_quantities;
   }
 
   // calculate plastic flow direction
@@ -2602,7 +2605,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
   // the stiffness evaluation
   state_quantities_ =
       evaluate_state_quantities(CredM, time_step_quantities_.current_plastic_defgrd_inverse_[gp_],
-          time_step_quantities_.current_plastic_strain_[gp_], err_status, time_step_settings_.dt_,
+          time_step_quantities_.current_plastic_strain_[gp_], err_status, time_step_tracker_.dt_,
           StateQuantityEvalType::FullEval);
 
   // calculate linearization term only if we have plastic strain
@@ -2655,7 +2658,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     viscoplastic_law_->pre_evaluate(gp_);  // set last_substep <- last_
     jacMat = calculate_jacobian(CredM, current_sol,
         time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
-        time_step_quantities_.last_plastic_strain_[gp_], time_step_settings_.dt_, err_status);
+        time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
 
 #ifdef DEBUGVPLAST_LINEARIZATION
     if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -2700,18 +2703,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
 
       // calculate RHS of the equation for the plastic strain
       rhs_epsp_V.update(
-          time_step_settings_.dt_ * state_quantity_derivatives_.curr_dpsr_dequiv_stress_,
+          time_step_tracker_.dt_ * state_quantity_derivatives_.curr_dpsr_dequiv_stress_,
           state_quantity_derivatives_.curr_dequiv_stress_dC_, 0.0);
     }
     else if (parameter()->timint_type() == TimIntType::logarithmic)
     // logarithmic substepping
     {
       // calculate RHS of the equation for the plastic deformation gradient
-      rhs_iFin_V.update(-time_step_settings_.dt_, state_quantity_derivatives_.curr_dlpdC_, 0.0);
+      rhs_iFin_V.update(-time_step_tracker_.dt_, state_quantity_derivatives_.curr_dlpdC_, 0.0);
 
       // calculate RHS of the equation for the plastic strain
       rhs_epsp_V.update(
-          time_step_settings_.dt_ * state_quantity_derivatives_.curr_dpsr_dequiv_stress_,
+          time_step_tracker_.dt_ * state_quantity_derivatives_.curr_dpsr_dequiv_stress_,
           state_quantity_derivatives_.curr_dequiv_stress_dC_, 0.0);
     }
     else
@@ -3503,7 +3506,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // reset substep parameters
   substep_params_.reset();
   substep_params_.substep_counter_ = 1;
-  substep_params_.curr_dt_ = time_step_settings_.dt_;
+  substep_params_.curr_dt_ = time_step_tracker_.dt_;
   substep_params_.total_num_of_substeps_ = 1;
 
   // set reference matrices for interpolation
@@ -3533,7 +3536,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     if (parameter()->use_substepping())
     {
       curr_CM = tensor_interpolator_.get_interpolated_matrix(ref_matrices_, ref_locs_,
-          (substep_params_.t_ + substep_params_.curr_dt_) / time_step_settings_.dt_,
+          (substep_params_.t_ + substep_params_.curr_dt_) / time_step_tracker_.dt_,
           tensor_interp_err_status);
       if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
       {
@@ -3583,34 +3586,50 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           time_step_quantities_.last_substep_plastic_strain_[gp_], substep_params_.curr_dt_,
           err_status);
 
+      // based on the residual evaluation: communicate status and values
+      // to the LNL data tracker
+      if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
+      {
+        // LNL data: successful evaluation
+        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+            LocalIterationStatus::evaluation_successful, residualNorm2,
+            state_quantities_.curr_equiv_stress_, sol(9));
+      }
+      else
+      {
+        // LNL data: failed evaluation
+        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+            LocalIterationStatus::evaluation_failed, -1.0, state_quantities_.curr_equiv_stress_,
+            sol(9));
+      }
+
+
       // error management
       err_action = manage_evaluation_error(err_status, sol, curr_CM);
       if (err_action == ErrorAction::ReturnSolWithErrors)
       {
-        // append LNL data
-        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
-            LocalNewtonData::IterationStatus::final_error, -1.0, 0.0, 0.0);
+        // LNL data: nothing do be done anymore, final error
+        lnl_data_.set_iteration_data(substep_params_.iter_ - 1, LocalIterationStatus::final_error,
+            -1.0, state_quantities_.curr_equiv_stress_, sol(9));
+
+        // write the data of the failed LNL to csv
+        lnl_data_.write_failed_lnl_iteration_data_to_csv(
+            LocalNewtonData::FailedLnlData{.tnp = time_step_tracker_.tnp_,
+                .tn = time_step_tracker_.tnp_ - time_step_tracker_.dt_,
+                .element_gid = ele_gid_,
+                .gauss_point = gp_});
 
         // return bad solution
         return sol;
       }
       else if (err_action == ErrorAction::NextIter)
       {
-        // append LNL data
-        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
-            LocalNewtonData::IterationStatus::evaluation_failed, -1.0, 0.0, 0.0);
-
         // proceed with next iteration after performing adjustments due
         // to errors
         continue;
       }
       // 2-norm of the residual
       residualNorm2 = residual.norm2();
-
-      // append LNL data
-      lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
-          LocalNewtonData::IterationStatus::evaluation_successful, residualNorm2,
-          state_quantities_.curr_equiv_stress_, sol(9));
 
 
 #ifdef DEBUGVPLAST_TIMINT
@@ -3784,9 +3803,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #endif
 
   // append LNL data (for the successful last iteration)
-  lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
-      LocalNewtonData::IterationStatus::converged, residualNorm2,
-      state_quantities_.curr_equiv_stress_, sol(9));
+  lnl_data_.set_iteration_data(substep_params_.iter_ - 1, LocalIterationStatus::converged,
+      residualNorm2, state_quantities_.curr_equiv_stress_, sol(9));
 
 
   // return the obtained solution
@@ -3834,7 +3852,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::check_predictor(
 {
   // evaluate state with this elastic predictor and the minimum possible time step
   state_quantities_ = evaluate_state_quantities(CM, iFinM_pred, plastic_strain_pred, err_status,
-      time_step_settings_.min_dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+      time_step_tracker_.min_dt_, StateQuantityEvalType::PlasticStrainRateOnly);
 
   // check if the predicted plastic strain rate is 0 -> for flow rules with yield functions,
   // this means that the predictor is correct
@@ -3878,7 +3896,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_new_substep(
 
   // recompute the current right CG
   curr_CM = tensor_interpolator_.get_interpolated_matrix(
-      ref_matrices_, ref_locs_, (t + curr_dt) / time_step_settings_.dt_, tensor_interp_err_status);
+      ref_matrices_, ref_locs_, (t + curr_dt) / time_step_tracker_.dt_, tensor_interp_err_status);
   if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
   {
     std::cout << debug_get_error_info(Core::LinAlg::make_error_message(tensor_interp_err_status))
@@ -4069,7 +4087,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // check if the original predictor can be evaluated
     state_quantities_ = evaluate_state_quantities(CM,
         extract_inverse_inelastic_defgrad(original_pred), original_pred(9, 0), err_status,
-        time_step_settings_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+        time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
 
     // if the original predictor can be evaluated: return it
     if (err_status == ErrorType::NoErrors)
@@ -4153,7 +4171,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   // the interpolation factor $\xi$
   err_status = ErrorType::NoErrors;
   state_quantities_.curr_equiv_plastic_strain_rate_ = 0.0;
-  while (state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_settings_.dt_ <= 0.0 ||
+  while (state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_ <= 0.0 ||
          err_status != ErrorType::NoErrors)
   {
     ++pred_adapt_step_counter;
@@ -4191,7 +4209,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       // check if the original predictor can be evaluated
       state_quantities_ = evaluate_state_quantities(CM,
           extract_inverse_inelastic_defgrad(original_pred), original_pred(9, 0), err_status,
-          time_step_settings_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+          time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
 
       // if the original predictor can be evaluated: return it
       if (err_status == ErrorType::NoErrors)
@@ -4282,7 +4300,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
     // evaluate the current state with the adapted predictor
     state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, original_pred(9), err_status,
-        time_step_settings_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+        time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
 
 #ifdef DEBUGVPLAST_TIMINT
     if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4312,7 +4330,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // surface -> we stop the evaluation of the current state and
     // directly proceed to adapt the lower bound of the interpolation
     // factor
-    if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_settings_.dt_) <=
+    if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_) <=
         zero_tol)
     {
       err_status = ErrorType::UnderYieldSurface;
@@ -4325,15 +4343,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
         std::cout << "ps_incr (orig. plastic strain " << original_pred(9) << " ):  "
-                  << std::to_string(time_step_settings_.dt_ *
-                                    state_quantities_.curr_equiv_plastic_strain_rate_)
+                  << std::to_string(
+                         time_step_tracker_.dt_ * state_quantities_.curr_equiv_plastic_strain_rate_)
                   << std::endl;
       }
 #endif
 
       state_quantity_derivatives_ =
           evaluate_state_quantity_derivatives(CM, iFin_adapt_pred, original_pred(9), err_status,
-              time_step_settings_.dt_, StateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
+              time_step_tracker_.dt_, StateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
     }
 
 
@@ -4342,7 +4360,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     if (err_status == ErrorType::NoErrors)
     {
       plastic_strain_adapt_pred = integrate_plastic_strain(state_quantities_.curr_equiv_stress_,
-          time_step_quantities_.last_plastic_strain_[gp_], time_step_settings_.dt_, err_status);
+          time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
     }
 
     // reevaluate the current state with the adapted predictor
@@ -4352,20 +4370,20 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
       {
         std::cout << "ps_incr (integr. plastic strain " << plastic_strain_adapt_pred << "):  "
-                  << std::to_string(time_step_settings_.dt_ *
-                                    state_quantities_.curr_equiv_plastic_strain_rate_)
+                  << std::to_string(
+                         time_step_tracker_.dt_ * state_quantities_.curr_equiv_plastic_strain_rate_)
                   << std::endl;
       }
 #endif
 
       state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, plastic_strain_adapt_pred,
-          err_status, time_step_settings_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+          err_status, time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
       // compute plastic strain rate: if 0.0 for
       // the current plasticity state, then we are "under" the yield
       // surface -> we stop the evaluation of the current state and
       // directly proceed to adapt the lower bound of the interpolation
       // factor
-      if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_settings_.dt_) <=
+      if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_) <=
           zero_tol)
       {
         err_status = ErrorType::UnderYieldSurface;
@@ -4376,7 +4394,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     if (err_status == ErrorType::NoErrors)
     {
       state_quantity_derivatives_ = evaluate_state_quantity_derivatives(CM, iFin_adapt_pred,
-          plastic_strain_adapt_pred, err_status, time_step_settings_.dt_,
+          plastic_strain_adapt_pred, err_status, time_step_tracker_.dt_,
           StateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
     }
 
@@ -4567,7 +4585,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
     // compute the residual associated with the upper bound
     next_res = calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp_],
         next_sol, time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
-        time_step_quantities_.last_plastic_strain_[gp_], time_step_settings_.dt_, err_status);
+        time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
 #ifdef DEBUGVPLAST_TIMINT
     if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
     {
@@ -4614,7 +4632,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
 
         next_res = calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp_],
             next_sol, time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
-            time_step_quantities_.last_plastic_strain_[gp_], time_step_settings_.dt_, err_status);
+            time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
         if (err_status == ErrorType::NoErrors)
         {
           next_res_norm = next_res.norm2();
@@ -4956,7 +4974,7 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
   extended_error_string += "OTHER VALUES: \n";
   extended_error_string += "dt: \n";
   extended_error_string += "Double<1,1> \n";
-  temp_ostream << time_step_settings_.dt_ << std::endl;
+  temp_ostream << time_step_tracker_.dt_ << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
   extended_error_string += std::string(10, '.');
@@ -5047,7 +5065,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-        ++gp)
+         ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -5067,7 +5085,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "equiv_stress_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-        ++gp)
+         ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -5079,11 +5097,11 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "iter_status_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-        ++gp)
+         ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = LocalNewtonData::iteration_status_enum_to_double(lnl_data_.iter_status_[it]);
+        data(gp, it) = iteration_status_enum_to_double(lnl_data_.iter_status_[it]);
       }
     }
     return true;
@@ -5091,7 +5109,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "residual_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-        ++gp)
+         ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -5145,6 +5163,9 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     return true;
   }
 
+  // update tracker index for global iteration (output every iteration)
+  // or for the time step
+  ++lnl_data_.globiter_or_timestep_index_;
 
   return viscoplastic_law_->evaluate_output_data(name, data);
 }
@@ -5349,7 +5370,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   // inverse inelastic defgrad
   StateQuantities optimal_state_quantities =
       evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp], optimal_iFin, 1.0e8,
-          eval_err_type, time_step_settings_.dt_,
+          eval_err_type, time_step_tracker_.dt_,
           StateQuantityEvalType::PlasticStrainRateOnly);  // we use a large value for the
                                                           // plastic strain to make the plastic
                                                           // strain rate evaluable
@@ -5363,7 +5384,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   // this optimal inverse inelastic defgrad
   double optimal_plastic_strain =
       integrate_plastic_strain(optimal_state_quantities.curr_equiv_stress_,
-          time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, eval_err_type);
+          time_step_quantities_.last_plastic_strain_[0], time_step_tracker_.dt_, eval_err_type);
   FOUR_C_ASSERT_ALWAYS(
       eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
       "Consistency check for the optimal interpolation factor: computation of consistent "
@@ -5377,7 +5398,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   Core::LinAlg::Matrix<10, 1> optimal_res =
       calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp], optimal_sol,
           time_step_quantities_.last_plastic_defgrd_inverse_[0],
-          time_step_quantities_.last_plastic_strain_[0], time_step_settings_.dt_, eval_err_type);
+          time_step_quantities_.last_plastic_strain_[0], time_step_tracker_.dt_, eval_err_type);
   FOUR_C_ASSERT_ALWAYS(
       eval_err_type == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors,
       "Consistency check for the optimal interpolation factor: residual computation failed!");
