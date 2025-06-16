@@ -4879,8 +4879,8 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     timint_analysis_utils.write_to_csv();
   }
 
-  std::cout << debug_get_error_info(Mat::to_string(err_status)) << std::endl;
-  FOUR_C_THROW("See above");
+  // return with errors if none of the error management strategies apply
+  return ErrorAction::ReturnSolWithErrors;
 }
 
 /*--------------------------------------------------------------------*
