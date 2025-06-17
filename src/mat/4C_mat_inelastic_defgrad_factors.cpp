@@ -3122,6 +3122,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   // call setup method of the predictor interpolation factors
   pred_interp_factors_.setup(numgp);
 
+  // setup the Local Newton data tracker with the correct number
+  // of Gauss points
+  lnl_data_.set_num_of_gp(numgp);
+
   // read fiber and structural tensor in the case of transverse isotropy
   if (parameter()->mat_behavior() == MatBehavior::transv_isotrop)
   {
@@ -3218,6 +3222,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::unpack_inelastic(
   time_step_quantities_.current_defgrad_.resize(
       time_step_quantities_.last_substep_plastic_defgrd_inverse_.size(),
       Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero});
+
+
+  // set number of Gauss points for the Local Newton data tracker
+  lnl_data_.set_num_of_gp(time_step_quantities_.last_plastic_strain_.size());
 
   // now that the fiber direction is available, we set the material-dependent constant tensors
   // with it
@@ -3476,7 +3484,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   Core::LinAlg::Matrix<10, 1> temp10x1(Core::LinAlg::Initialization::zero);
 
   // reset all iteration data of the LNL -> we track it in this method afterwards
-  lnl_data_.reset_all_iteration_data();
+  lnl_data_.reset_all_iteration_data(gp_);
 
   // calculate right Cauchy-Green deformation tensor
   Core::LinAlg::Matrix<3, 3> CM(Core::LinAlg::Initialization::zero);
@@ -3583,19 +3591,30 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           time_step_quantities_.last_substep_plastic_strain_[gp_], substep_params_.curr_dt_,
           err_status);
 
+#ifdef DEBUGVPLAST_TIMINT
+      if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+      {
+        std::cout << "-> after residual computation: stress: "
+                  << state_quantities_.curr_equiv_stress_ << " / plastic strain" << sol(9)
+                  << std::endl;
+      }
+#endif
+
+
+
       // based on the residual evaluation: communicate status and values
       // to the LNL data tracker
       if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
       {
         // LNL data: successful evaluation
-        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+        lnl_data_.set_iteration_data(gp_, substep_params_.iter_ - 1,
             LocalIterationStatus::evaluation_successful, residualNorm2,
             state_quantities_.curr_equiv_stress_, sol(9));
       }
       else
       {
         // LNL data: failed evaluation
-        lnl_data_.set_iteration_data(substep_params_.iter_ - 1,
+        lnl_data_.set_iteration_data(gp_, substep_params_.iter_ - 1,
             LocalIterationStatus::evaluation_failed, -1.0, state_quantities_.curr_equiv_stress_,
             sol(9));
       }
@@ -3606,8 +3625,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       if (err_action == ErrorAction::ReturnSolWithErrors)
       {
         // LNL data: nothing do be done anymore, final error
-        lnl_data_.set_iteration_data(substep_params_.iter_ - 1, LocalIterationStatus::final_error,
-            -1.0, state_quantities_.curr_equiv_stress_, sol(9));
+        lnl_data_.set_iteration_data(gp_, substep_params_.iter_ - 1,
+            LocalIterationStatus::final_error, -1.0, state_quantities_.curr_equiv_stress_, sol(9));
 
         // write the data of the failed LNL to csv
         lnl_data_.write_failed_lnl_iteration_data_to_csv(
@@ -3800,7 +3819,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 #endif
 
   // append LNL data (for the successful last iteration)
-  lnl_data_.set_iteration_data(substep_params_.iter_ - 1, LocalIterationStatus::converged,
+  lnl_data_.set_iteration_data(gp_, substep_params_.iter_ - 1, LocalIterationStatus::converged,
       residualNorm2, state_quantities_.curr_equiv_stress_, sol(9));
 
 
@@ -5035,6 +5054,13 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   // auxiliaries
   Core::LinAlg::Matrix<9, 1> temp9x1{Core::LinAlg::Initialization::zero};
 
+#ifdef DEBUGVPLAST_TIMINT
+  std::cout << "Called evaluate output data: " << std::endl;
+  std::cout << "equiv_stress for gp = 0 / iter 0: " << lnl_data_.equiv_stress_[0][0] << std::endl;
+  std::cout << "equiv_stress for gp = 1 / iter 0: " << lnl_data_.equiv_stress_[1][0] << std::endl;
+#endif
+
+
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
@@ -5066,7 +5092,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = lnl_data_.plastic_strain_[it];
+        data(gp, it) = lnl_data_.plastic_strain_[gp][it];
       }
     }
     return true;
@@ -5086,7 +5112,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = lnl_data_.equiv_stress_[it];
+        data(gp, it) = lnl_data_.equiv_stress_[gp][it];
       }
     }
     return true;
@@ -5098,7 +5124,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = iteration_status_enum_to_double(lnl_data_.iter_status_[it]);
+        data(gp, it) = iteration_status_enum_to_double(lnl_data_.iter_status_[gp][it]);
       }
     }
     return true;
@@ -5110,7 +5136,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = lnl_data_.residual_[it];
+        data(gp, it) = lnl_data_.residual_[gp][it];
       }
     }
     return true;
