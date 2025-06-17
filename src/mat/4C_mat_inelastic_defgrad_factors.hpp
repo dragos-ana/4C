@@ -1900,7 +1900,17 @@ namespace Mat
       //! constructor of data
       LocalNewtonData()
       {
-        reset_all_iteration_data();
+        // set number of Gauss points to 1 temporarily, since we don't
+        // know it at this point in time
+        residual_.resize(1);
+        equiv_stress_.resize(1);
+        plastic_strain_.resize(1);
+        iter_status_.resize(1);
+
+        // reset the values (set initial 0-values to all arrays above)
+        reset_all_iteration_data(0);
+
+        // initialize global iteration / timestep index tracker
         globiter_or_timestep_index_ = 0;
       };
 
@@ -1916,35 +1926,52 @@ namespace Mat
       unsigned int globiter_or_timestep_index_;
 
       //! success status of the iteration (can it even evaluate the
-      //! residual?)
-      std::array<LocalIterationStatus, max_iter_> iter_status_;
+      //! residual?); vector of GP values
+      std::vector<std::array<LocalIterationStatus, max_iter_>> iter_status_;
 
-      //! all iteration values of the LNL residual
-      std::array<double, max_iter_> residual_;
+      //! all iteration values of the LNL residual; vector of GP values
+      std::vector<std::array<double, max_iter_>> residual_;
 
-      //! all iteration values of the equivalent stress
-      std::array<double, max_iter_> equiv_stress_;
+      //! all iteration values of the equivalent stress; vector of GP values
+      std::vector<std::array<double, max_iter_>> equiv_stress_;
 
-      //! all iteration values of the plastic strain
-      std::array<double, max_iter_> plastic_strain_;
+      //! all iteration values of the plastic strain; vector of GP values
+      std::vector<std::array<double, max_iter_>> plastic_strain_;
 
-      //! reset all arrays holding values for all iterations
-      void reset_all_iteration_data()
+      //! resize all relevant vectors based on the number of Gauss
+      //! points known only after setting up the problem -> each vector
+      //! item gets the same values for now
+      void set_num_of_gp(const unsigned int num_of_gp)
       {
-        residual_.fill(-1.0);
-        equiv_stress_.fill(-1.0);
-        plastic_strain_.fill(-1.0);
-        iter_status_.fill(LocalIterationStatus::not_evaluated);
+        residual_.resize(num_of_gp, residual_[0]);
+        equiv_stress_.resize(num_of_gp, equiv_stress_[0]);
+        plastic_strain_.resize(num_of_gp, plastic_strain_[0]);
+        iter_status_.resize(num_of_gp, iter_status_[0]);
       }
 
-      //! set data for a given iteration iter
-      void set_iteration_data(const unsigned int iter, const LocalIterationStatus iter_status,
-          const double residual, const double equiv_stress, const double plastic_strain)
+      //! reset all arrays holding values for all iterations (for a
+      //! given Gauss point)
+      void reset_all_iteration_data(const unsigned int gp)
       {
-        residual_[iter] = residual;
-        iter_status_[iter] = iter_status;
-        equiv_stress_[iter] = equiv_stress;
-        plastic_strain_[iter] = plastic_strain;
+        residual_[gp].fill(-1.0);
+        equiv_stress_[gp].fill(-1.0);
+        plastic_strain_[gp].fill(-1.0);
+        iter_status_[gp].fill(LocalIterationStatus::not_evaluated);
+      }
+
+      // maybe we need some pack and unpack methods perspectively? If
+      // this is to be used consistently in the future...-> would mainly
+      // concern the global iteration / time step tracker, but nothing else.
+
+      //! set data for a given iteration iter
+      void set_iteration_data(const unsigned gp, const unsigned int iter,
+          const LocalIterationStatus iter_status, const double residual, const double equiv_stress,
+          const double plastic_strain)
+      {
+        residual_[gp][iter] = residual;
+        iter_status_[gp][iter] = iter_status;
+        equiv_stress_[gp][iter] = equiv_stress;
+        plastic_strain_[gp][iter] = plastic_strain;
       }
 
       //! storage for relevant iteration data when the LNL fails -> serves as
@@ -2004,13 +2031,14 @@ namespace Mat
           output_data["element_gid"] = {static_cast<double>(data.element_gid)};
           output_data["gauss_point"] = {static_cast<double>(data.gauss_point)};
           output_data["residual_LNL_gp_" + std::to_string((data.gauss_point))] = {
-              static_cast<double>(residual_[iter])};
+              static_cast<double>(residual_[data.gauss_point][iter])};
           output_data["iter_status_LNL_gp_" + std::to_string((data.gauss_point))] = {
-              static_cast<double>(iteration_status_enum_to_double(iter_status_[iter]))};
+              static_cast<double>(
+                  iteration_status_enum_to_double(iter_status_[data.gauss_point][iter]))};
           output_data["equiv_stress_LNL_gp_" + std::to_string((data.gauss_point))] = {
-              static_cast<double>(equiv_stress_[iter])};
+              static_cast<double>(equiv_stress_[data.gauss_point][iter])};
           output_data["plastic_strain_LNL_gp_" + std::to_string((data.gauss_point))] = {
-              static_cast<double>(plastic_strain_[iter])};
+              static_cast<double>(plastic_strain_[data.gauss_point][iter])};
 
           // write output data to csv
           csv_writer.write_data_to_file(data.tnp, iter, output_data);
