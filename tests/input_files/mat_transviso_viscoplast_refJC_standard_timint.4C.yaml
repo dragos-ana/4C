@@ -55,7 +55,7 @@ MATERIALS:
       YIELD_COND_F: 2.5
       MAT_BEHAVIOR: transv_isotrop
       TIME_INTEGRATION_HIST_VARS: standard
-      MAX_HALVE_NUM_SUBSTEP: 1
+      MAX_SUBSTEPPING_HALVE_NUM: 1
   - MAT: 4
     MAT_ViscoplasticLawReformulatedJohnsonCook:
       STRAIN_RATE_PREFAC: 1

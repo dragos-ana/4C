@@ -658,7 +658,9 @@ namespace Mat
     /// plastic strain rate,...)
     enum class StateQuantityEvalType
     {
-      FullEval,  ///< full evaluation (full call of the evaluate_state_quantities method)
+      FullEval,         ///< full evaluation (full call of the evaluate_state_quantities method)
+      EquivStressOnly,  ///< return in evaluate_state_quantities once the equivalent stress
+                        ///< has been evaluated
       PlasticStrainRateOnly,  ///< return in evaluate_state_quantities once the plastic strain rate
                               ///< has been evaluated
     };

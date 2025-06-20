@@ -16,6 +16,7 @@
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_four_tensor_generators.hpp"
 #include "4C_linalg_utils_densematrix_funct.hpp"
+#include "4C_linalg_utils_scalar_interpolation.hpp"
 #include "4C_linalg_utils_tensor_interpolation.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_elasthyper_service.hpp"
@@ -552,6 +553,15 @@ namespace
     return true;
   }
 
+  // utility to convert a double to a 1x1 matrix; currently required for
+  // the scalar interpolator-> could be removed and replaced by an
+  // overloaded method within the scalar interpolator
+  Core::LinAlg::Matrix<1, 1> create_1x1_matrix_from_double(const double factor)
+  {
+    Core::LinAlg::Matrix<1, 1> output{Core::LinAlg::Initialization::zero};
+    output(0) = factor;
+    return output;
+  }
 
 
 // DEBUG utils (InelasticDefgradTransvIsotropElastViscoplast)
@@ -785,7 +795,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD"))
 {
-  if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
+  if (max_substepping_halve_num_ < 0)
+    FOUR_C_THROW("Parameter MAX_SUBSTEPPING_HALVE_NUM must be >= 0!");
 }
 
 
@@ -2066,6 +2077,13 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     err_status = ErrorType::OverflowError;
     return state_quantities;
   }
+
+  if (eval_type == StateQuantityEvalType::EquivStressOnly)
+  {
+    return state_quantities;
+  }
+
+
 
   // calculate equivalent plastic strain rate using the viscoplastic law
   state_quantities.curr_equiv_plastic_strain_rate_ =
@@ -4158,16 +4176,67 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   }
 
   // get inverse plastic defgrad from the almost plastic predictor
-  Core::LinAlg::Matrix<3, 3> almost_plastic_pred_iFinM =
+  const Core::LinAlg::Matrix<3, 3> almost_plastic_pred_iFinM =
       get_almost_plastic_pred_defgrad(FM, time_step_quantities_.last_defgrad_[gp_],
           time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
           time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp_],
           time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp_]);
 
-  // initialize reference matrices and locations for the interpolation
+#ifdef DEBUGVPLAST_TIMINT
+
+  if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+  {
+    std::cout << "almost_plastic_pred_iFinM" << std::endl;
+    almost_plastic_pred_iFinM.print(std::cout);
+  }
+#endif
+
+  // evaluate stress resulting from the almost plastic predictor (the
+  // input plastic strain is irrelevant, as we return directly after
+  // evaluating the stress)
+  state_quantities_ = evaluate_state_quantities(CM, almost_plastic_pred_iFinM, 0.0, err_status,
+      time_step_tracker_.dt_, StateQuantityEvalType::EquivStressOnly);
+
+  // assert whether there was an error while evaluating the stress: we
+  // currently don't have a strategy to deal with this, so we throw an
+  // error
+  if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
+  {
+    std::cout
+        << debug_get_error_info(
+               "While trying to evaluate the equivalent stress of the almost plastic predictor: " +
+               std::string(EnumTools::enum_name(err_status)))
+        << std::endl;
+    FOUR_C_THROW("See above");
+  }
+
+  // calculate consistent plastic strain for the almost plastic
+  // predictor
+  const double almost_plastic_pred_plastic_strain =
+      integrate_plastic_strain(state_quantities_.curr_equiv_stress_,
+          time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
+
+  // initialize reference matrices and locations for the tensor
+  // interpolation of the plastic deformation gradients
   std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
       time_step_quantities_.last_plastic_defgrd_inverse_[gp_], almost_plastic_pred_iFinM};
   std::vector<double> ref_locs{0.0, 1.0};
+
+  // initialize reference scalars for the scalar
+  // interpolation of the plastic strain (the locations are the same as
+  // for the tensor interpolation of the plastic deformation gradients)
+  std::vector<std::vector<double>> ref_scalars;
+  std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs_as_matrices{
+      create_1x1_matrix_from_double(0.0), create_1x1_matrix_from_double(1.0)};
+  ref_scalars.push_back({original_pred(9)});
+  ref_scalars.push_back({almost_plastic_pred_plastic_strain});
+
+  // declare interpolation location as matrix and the interpolated
+  // plastic strain as a vector with a single scalar -> required for
+  // the scalar interpolator
+  Core::LinAlg::Matrix<1, 1> current_xi_as_matrix{Core::LinAlg::Initialization::zero};
+  std::vector<double> plastic_strain_adapt_as_vector{0.0};
+
 
 #ifdef DEBUGVPLAST_TIMINT
   if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4189,6 +4258,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   // declare tensor interpolator error status
   Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType tensor_interp_err_status{
       Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors};
+
+  // define scalar interpolator for the plastic strain interpolation
+  Core::LinAlg::ScalarInterpolation::WeightingFunction weight_func =
+      Core::LinAlg::ScalarInterpolation::WeightingFunction::exponential;
+  Core::LinAlg::ScalarInterpolation::InterpParams scalar_interp_params;
+  scalar_interp_params.distance_threshold = 1e-12;
+  scalar_interp_params.exponential_decay_c = 20.0;
+  Core::LinAlg::ScalarInterpolation::ScalarInterpolator<1> scalar_interpolator(
+      Core::LinAlg::ScalarInterpolation::ScalarInterpolationType::logarithmic_weighted_average,
+      weight_func, scalar_interp_params);
 
   // reset the error status to no errors and set the current equivalent
   // plastic strain rate to 0.0, and start the procedure of determining
@@ -4222,8 +4301,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     eval_elastic_pred = check_original_pred && (parameter()->use_last_pred_adapt_fact()) &&
                         ((pred_adapt_step_counter == 2) ||
                             (std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
-
-
     // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
     // evaluated already with xi = 0.0)
     if (eval_elastic_pred)
@@ -4307,6 +4384,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
                   << std::endl;
         FOUR_C_THROW("See above");
       }
+
+      // interpolate predictor of the plastic strain
+      current_xi_as_matrix = create_1x1_matrix_from_double(pred_interp_factors_.current_xi_[gp_]);
+      plastic_strain_adapt_as_vector = scalar_interpolator.get_interpolated_scalar(
+          ref_scalars, ref_locs_as_matrices, current_xi_as_matrix);
+      plastic_strain_adapt_pred = plastic_strain_adapt_as_vector[0];
     }
 #ifdef DEBUGVPLAST_TIMINT
     if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4324,8 +4407,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 #endif
 
     // evaluate the current state with the adapted predictor
-    state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, original_pred(9), err_status,
-        time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+    state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, plastic_strain_adapt_pred,
+        err_status, time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
 
 #ifdef DEBUGVPLAST_TIMINT
     if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4374,58 +4457,13 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       }
 #endif
 
-      state_quantity_derivatives_ =
-          evaluate_state_quantity_derivatives(CM, iFin_adapt_pred, original_pred(9), err_status,
-              time_step_tracker_.dt_, StateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
-    }
-
-
-    // solve for the updated plastic strain (integrate evolution
-    // equation with the adapted plastic deformation gradient)
-    if (err_status == ErrorType::NoErrors)
-    {
-      plastic_strain_adapt_pred = integrate_plastic_strain(state_quantities_.curr_equiv_stress_,
-          time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
-    }
-
-    // reevaluate the current state with the adapted predictor
-    if (err_status == ErrorType::NoErrors)
-    {
-#ifdef DEBUGVPLAST_TIMINT
-      if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
-      {
-        std::cout << "ps_incr (integr. plastic strain " << plastic_strain_adapt_pred << "):  "
-                  << std::to_string(
-                         time_step_tracker_.dt_ * state_quantities_.curr_equiv_plastic_strain_rate_)
-                  << std::endl;
-      }
-#endif
-
-      state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, plastic_strain_adapt_pred,
-          err_status, time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
-      // compute plastic strain rate: if 0.0 for
-      // the current plasticity state, then we are "under" the yield
-      // surface -> we stop the evaluation of the current state and
-      // directly proceed to adapt the lower bound of the interpolation
-      // factor
-      if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_) <=
-          zero_tol)
-      {
-        err_status = ErrorType::UnderYieldSurface;
-      }
-    }
-
-    // reevaluate the plastic strain rate derivatives
-    if (err_status == ErrorType::NoErrors)
-    {
       state_quantity_derivatives_ = evaluate_state_quantity_derivatives(CM, iFin_adapt_pred,
           plastic_strain_adapt_pred, err_status, time_step_tracker_.dt_,
           StateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
     }
 
 
-    // if there was an evaluation error: set \f$ \xi_{\text{curr}}
-    // \leftarrow  \xi_{\text{curr}} \xi_{\text{user}}\f$
+    // adapt interpolation bounds in case of an error
     if (err_status != ErrorType::NoErrors)
     {
       if (err_status ==
