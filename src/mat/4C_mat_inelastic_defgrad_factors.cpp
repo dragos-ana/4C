@@ -22,6 +22,7 @@
 #include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_linalg_utils_scalar_interpolation.hpp"
 #include "4C_linalg_utils_tensor_interpolation.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_electrode.hpp"
@@ -773,6 +774,7 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
       use_pred_adapt_(matdata.parameters.get<bool>("USE_PRED_ADAPT")),
       use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
+      use_optimal_pred_adapt_fact_(matdata.parameters.get<bool>("USE_OPTIMAL_PRED_ADAPT_FACT")),
       use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
       use_substepping_(matdata.parameters.get<bool>("USE_SUBSTEPPING")),
       analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
@@ -790,7 +792,10 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD"))
 {
+  // consistency checks
   if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
+  if (use_last_pred_adapt_fact_ && use_optimal_pred_adapt_fact_)
+    FOUR_C_THROW("Cannot use both the last predictor adaptation factor and the optimal one!");
 }
 
 
@@ -1886,6 +1891,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     {
       pred_interp_factors_.current_xi_[gp_] = pred_interp_factors_.last_xi_[gp_];
     }
+    else if (parameter()->use_optimal_pred_adapt_fact())
+    {
+      pred_interp_factors_.current_xi_[gp_] = pred_interp_factors_.optimal_xi_[gp_];
+    }
     // otherwise set by default to 0.0 (=elastic predictor)
     else
     {
@@ -1893,7 +1902,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     }
 
     pred_interp_factors_.current_max_xi_[gp_] = 0.0;
-    pred_interp_factors_.current_optimal_xi_ = 0.0;
   }
 
   // preevaluate predictor adaptation factors
@@ -2832,6 +2840,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     std::cout << pred_interp_factors_.last_xi_[gp_] << std::endl;
     std::cout << "last_max_xi: " << std::endl;
     std::cout << pred_interp_factors_.last_max_xi_[gp_] << std::endl;
+    std::cout << "optimal_xi: " << std::endl;
+    std::cout << pred_interp_factors_.optimal_xi_[gp_] << std::endl;
     std::cout << "current_xi: " << std::endl;
     std::cout << pred_interp_factors_.current_xi_[gp_] << std::endl;
     std::cout << "current_max_xi: " << std::endl;
@@ -3014,8 +3024,24 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     std::cout << "update: current_max_xi[" << 0 << "]: " << pred_interp_factors_.current_max_xi_[0]
               << std::endl;
   }
-
 #endif
+
+  // initialize inverse material stretch tensor (of the inverse
+  // inelastic defgrad) used below for updating the last values
+  Core::LinAlg::Matrix<3, 3> inv_mat_stretch{Core::LinAlg::Initialization::zero};
+
+  // initialize optimal predictor interpolation factors for all Gauss
+  // points
+  std::vector<double> optimal_xi_at_all_gp{};
+
+  // loop over Gauss points: compute the optimal predictor interpolation factors for each gp
+  for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
+  {
+    if (parameter()->use_optimal_pred_adapt_fact())
+    {
+      optimal_xi_at_all_gp.push_back(compute_optimal_pred_interp_factor(gp));
+    }
+  }
 
   // timint analysis: get interpolation factors: from predictor
   // adaptation and optimal (1D)
@@ -3030,8 +3056,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       // obtained from the predictor adaptation and the optimal one)
       timint_analysis_utils.curr_pred_interp_factor_ = pred_interp_factors_.current_xi_[0];
       timint_analysis_utils.curr_max_pred_interp_factor_ = pred_interp_factors_.current_max_xi_[0];
-      timint_analysis_utils.optimal_pred_interp_factor_ = compute_optimal_pred_interp_factor(0);
-
+      if (parameter()->use_optimal_pred_adapt_fact())
+      {
+        timint_analysis_utils.optimal_pred_interp_factor_ =
+            optimal_xi_at_all_gp[0];  // only for the 0-th Gauss point in the time integration
+                                      // analysis
+      }
+      else
+      {
+        timint_analysis_utils.optimal_pred_interp_factor_ = compute_optimal_pred_interp_factor(0);
+      }
       // timint analysis: update_total_values
       timint_analysis_utils.update_total();
       // timint analysis: write data to csv
@@ -3047,6 +3081,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     }
   }
 
+  // loop over Gauss points:  update of the material stretch and the rotation of
+  // the inverse inelastic defgrad (last_ values are updated, but we
+  // use the current_ values since they were not updated yet)
+  for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
+  {
+    time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp] =
+        Core::LinAlg::matrix_3x3_material_stretch(
+            time_step_quantities_.current_plastic_defgrd_inverse_[gp]);
+    inv_mat_stretch.invert(time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp]);
+    time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp].multiply_nn(
+        1.0, time_step_quantities_.current_plastic_defgrd_inverse_[gp], inv_mat_stretch, 0.0);
+  }
+
+
   // update history variables for the next time step
   time_step_quantities_.last_rightCG_ = time_step_quantities_.current_rightCG_;
   time_step_quantities_.last_plastic_defgrd_inverse_ =
@@ -3054,24 +3102,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   time_step_quantities_.last_plastic_strain_ = time_step_quantities_.current_plastic_strain_;
   time_step_quantities_.last_defgrad_ = time_step_quantities_.current_defgrad_;
 
-  // update of the material stretch and the rotation of
-  // the inverse inelastic defgrad
-  Core::LinAlg::Matrix<3, 3> inv_mat_stretch{Core::LinAlg::Initialization::zero};
-  for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
-  {
-    time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp] =
-        Core::LinAlg::matrix_3x3_material_stretch(
-            time_step_quantities_.last_plastic_defgrd_inverse_[gp]);
-    inv_mat_stretch.invert(time_step_quantities_.last_plastic_defgrd_inverse_matstretch_[gp]);
-    time_step_quantities_.last_plastic_defgrd_inverse_rot_[gp].multiply_nn(
-        1.0, time_step_quantities_.last_plastic_defgrd_inverse_[gp], inv_mat_stretch, 0.0);
-  }
-
   // call update method of the viscoplastic law
   viscoplastic_law_->update();
 
   // call update method of the predictor interpolation factors
-  pred_interp_factors_.update();
+  pred_interp_factors_.update(parameter()->use_optimal_pred_adapt_fact(), optimal_xi_at_all_gp);
 }
 
 
@@ -4073,6 +4108,10 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   }
 #endif
 
+  // check if we use any performance boosting strategy for the algorithm
+  bool use_performance_boosting_strategy = false;
+  if (parameter()->use_last_pred_adapt_fact() || parameter()->use_optimal_pred_adapt_fact())
+    use_performance_boosting_strategy = true;
 
   // declare error status and set to no errors
   ErrorType err_status{ErrorType::NoErrors};
@@ -4083,14 +4122,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   double plastic_strain_adapt_pred{0.0};
 
   // boolean: check if we need to evaluate the elastic predictor
-  //          --> 1). If we don't use the last predictor interpolation
+  //          --> 1). If we don't use the last/optimal predictor interpolation
   //          factor, then we need to check this directly before
   //          computing the other predictor extremum and interpolating
   //          -> HERE
   //           --> 2). If we use the last predictor interpolation
   //          factor, then we check that value first and only then the
   //          elastic predictor -> SEE BELOW
-  bool eval_elastic_pred = check_original_pred && (!parameter()->use_last_pred_adapt_fact());
+  bool eval_elastic_pred = check_original_pred && (!use_performance_boosting_strategy);
   if (eval_elastic_pred)
   {
 #ifdef DEBUGVPLAST_TIMINT
@@ -4214,7 +4253,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     //               --> 2). If we use the last predictor interpolation
     //          factor, then we check that value first and only then the
     //          elastic predictor -> HERE
-    eval_elastic_pred = check_original_pred && (parameter()->use_last_pred_adapt_fact()) &&
+    eval_elastic_pred = check_original_pred && (use_performance_boosting_strategy) &&
                         ((pred_adapt_step_counter == 2) ||
                             (std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
 
@@ -4972,6 +5011,9 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
   extended_error_string += "last_max_xi (predictor adaptation): \n";
   extended_error_string += "Double<1,1> \n";
   temp_ostream << pred_interp_factors_.last_max_xi_[gp_] << std::endl;
+  extended_error_string += "optimal_xi (predictor adaptation): \n";
+  extended_error_string += "Double<1,1> \n";
+  temp_ostream << pred_interp_factors_.optimal_xi_[gp_] << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
   extended_error_string += std::string(10, '.') + "\n";
@@ -5007,7 +5049,8 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantities(const int gp,
     const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
     const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
-    const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi, const double last_max_xi)
+    const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi, const double last_max_xi,
+    const double optimal_xi)
 {
   time_step_quantities_.last_plastic_defgrd_inverse_[gp] = last_plastic_defgrad_inverse;
   time_step_quantities_.last_substep_plastic_defgrd_inverse_[gp] = last_plastic_defgrad_inverse;
@@ -5017,6 +5060,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantitie
   time_step_quantities_.last_rightCG_[gp] = last_rightCG;
   pred_interp_factors_.last_xi_[gp] = last_xi;
   pred_interp_factors_.last_max_xi_[gp] = last_max_xi;
+  pred_interp_factors_.optimal_xi_[gp] = optimal_xi;
 
   // compute the material stretch and the rotation tensor for the
   // inverse inelastic defgrad
