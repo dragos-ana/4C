@@ -2815,8 +2815,15 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "predictor adaptation "
                                 "of the "
                                 "previous time step at each GP to boost the predictor adaptation? "
-                                "(default: e)",
+                                "(default: true)",
                     .default_value = true}),
+            parameter<bool>("USE_OPTIMAL_PRED_ADAPT_FACT",
+                {.description = "utilize the optimal predictor adaptation/interpolation factor, "
+                                "determined after each converged time step at each GP; this factor "
+                                "is determined using a Newton-Raphson loop such that the solution "
+                                "of the previous/last Local Newton Loop at the GP is obtained; "
+                                "experimental, therefore the default value is false.",
+                    .default_value = false}),
             parameter<bool>("ANALYZE_TIMINT",
                 {.description = "boolean: analyze the time integration scheme in regards "
                                 "to the implemented features "
@@ -2825,6 +2832,7 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "number of iterations, number of substeps, ...) to a csv "
                                 "file? If true: yes, false: no",
                     .default_value = false}),
+
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType>(
                 "LINEARIZATION",
                 {.description =

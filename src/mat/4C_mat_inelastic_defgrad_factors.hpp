@@ -334,8 +334,18 @@ namespace Mat
       //! Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_pred_adapt() const { return use_pred_adapt_; };
       //! get boolean: use the predictor interpolation factor from the predictor adaptation
-      //! performed in the previous step at each GP to boost the performance? (true: yes, false: no)
+      //! performed in the previous step at each GP to boost the
+      //! performance of the predictor adaptation? (true: yes, false: no)
       [[nodiscard]] bool use_last_pred_adapt_fact() const { return use_last_pred_adapt_fact_; };
+      //! get boolean: use the optimal predictor interpolation factor
+      //! determined after the previous timestep (which gives the solution
+      //! of the previous LNL) to boost the performance of the predictor
+      //! adaptation?
+      //! (true: yes, false: no)
+      [[nodiscard]] bool use_optimal_pred_adapt_fact() const
+      {
+        return use_optimal_pred_adapt_fact_;
+      };
       //! get boolean: use line search to avoid negative plastic strains
       //! in the Local Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_line_search() const { return use_line_search_; };
@@ -426,6 +436,12 @@ namespace Mat
       //! boolean: use predictor adaptation factor from the previous time step at the GP as a
       //! performance-boost?
       const bool use_last_pred_adapt_fact_;
+
+      //! boolean: use the optimal predictor interpolation factor
+      //! determined after the previous timestep (which gives the solution
+      //! of the previous LNL) to boost the performance of the predictor
+      //! adaptation?
+      const bool use_optimal_pred_adapt_fact_;
 
       //! boolean: use line search to avoid negative plastic strains in
       //! the Local Newton Loop? (true: yes, false: no)
@@ -1565,7 +1581,7 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
         const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
         const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi,
-        const double last_max_xi);
+        const double last_max_xi, const double optimal_xi);
 
     /*!
      * @brief Get the utilized viscoplastic law object.
@@ -1733,9 +1749,8 @@ namespace Mat
     const std::vector<double> ref_locs_{0.0, 1.0};
 
     //! class containing utilities for predictor interpolation
-    class PredInterpFactors
+    struct PredInterpFactors
     {
-     public:
       //! interpolation factor set by the user
       const double xi_user_;
 
@@ -1747,10 +1762,6 @@ namespace Mat
       //! current evaluation (maximum over current time step)
       std::vector<double> current_max_xi_;
 
-      //! optimal interpolation factor \f$ \xi_{\mathrm{opt}} \f$ (saved only for GP 0) for the
-      //! current evaluation (current time step, current global iteration)
-      double current_optimal_xi_;
-
       //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
       //! evaluated during the last global iteration of the previous
       //! time step (previous time step, last global iteration)
@@ -1760,6 +1771,12 @@ namespace Mat
       //! (saved for all GP) evaluated during the last time step
       //! (maximum over previous time step)
       std::vector<double> last_max_xi_;
+
+      //! optimal interpolation factor \f$ \xi_{n, \mathrm{optimal}} \f$
+      //! (saved for all GP) from the previous time step (determined
+      //! such that it leads to the previous LNL solution at the
+      //! considered GP)
+      std::vector<double> optimal_xi_;
 
       //! lower interpolation factor (\f$ \xi_{\text{l}} \f$):
       //! effectively, this is the lower bound for which the predictor
@@ -1792,6 +1809,7 @@ namespace Mat
       {
         last_xi_.resize(1, 0.0);
         last_max_xi_.resize(1, 0.0);
+        optimal_xi_.resize(1, 0.0);
         current_xi_.resize(1, 0.0);
         current_max_xi_.resize(1, 0.0);
       };
@@ -1802,6 +1820,7 @@ namespace Mat
       {
         last_xi_.resize(num_gp, last_xi_[0]);
         last_max_xi_.resize(num_gp, last_max_xi_[0]);
+        optimal_xi_.resize(num_gp, optimal_xi_[0]);
         current_xi_.resize(num_gp, current_xi_[0]);
         current_max_xi_.resize(num_gp, current_max_xi_[0]);
       }
@@ -1815,12 +1834,23 @@ namespace Mat
         num_of_pred_adapt_ = 0;
       }
 
-      //! update method: update the internal variables of the predictor
-      //! interapolation class
-      void update()
+
+      /*!
+       * @brief update method: update the internal variables of the predictor
+       * interpolation struct based on the time step quantities of the
+       * material. We have to specify whether we want to compute and
+       * update the optimal xi value.
+       *
+       * @param[in] compute_and_update_optimal_xi should the optimal
+       * interpolation factors be updated?
+       * @param[in] optimal_xi_at_all_gp values of the optimal
+       * interpolation factors at all Gauss points
+       */
+      void update(const bool update_optimal_xi, const std::vector<double> optimal_xi_at_all_gp)
       {
         last_xi_ = current_xi_;
         last_max_xi_ = current_max_xi_;
+        if (update_optimal_xi) optimal_xi_ = optimal_xi_at_all_gp;
       }
 
       //! pack method
@@ -1828,6 +1858,7 @@ namespace Mat
       {
         Core::Communication::add_to_pack(data, last_xi_);
         Core::Communication::add_to_pack(data, last_max_xi_);
+        Core::Communication::add_to_pack(data, optimal_xi_);
       }
 
       //! unpack method
@@ -1835,9 +1866,9 @@ namespace Mat
       {
         Core::Communication::extract_from_pack(buffer, last_xi_);
         Core::Communication::extract_from_pack(buffer, last_max_xi_);
+        Core::Communication::extract_from_pack(buffer, optimal_xi_);
         current_xi_ = last_xi_;
         current_max_xi_ = last_max_xi_;
-        current_optimal_xi_ = 0.0;
       }
 
       //! update the maximum interpolation factor in the current time
@@ -1868,7 +1899,8 @@ namespace Mat
       //! \f$; this is not always given by time_step_halving_counter, since the
       //! halving does not have to be uniform (e.g. we could halve the time step twice and still
       //! have 3 substeps to evaluate instead of 4, i.e. if the first substep was evaluable
-      //! numerically, but the second substep not, leading to another halving of the substep length)
+      //! numerically, but the second substep not, leading to another halving of the substep
+      //! length)
       unsigned int total_num_of_substeps_;
       //! iteration counter of the Local Newton Loop used to evaluate each substep
       unsigned int iter_;
@@ -1989,8 +2021,8 @@ namespace Mat
         std::shared_ptr<Core::FE::Discretization> structure_dis =
             Global::Problem::instance()->get_dis("structure");
 
-        // check whether we are using a single processor! (no implementation for multiple processors
-        // yet, and also not really required)
+        // check whether we are using a single processor! (no implementation for multiple
+        // processors yet, and also not really required)
         int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
         FOUR_C_ASSERT_ALWAYS(my_rank == 0,
             "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
@@ -2044,8 +2076,8 @@ namespace Mat
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
      * components
-     * @param[in] CeM elastic right Cauchy_Green deformation tensor \f$ \boldsymbol{C}_\text{e} \f$
-     * in matrix form
+     * @param[in] CeM elastic right Cauchy_Green deformation tensor \f$ \boldsymbol{C}_\text{e}
+     * \f$ in matrix form
      * @param[out] gamma stress factors for the isotropic elasticity case, as derived in
      *                   Holzapfel - Nonlinear Solid Mechanics(2000)
      * @param[out] delta constitutive tensor factors for the isotropic elasticity case, as derived
@@ -2055,8 +2087,9 @@ namespace Mat
         Core::LinAlg::Matrix<3, 1>& gamma, Core::LinAlg::Matrix<8, 1>& delta);
 
     /*!
-     * @brief Check if the elastic predictor provides the solution for the current time step, i.e.,
-     * the deformation in the current time step is purely elastic with no viscoplastic contribution.
+     * @brief Check if the elastic predictor provides the solution for the current time step,
+     * i.e., the deformation in the current time step is purely elastic with no viscoplastic
+     * contribution.
      *
      * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
      * @param[in] iFinM_pred predictor of the inverse inelastic deformation gradient \f$
@@ -2074,9 +2107,9 @@ namespace Mat
      * @brief Calculate the residual for the Local Newton Loop (LNL)
      *
      * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
-     * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the inverse
-     *             inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and
-     *             plastic strain \f$ \varepsilon_{\text{p}} \f$
+     * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the
+     * inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and plastic
+     * strain \f$ \varepsilon_{\text{p}} \f$
      * @param[in] last_iFpM last inverse plastic deformation gradient
      *                      \f$ \boldsymbol{F}_{\text{in}, n}^{-1} \f$ in matrix form
      * @param[in] last_plastic_strain last plastic strain \f$ \varepsilon_{\text{p}, n}\f$
@@ -2096,9 +2129,9 @@ namespace Mat
      * linearization for the Global Newton Loop
      *
      * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
-     * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the inverse
-     *             inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and
-     *             plastic strain \f$ \varepsilon_{\text{p}} \f$
+     * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the
+     * inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and plastic
+     * strain \f$ \varepsilon_{\text{p}} \f$
      * @param[in] last_iFpM last inverse plastic deformation gradient
      *                      \f$ \boldsymbol{F}_{\text{in}, n}^{-1} \f$ in matrix form
      * @param[in] last_plastic_strain last plastic strain \f$ \varepsilon_{\text{p}, n}\f$
@@ -2203,7 +2236,8 @@ namespace Mat
 
 
     /*!
-     * @brief Setup new substep in the Local Newton Loop in case of an encountered evaluation error
+     * @brief Setup new substep in the Local Newton Loop in case of an encountered evaluation
+     * error
      *
      * @param[in,out] sol current solution vector of the Local Newton Loop (reset to the last
      * converged value within this method)
@@ -2234,7 +2268,8 @@ namespace Mat
         Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM);
 
     /*!
-     * @brief Evaluate the additional cmat stiffness tensor using a perturbation-based approach, if
+     * @brief Evaluate the additional cmat stiffness tensor using a perturbation-based approach,
+     if
      * the analytical evaluation fails
      *
      * @note For further information on the procedure, refer to:
@@ -2288,7 +2323,6 @@ namespace Mat
     std::string debug_get_error_info(const std::string& base_error_string);
   };
 }  // namespace Mat
-
 FOUR_C_NAMESPACE_CLOSE
 
 #endif
