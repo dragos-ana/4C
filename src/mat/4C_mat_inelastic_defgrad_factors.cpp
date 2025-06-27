@@ -1900,8 +1900,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     {
       pred_interp_factors_.current_xi_[gp_] = 0.0;
     }
-
-    pred_interp_factors_.current_max_xi_[gp_] = 0.0;
   }
 
   // preevaluate predictor adaptation factors
@@ -2937,6 +2935,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     if (parameter()->use_pred_adapt())
     {
       x_adapted = adapt_predictor_local_newton_loop(x, FredM);
+      // update the maximum interpolation factor (if required - this is
+      // checked within the update function)
+      pred_interp_factors_.update_current_max_xi(gp_);
+
       ++pred_interp_factors_.num_of_pred_adapt_;
     }
 
@@ -4924,6 +4926,12 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
 
     sol = adapt_predictor_local_newton_loop(
         pred_interp_factors_.pred_, time_step_quantities_.current_defgrad_[gp_], false);
+
+    // update the maximum interpolation factor (if required - this is
+    // checked within the update function)
+    pred_interp_factors_.update_current_max_xi(gp_);
+
+
 
     // timint analysis: increment number of repredictorizations
     if (parameter()->analyze_timint()) ++timint_analysis_utils.eval_num_of_repredict_;
