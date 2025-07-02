@@ -398,6 +398,26 @@ namespace Mat
       {
         return mat_log_deriv_calc_method_;
       }
+      //! get boolean: output relevant data from each iteration of the last, failed Local Newton
+      //! loop to a dedicated csv file?
+      [[nodiscard]] bool use_csv_output_failed_local_newton_iter() const
+      {
+        return use_csv_output_failed_local_newton_iter_;
+      }
+
+      //! get boolean: output relevant data from each microiteration of the predictor
+      //! adaptation(s) to a dedicated csv file?
+      [[nodiscard]] bool use_csv_output_pred_adapt_micro_iter()
+      {
+        return use_csv_output_pred_adapt_micro_iter_;
+      }
+
+      //! get boolean: output relevant data from each microiteration of the line
+      //! search algorithm(s) to a dedicated csv file?
+      [[nodiscard]] bool use_csv_output_line_search_micro_iter()
+      {
+        return use_csv_output_line_search_micro_iter_;
+      }
 
      private:
       //! ID of the viscoplasticity law
@@ -477,6 +497,18 @@ namespace Mat
 
       //! utilized computation method for the first derivative of the matrix logarithm
       const Core::LinAlg::GenMatrixLogFirstDerivCalcMethod mat_log_deriv_calc_method_;
+
+      //! output relevant data from each iteration of the last, failed Local Newton
+      //! loop to a dedicated csv file
+      const bool use_csv_output_failed_local_newton_iter_;
+
+      //! output relevant data from each microiteration of the predictor
+      //! adaptation(s) to a dedicated csv file
+      const bool use_csv_output_pred_adapt_micro_iter_;
+
+      //! output relevant data from each microiteration of the line
+      //! search algorithm(s) to a dedicated csv file
+      const bool use_csv_output_line_search_micro_iter_;
     };
   }  // namespace PAR
 

@@ -790,7 +790,13 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<Core::LinAlg::MatrixLogCalcMethod>("MATRIX_LOG_CALC_METHOD")),
       mat_log_deriv_calc_method_(
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
-              "MATRIX_LOG_DERIV_CALC_METHOD"))
+              "MATRIX_LOG_DERIV_CALC_METHOD")),
+      use_csv_output_failed_local_newton_iter_(
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER")),
+      use_csv_output_pred_adapt_micro_iter_(
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER")),
+      use_csv_output_line_search_micro_iter_(
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER"))
 {
   // consistency checks
   if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
@@ -3668,11 +3674,12 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
             -1.0, state_quantities_.curr_equiv_stress_, sol(9));
 
         // write the data of the failed LNL to csv
-        lnl_data_.write_failed_lnl_iteration_data_to_csv(
-            LocalNewtonData::FailedLnlData{.tnp = time_step_tracker_.tnp_,
-                .tn = time_step_tracker_.tnp_ - time_step_tracker_.dt_,
-                .element_gid = ele_gid_,
-                .gauss_point = gp_});
+        if (parameter()->use_csv_output_failed_local_newton_iter())
+          lnl_data_.write_failed_lnl_iteration_data_to_csv(
+              LocalNewtonData::FailedLnlData{.tnp = time_step_tracker_.tnp_,
+                  .tn = time_step_tracker_.tnp_ - time_step_tracker_.dt_,
+                  .element_gid = ele_gid_,
+                  .gauss_point = gp_});
 
         // return bad solution
         return sol;
@@ -3760,6 +3767,16 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           }
           continue;
         }
+
+
+        // write the data of the failed LNL to csv
+        if (parameter()->use_csv_output_failed_local_newton_iter())
+          lnl_data_.write_failed_lnl_iteration_data_to_csv(
+              LocalNewtonData::FailedLnlData{.tnp = time_step_tracker_.tnp_,
+                  .tn = time_step_tracker_.tnp_ - time_step_tracker_.dt_,
+                  .element_gid = ele_gid_,
+                  .gauss_point = gp_});
+
 
         // if no substepping is applied: then we have nor converged,
         // return with error
@@ -4202,7 +4219,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       }
 
       // write micro iteration data to csv
-      write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
+      if (parameter()->use_csv_output_pred_adapt_micro_iter())
+        write_pred_adapt_micro_iter_data_to_csv(
+            csv_output_tracking_data, csv_output_micro_iter_data);
 
       return pred_interp_factors_.pred_;
     }
@@ -4276,7 +4295,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     if (pred_adapt_step_counter > PredInterpFactors::MAX_NUM_PRED_ADAPT_ITERS)
     {
       // write micro iteration data to csv
-      write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
+      if (parameter()->use_csv_output_pred_adapt_micro_iter())
+        write_pred_adapt_micro_iter_data_to_csv(
+            csv_output_tracking_data, csv_output_micro_iter_data);
 
       std::cout << debug_get_error_info("Could not adapt the predictor at all") << std::endl;
       FOUR_C_THROW("See above");
@@ -4353,8 +4374,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
 
         // write micro iteration data to csv
-        write_pred_adapt_micro_iter_data_to_csv(
-            csv_output_tracking_data, csv_output_micro_iter_data);
+        if (parameter()->use_csv_output_pred_adapt_micro_iter())
+          write_pred_adapt_micro_iter_data_to_csv(
+              csv_output_tracking_data, csv_output_micro_iter_data);
 
 
 
@@ -4396,8 +4418,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
       {
         // write micro iteration data to csv
-        write_pred_adapt_micro_iter_data_to_csv(
-            csv_output_tracking_data, csv_output_micro_iter_data);
+        if (parameter()->use_csv_output_pred_adapt_micro_iter())
+          write_pred_adapt_micro_iter_data_to_csv(
+              csv_output_tracking_data, csv_output_micro_iter_data);
 
 
 
@@ -4631,7 +4654,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
 
   // write micro iteration data to csv
-  write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
+  if (parameter()->use_csv_output_pred_adapt_micro_iter())
+    write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
 
   // return adapted predictor
   return pred_interp_factors_.pred_;
@@ -4652,6 +4676,22 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
   }
 
 #endif
+
+  // initialize tracking data for the csv output of the line search
+  CSVOutputTrackingData csv_output_tracking_data{.ele_gid = ele_gid_,
+      .gp = gp_,
+      .tn = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+      .tnp = time_step_tracker_.tnp_,
+      .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+      .lnl_iter = lnl_data_.iter_ -
+                  1};  // we subtract 1 from the current iteration number to start with 0, and make
+                       // this consistent with the output of the predictor adaptation
+
+  // initialize micro iteration data for all "micro"
+  // iterations of the subsequent line search, to be written to csv
+  CSVOutputLineSearchMicroIterData csv_output_micro_iter_data{
+      PredInterpFactors::MAX_NUM_PRED_ADAPT_ITERS};
+
   // set necessary decrease parameter \f$ \rho \in \left(0, \frac{1}{2}\right) \f$ of the
   // backtracking algorithm
   const double rho = 1.0 / 4.0;
@@ -4680,12 +4720,26 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
     // error.
     if (curr_sol(9) == 0.0)
     {
+      // write microiteration data to csv
+      if (parameter()->use_csv_output_line_search_micro_iter())
+      {
+        csv_output_micro_iter_data.set_micro_iter_data(
+            CSVOutputLineSearchMicroIterData::MicroIterDataCollector{}, 0);
+        write_line_search_micro_iter_data_to_csv(
+            csv_output_tracking_data, csv_output_micro_iter_data);
+      }
+
       err_status = ErrorType::FailedDetermLineSearchParam;
       return -1;
     }
 
     alpha_u = curr_sol(9) / std::abs(incr(9));
   }
+
+
+  // save maximum value of the step size
+  const double max_alpha = alpha_u;
+
 
 #ifdef DEBUGVPLAST_TIMINT
   if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4728,39 +4782,6 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
     // increment number of parameter decrease steps
     ++dec_times;
 
-    // reset error status
-    err_status = ErrorType::NoErrors;
-
-    // compute the residual associated with the upper bound
-    next_res = calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp_],
-        next_sol, time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
-        time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
-#ifdef DEBUGVPLAST_TIMINT
-    if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
-    {
-      std::cout << "dec_times: " << dec_times << "/" << max_dec_times << std::endl;
-      std::cout << "alpha: " << alpha << std::endl;
-    }
-
-#endif
-
-
-    if (err_status == ErrorType::NoErrors)
-    {
-      next_res_norm = next_res.norm2();
-      // square the obtained residual in order to obtain the consistent
-      // minimization function \f$ f = \| r \|^2 \f$
-      next_f = next_res_norm * next_res_norm;
-    }
-    else
-    {
-      // decrease line search parameter
-      alpha *= alpha_dec_fac;
-      next_sol.update(1.0, curr_sol, alpha, incr, 0.0);
-
-      continue;
-    }
-
     // check whether we have decreased the line search parameter too many
     // times
     if (dec_times > max_dec_times)
@@ -4772,6 +4793,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
                      "case alpha = 0"
                   << std::endl;
         std::cout << "current_rightCG: " << std::endl;
+
 
         // evaluate alpha = 0 for consistency reasons
         alpha = 0;
@@ -4815,8 +4837,79 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
       timint_analysis_utils.eval_num_of_line_search_iters_ += dec_times;
 
       err_status = ErrorType::FailedDetermLineSearchParam;
+
+      // output microiteration data
+      if (parameter()->use_csv_output_line_search_micro_iter())
+      {
+        // set micro iteration data for the current evaluation
+        csv_output_micro_iter_data.set_micro_iter_data(
+            {
+                .current_alpha = alpha,
+                .max_alpha = max_alpha,
+                .current_equiv_stress = state_quantities_.curr_equiv_stress_,
+                .current_plastic_strain = next_sol(9),
+                .current_quadratic_residual_norm = -1,
+                .max_quadratic_residual_norm = -1,
+                .current_error_status = err_status,
+            },
+            dec_times - 1);
+        // write micro iteration data to csv
+        write_line_search_micro_iter_data_to_csv(
+            csv_output_tracking_data, csv_output_micro_iter_data);
+      }
       return -1.0;
     }
+
+    // reset error status
+    err_status = ErrorType::NoErrors;
+
+    // compute the residual associated with the upper bound
+    next_res = calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp_],
+        next_sol, time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
+        time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
+#ifdef DEBUGVPLAST_TIMINT
+    if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+    {
+      std::cout << "dec_times: " << dec_times << "/" << max_dec_times << std::endl;
+      std::cout << "alpha: " << alpha << std::endl;
+    }
+
+#endif
+
+
+    if (err_status == ErrorType::NoErrors)
+    {
+      next_res_norm = next_res.norm2();
+      // square the obtained residual in order to obtain the consistent
+      // minimization function \f$ f = \| r \|^2 \f$
+      next_f = next_res_norm * next_res_norm;
+    }
+    else
+    {
+      // set micro iteration data for the current evaluation
+      csv_output_micro_iter_data.set_micro_iter_data(
+          {
+              .current_alpha = alpha,
+              .max_alpha = max_alpha,
+              .current_equiv_stress = state_quantities_.curr_equiv_stress_,
+              .current_plastic_strain = next_sol(9),
+              .current_quadratic_residual_norm = -1,
+              .max_quadratic_residual_norm = -1,
+              .current_error_status = err_status,
+          },
+          dec_times - 1);
+
+
+
+      // decrease line search parameter
+      alpha *= alpha_dec_fac;
+      next_sol.update(1.0, curr_sol, alpha, incr, 0.0);
+
+
+
+      continue;
+    }
+
 
 #ifdef DEBUGVPLAST_TIMINT
     if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
@@ -4827,6 +4920,20 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
     }
 
 #endif
+
+    // set micro iteration data for the current evaluation
+    csv_output_micro_iter_data.set_micro_iter_data(
+        {
+            .current_alpha = alpha,
+            .max_alpha = max_alpha,
+            .current_equiv_stress = state_quantities_.curr_equiv_stress_,
+            .current_plastic_strain = next_sol(9),
+            .current_quadratic_residual_norm = next_f,
+            .max_quadratic_residual_norm = curr_f - 2.0 * rho * alpha * incr_squared,
+            .current_error_status = err_status,
+        },
+        dec_times - 1);
+
 
 
     // check backtracking condition / LNL convergence
@@ -4841,7 +4948,10 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
       // timint analysis: set number of required iterations
       timint_analysis_utils.eval_num_of_line_search_iters_ += dec_times;
 
-
+      // write micro iteration data to csv
+      if (parameter()->use_csv_output_line_search_micro_iter())
+        write_line_search_micro_iter_data_to_csv(
+            csv_output_tracking_data, csv_output_micro_iter_data);
 
       err_status = ErrorType::NoErrors;
       return alpha;
