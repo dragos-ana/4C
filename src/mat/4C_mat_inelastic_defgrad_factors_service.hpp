@@ -712,6 +712,11 @@ namespace Mat
     //! written to a csv file
     struct CSVOutputPredAdaptMicroIterData
     {
+      /*! @brief Constructor.
+       *
+       * @param[in] max_num_pred_adapt_micro_iters maximum number of
+       * micro iterations within a single predictor adaptation
+       */
       CSVOutputPredAdaptMicroIterData(const unsigned int max_num_pred_adapt_micro_iters)
           : max_num_pred_adapt_micro_iters_(max_num_pred_adapt_micro_iters)
       {
@@ -767,6 +772,96 @@ namespace Mat
       //! adaptation
       const unsigned int max_num_pred_adapt_micro_iters_;
     };
+
+    //! DEBUG?: struct holding the relevant output data of all
+    //! microiterations of a single line search which can be
+    //! written to a csv file
+    struct CSVOutputLineSearchMicroIterData
+    {
+      /*! @brief Constructor.
+       *
+       * @param[in] max_num_line_search_micro_iters maximum number of
+       * micro iterations within a single line search
+       */
+      CSVOutputLineSearchMicroIterData(const unsigned int max_num_line_search_micro_iters)
+          : max_num_line_search_micro_iters_(max_num_line_search_micro_iters)
+      {
+      }
+
+      //! data collector for a single micro iteration within the
+      //! predictor adaptation -> assigns the values at the specific microiterations
+      struct MicroIterDataCollector
+      {
+        //! current step size \f$ \alpha \f$
+        double current_alpha = -1;
+        //! maximum allowed step size \f$ \alpha_{\mathrm{max}} \f$
+        //! accounting for eventual errors
+        double max_alpha = -1;
+        //! current equivalent stress
+        double current_equiv_stress = -1;
+        //! current plastic strain
+        double current_plastic_strain = -1;
+        //! current quadratic residual norm for the current step size
+        double current_quadratic_residual_norm = -1;
+        //! maximum allowed quadratic residual norm for the current step size
+        double max_quadratic_residual_norm = -1;
+        //! current error status
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status =
+            ErrorType::OverflowError;
+      };
+
+      //! all indices of the microiteration (iterations within the line search)
+      std::vector<unsigned int> all_microiter;
+
+      //! current step sizes \f$ \alpha \f$ of all
+      //! microiterations
+      std::vector<double> all_current_alpha;
+
+      //! maximum step sizes \f$ \alpha_{\mathrm{}} \f$ of all
+      //! microiterations
+      std::vector<double> all_max_alpha;
+
+      //! current equivalent stresses of all microiterations (associated
+      //! with the current line search step sizes)
+      std::vector<double> all_current_equiv_stress;
+
+      //! current plastic strains of all microiterations (associated
+      //! with the current line search step sizes)
+      std::vector<double> all_current_plastic_strain;
+
+      //! current quadratic residual norm of all microiterations (associated
+      //! with the current line search step sizes)
+      std::vector<double> all_current_quadratic_residual_norm;
+
+      //! maximum allowed quadratic residual norm of all microiterations (associated
+      //! with the current line search step sizes)
+      std::vector<double> all_max_quadratic_residual_norm;
+
+      //! current error status of all microiterations (associated with
+      //! the current line search ste sizes)
+      std::vector<ErrorType> all_current_error_status;
+
+      //! set collected data for specific microiteration
+      void set_micro_iter_data(
+          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter)
+      {
+        all_microiter.push_back(micro_iter);
+        all_current_alpha.push_back(mi_data_collector.current_alpha);
+        all_max_alpha.push_back(mi_data_collector.max_alpha);
+        all_current_equiv_stress.push_back(mi_data_collector.current_equiv_stress);
+        all_current_plastic_strain.push_back(mi_data_collector.current_plastic_strain);
+        all_current_quadratic_residual_norm.push_back(
+            mi_data_collector.current_quadratic_residual_norm);
+        all_max_quadratic_residual_norm.push_back(mi_data_collector.max_quadratic_residual_norm);
+        all_current_error_status.push_back(mi_data_collector.current_error_status);
+      }
+
+      //! maximum number of microiterations within a single predictor
+      //! adaptation
+      const unsigned int max_num_line_search_micro_iters_;
+    };
+
+
 
     //! writes data from each microiteration of a single predictor
     //! adaptation (specified via tracking data) to a dedicated csv file
@@ -843,11 +938,95 @@ namespace Mat
     }
 
 
+    //! writes data from each microiteration of a single line search (specified via tracking data)
+    //! to a dedicated csv file
+    inline void write_line_search_micro_iter_data_to_csv(
+        CSVOutputTrackingData csv_output_tracking_data,
+        CSVOutputLineSearchMicroIterData csv_output_micro_iter_data)
+    {
+      // get structure discretization
+      std::shared_ptr<Core::FE::Discretization> structure_dis =
+          Global::Problem::instance()->get_dis("structure");
 
-/// defines
-// flag for debug output (viscoplastic material) related to
-// time integration
-#define DEBUGVPLAST_TIMINT
+      // check whether we are using a single processor! (no implementation for multiple
+      // processors yet, and also not really required)
+      int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+      FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+          "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+          "output "
+          "for multiple processors");
+
+      // create csv_writer and register its columns
+      Core::IO::RuntimeCsvWriter csv_writer{my_rank,
+          *Global::Problem::instance()->output_control_file(),
+          "line-search-micro-iter-output-ele-gid-" +
+              std::to_string(csv_output_tracking_data.ele_gid) + "-gp-" +
+              std::to_string(csv_output_tracking_data.gp) + "-tn-" +
+              std::to_string(csv_output_tracking_data.tn) + "-globiter-or-timestep-index-" +
+              std::to_string(csv_output_tracking_data.globiter_or_timestep_index_) + "-lnl-iter-" +
+              std::to_string(csv_output_tracking_data.lnl_iter)};
+      csv_writer.register_data_vector("element_gid", 1, 16);
+      csv_writer.register_data_vector("gauss_point", 1, 16);
+      csv_writer.register_data_vector("previous_time", 1, 16);
+      csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+      csv_writer.register_data_vector("lnl_iter", 1, 16);
+      csv_writer.register_data_vector("current_alpha", 1, 16);
+      csv_writer.register_data_vector("max_alpha", 1, 16);
+      csv_writer.register_data_vector("current_equiv_stress", 1, 16);
+      csv_writer.register_data_vector("current_plastic_strain", 1, 16);
+      csv_writer.register_data_vector("current_quadratic_residual_norm", 1, 16);
+      csv_writer.register_data_vector("max_quadratic_residual_norm", 1, 16);
+      csv_writer.register_data_vector("current_err_status", 1, 16);
+
+      // already fill the columns containing solely the tracking data
+      for (unsigned int mi = 0; mi < csv_output_micro_iter_data.all_microiter.size(); ++mi)
+      {
+        std::map<std::string, std::vector<double>> output_data;
+        output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid)};
+        output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp)};
+        output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn)};
+        output_data["globiter_or_timestep_index"] = {
+            static_cast<double>(csv_output_tracking_data.globiter_or_timestep_index_)};
+        output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data.lnl_iter)};
+        output_data["current_alpha"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_current_alpha[mi])};
+        output_data["max_alpha"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_max_alpha[mi])};
+        output_data["current_equiv_stress"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_current_equiv_stress[mi])};
+        output_data["current_plastic_strain"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_current_plastic_strain[mi])};
+        output_data["current_quadratic_residual_norm"] = {static_cast<double>(
+            csv_output_micro_iter_data.all_current_quadratic_residual_norm[mi])};
+        output_data["max_quadratic_residual_norm"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_max_quadratic_residual_norm[mi])};
+        switch (csv_output_micro_iter_data.all_current_error_status[mi])
+        {
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors:
+            output_data["current_err_status"] = {0.0};
+            break;
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::OverflowError:
+            output_data["current_err_status"] = {1.0};
+            break;
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::UnderYieldSurface:
+            output_data["current_err_status"] = {2.0};
+            break;
+          default:
+            output_data["current_err_status"] = {-1.0};
+            break;
+        }
+
+        // write output data to csv
+        csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
+      }
+    }
+
+
+
+    /// defines
+    // flag for debug output (viscoplastic material) related to
+    // time integration
+    // #define DEBUGVPLAST_TIMINT
 
     // flag for debug output (viscoplastic material) related to the
     // inverse inelastic defgrad computation; less detailed than
