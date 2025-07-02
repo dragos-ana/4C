@@ -2754,9 +2754,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
   {
     known_materials[Core::Materials::mfi_transv_isotrop_elast_viscoplast] = group(
         "MAT_InelasticDefgradTransvIsotropElastViscoplast",
-        {
-            parameter<int>("VISCOPLAST_LAW_ID",
-                {.description = "MAT ID of the corresponding viscoplastic law"}),
+        {parameter<int>(
+             "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law"}),
             parameter<int>(
                 "FIBER_READER_ID", {.description = "MAT ID of the used fiber direction reader for "
                                                    "transversely isotropic behavior"}),
@@ -2881,6 +2880,20 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "logarithm",
                     .default_value =
                         Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract}),
+            parameter<bool>("USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER",
+                {.description = "output relevant data from each iteration of the last, failed "
+                                "Local Newton loop"
+                                "to a dedicated csv file?",
+                    .default_value = false}),
+            parameter<bool>("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER",
+                {.description = "output relevant data from each microiteration of the predictor "
+                                "adaptation(s) to a dedicated csv file?",
+                    .default_value = false}),
+            parameter<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER",
+                {.description = "output relevant data from each microiteration of the line search "
+                                "algorithm(s) to a dedicated csv file?",
+                    .default_value = false})
+
         },
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
