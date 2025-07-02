@@ -682,6 +682,168 @@ namespace Mat
       return stream;
     }
 
+    //! DEBUG?: struct holding relevant tracking data when writing to csv
+    //! files (InelasticDefgradTransvIsotropElastViscoplast)
+    struct CSVOutputTrackingData
+    {
+      //! global element id
+      const int ele_gid;
+
+      //! Gauss point index
+      const int gp;
+
+      //! time instant \f$t_{n}\f$
+      const double tn;
+
+      //! time instant \f$t_{n+1}\f$
+      const double tnp;
+
+      //! tracker for the global iteration (if we have output every
+      //! iteration) or the timestep index; increased by 1 every time
+      //! the Gauss point output routine is called
+      unsigned int globiter_or_timestep_index_;
+
+      //! tracker for the local NR iteration
+      unsigned int lnl_iter;
+    };
+
+    //! DEBUG?: struct holding the relevant output data of all
+    //! microiterations of a single predictor adaptation which can be
+    //! written to a csv file
+    struct CSVOutputPredAdaptMicroIterData
+    {
+      CSVOutputPredAdaptMicroIterData(const unsigned int max_num_pred_adapt_micro_iters)
+          : max_num_pred_adapt_micro_iters_(max_num_pred_adapt_micro_iters)
+      {
+      }
+
+      //! data collector for a single micro iteration within the
+      //! predictor adaptation -> assigns the values at the specific microiterations
+      struct MicroIterDataCollector
+      {
+        //! current interpolation factor \f$ \xi \f$
+        double current_xi = -1;
+        //! current equivalent stress
+        double current_equiv_stress = -1;
+        //! current plastic strain
+        double current_plastic_strain = -1;
+        //! current error status
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status =
+            ErrorType::OverflowError;
+      };
+
+      //! all indices of the microiteration (iterations within the predictor
+      //! adaptation)
+      std::vector<unsigned int> all_microiter;
+
+      //! current interpolation factors \f$ \xi \f$ of all
+      //! microiterations
+      std::vector<double> all_current_xi;
+
+      //! current equivalent stresses of all microiterations (associated
+      //! with the current interpolation factors)
+      std::vector<double> all_current_equiv_stress;
+
+      //! current plastic strains of all microiterations (associated
+      //! with the current interpolation factors)
+      std::vector<double> all_current_plastic_strain;
+
+      //! current error status of all microiterations (associated with
+      //! the current interpolation factors)
+      std::vector<ErrorType> all_current_error_status;
+
+      //! set collected data for specific microiteration
+      void set_micro_iter_data(
+          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter)
+      {
+        all_microiter.push_back(micro_iter);
+        all_current_xi.push_back(mi_data_collector.current_xi);
+        all_current_equiv_stress.push_back(mi_data_collector.current_equiv_stress);
+        all_current_plastic_strain.push_back(mi_data_collector.current_plastic_strain);
+        all_current_error_status.push_back(mi_data_collector.current_error_status);
+      }
+
+      //! maximum number of microiterations within a single predictor
+      //! adaptation
+      const unsigned int max_num_pred_adapt_micro_iters_;
+    };
+
+    //! writes data from each microiteration of a single predictor
+    //! adaptation (specified via tracking data) to a dedicated csv file
+    inline void write_pred_adapt_micro_iter_data_to_csv(
+        CSVOutputTrackingData csv_output_tracking_data,
+        CSVOutputPredAdaptMicroIterData csv_output_micro_iter_data)
+    {
+      // get structure discretization
+      std::shared_ptr<Core::FE::Discretization> structure_dis =
+          Global::Problem::instance()->get_dis("structure");
+
+      // check whether we are using a single processor! (no implementation for multiple
+      // processors yet, and also not really required)
+      int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+      FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+          "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+          "output "
+          "for multiple processors");
+
+      // create csv_writer and register its columns
+      Core::IO::RuntimeCsvWriter csv_writer{my_rank,
+          *Global::Problem::instance()->output_control_file(),
+          "pred-adapt-micro-iter-output-ele-gid-" +
+              std::to_string(csv_output_tracking_data.ele_gid) + "-gp-" +
+              std::to_string(csv_output_tracking_data.gp) + "-tn-" +
+              std::to_string(csv_output_tracking_data.tn) + "-globiter-or-timestep-index-" +
+              std::to_string(csv_output_tracking_data.globiter_or_timestep_index_) + "-lnl-iter-" +
+              std::to_string(csv_output_tracking_data.lnl_iter)};
+      csv_writer.register_data_vector("element_gid", 1, 16);
+      csv_writer.register_data_vector("gauss_point", 1, 16);
+      csv_writer.register_data_vector("previous_time", 1, 16);
+      csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+      csv_writer.register_data_vector("lnl_iter", 1, 16);
+      csv_writer.register_data_vector("current_xi", 1, 16);
+      csv_writer.register_data_vector("current_equiv_stress", 1, 16);
+      csv_writer.register_data_vector("current_plastic_strain", 1, 16);
+      csv_writer.register_data_vector("current_err_status", 1, 16);
+
+      // already fill the columns containing solely the tracking data
+      for (unsigned int mi = 0; mi < csv_output_micro_iter_data.all_microiter.size(); ++mi)
+      {
+        std::map<std::string, std::vector<double>> output_data;
+        output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid)};
+        output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp)};
+        output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn)};
+        output_data["globiter_or_timestep_index"] = {
+            static_cast<double>(csv_output_tracking_data.globiter_or_timestep_index_)};
+        output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data.lnl_iter)};
+        output_data["current_xi"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_current_xi[mi])};
+        output_data["current_equiv_stress"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_current_equiv_stress[mi])};
+        output_data["current_plastic_strain"] = {
+            static_cast<double>(csv_output_micro_iter_data.all_current_plastic_strain[mi])};
+        switch (csv_output_micro_iter_data.all_current_error_status[mi])
+        {
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors:
+            output_data["current_err_status"] = {0.0};
+            break;
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::OverflowError:
+            output_data["current_err_status"] = {1.0};
+            break;
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::UnderYieldSurface:
+            output_data["current_err_status"] = {2.0};
+            break;
+          default:
+            output_data["current_err_status"] = {-1.0};
+            break;
+        }
+
+        // write output data to csv
+        csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
+      }
+    }
+
+
+
 /// defines
 // flag for debug output (viscoplastic material) related to
 // time integration
