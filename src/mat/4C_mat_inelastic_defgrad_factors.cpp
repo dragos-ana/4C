@@ -555,7 +555,6 @@ namespace
   }
 
 
-
 // DEBUG utils (InelasticDefgradTransvIsotropElastViscoplast)
 // define ele_gid to be debugged
 // const std::vector<int> debug_ele_gid_vec{606, 607, 622, 623, 638, 639};
@@ -4099,7 +4098,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
   // initialize tracking data for the csv output of the predictor
   // adaptation
-  PredInterpFactors::CSVOutputTrackingData csv_output_tracking_data{.ele_gid = ele_gid_,
+  CSVOutputTrackingData csv_output_tracking_data{.ele_gid = ele_gid_,
       .gp = gp_,
       .tn = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
       .tnp = time_step_tracker_.tnp_,
@@ -4108,7 +4107,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
   // initialize micro iteration data for all "micro"
   // iterations of the subsequent predictor adaptation, to be written to csv
-  PredInterpFactors::CSVOutputMicroIterData csv_output_micro_iter_data{};
+  CSVOutputPredAdaptMicroIterData csv_output_micro_iter_data{
+      PredInterpFactors::MAX_NUM_PRED_ADAPT_ITERS};
 
   // compute right CG tensor
   Core::LinAlg::Matrix<3, 3> CM{Core::LinAlg::Initialization::zero};
@@ -4207,8 +4207,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       }
 
       // write micro iteration data to csv
-      pred_interp_factors_.write_pred_adapt_micro_iter_data_to_csv(
-          csv_output_tracking_data, csv_output_micro_iter_data);
+      write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
 
       return pred_interp_factors_.pred_;
     }
@@ -4282,8 +4281,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     if (pred_adapt_step_counter > PredInterpFactors::MAX_NUM_PRED_ADAPT_ITERS)
     {
       // write micro iteration data to csv
-      pred_interp_factors_.write_pred_adapt_micro_iter_data_to_csv(
-          csv_output_tracking_data, csv_output_micro_iter_data);
+      write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
 
       std::cout << debug_get_error_info("Could not adapt the predictor at all") << std::endl;
       FOUR_C_THROW("See above");
@@ -4360,7 +4358,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
 
         // write micro iteration data to csv
-        pred_interp_factors_.write_pred_adapt_micro_iter_data_to_csv(
+        write_pred_adapt_micro_iter_data_to_csv(
             csv_output_tracking_data, csv_output_micro_iter_data);
 
 
@@ -4404,7 +4402,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
           Core::LinAlg::TensorInterpolation::TensorInterpolationErrorType::NoErrors)
       {
         // write micro iteration data to csv
-        pred_interp_factors_.write_pred_adapt_micro_iter_data_to_csv(
+        write_pred_adapt_micro_iter_data_to_csv(
             csv_output_tracking_data, csv_output_micro_iter_data);
 
 
@@ -4639,8 +4637,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
 
   // write micro iteration data to csv
-  pred_interp_factors_.write_pred_adapt_micro_iter_data_to_csv(
-      csv_output_tracking_data, csv_output_micro_iter_data);
+  write_pred_adapt_micro_iter_data_to_csv(csv_output_tracking_data, csv_output_micro_iter_data);
 
   // return adapted predictor
   return pred_interp_factors_.pred_;
