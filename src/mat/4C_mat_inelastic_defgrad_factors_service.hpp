@@ -14,12 +14,16 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_io_runtime_csv_writer.hpp"
+#include "4C_linalg_fixedsizematrix_tensor_products.hpp"
+#include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
+#include "4C_linalg_four_tensor_generators.hpp"
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 
 #include <map>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -34,162 +38,87 @@ namespace Mat
   namespace InelasticDefgradTransvIsotropElastViscoplastUtils
   {
     /// enum class for error types in InelasticDefgradTransvIsotropElastViscoplast, used for
-    /// triggering different procedures (e.g. repredictorization, substepping) during the
+    /// triggering different procedures (e.g. repredictorization,
+    /// substepping, line search) during the
     /// Local Newton Loop
     enum class ErrorType
     {
-      NoErrors,
-      NegativePlasticStrain,  ///< negative plastic strain which does not allow for evaluations
-                              ///< inside the viscoplasticity laws
-      OverflowError,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
-                      ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
-                      ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$)
-      NoFlowResistance,  ///< the material has no flow resistance anymore, such that the evaluations
-                         ///< model non-physical phenomena
-      NoPlasticIncompressibility,  ///< no plastic incompressibility, meaning that our determinant
-                                   ///< of the inelastic defgrad is far from
-                                   ///< 1
-      FailedSolLinSystLNL,  ///< solution of the linear system in the Local Newton-Raphson Loop
-                            ///< failed
-      FailedDetermLineSearchParam,  ///< the computation of a suitable line search parameter failed
-      NoConvergenceLNL,  ///< the Local Newton Loop did not converge for the given loop settings
-      SingularJacobian,  ///< singular Jacobian after converged LNL, which does not enable our
-                         ///< analytical evaluation of the linearization
-      FailedSolAnalytLinearization,     ///< solution of the linear system in the analytical
-                                        ///< linearization failed
-      FailedComputationFlowResistance,  ///< failed in the computation of the flow resistance via
-                                        ///< time integration of the hardening-rate equation (e.g.,
-                                        ///< Anand model)
-      FailedComputationFlowResistanceDerivs,  ///< failed in the computation of the flow resistance
-                                              ///< derivatives (e.g., Anand model)
-      FailedLogEval,        ///< failed evaluation of the matrix logarithm or its derivative
-      FailedExpEval,        ///< failed evaluation of the matrix exponential or its derivative
-      FailedRightCGInterp,  ///< failed interpolation of the right Cauchy-Green tensor
-      UnderYieldSurface,    ///< mechanical state is "under" the yield surface, i.e., the evaluated
-                            ///< stress is smaller than the yield stress
+      no_errors,                ///< no errors
+      negative_plastic_strain,  ///< negative plastic strain which does not allow for evaluations
+                                ///< inside the viscoplasticity laws
+      overflow_error,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
+                       ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
+                       ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$)
+      no_flow_resistance,            ///< the material has no flow resistance anymore, such that the
+                                     ///< evaluations model non-physical phenomena
+      no_plastic_incompressibility,  ///< no plastic incompressibility, meaning that the determinant
+                                     ///< of the inelastic defgrad is far from 1
+      failed_solution_linear_system_lnl,  ///< solution of the linear system in the Local
+                                          ///< Newton-Raphson Loop failed
+      failed_determ_line_search_step,     ///< the computation of a suitable line search step failed
+      no_convergence_local_newton,  ///< the Local Newton Loop did not converge for the given loop
+                                    ///< settings
+      singular_jacobian,  ///< singular Jacobian after converged LNL, which does not enable our
+                          ///< analytical evaluation of the linearization
+      failed_solution_analytic_linearization,  ///< solution of the linear system in the analytical
+                                               ///< linearization failed
+      failed_computation_flow_resistance,  ///< failed in the computation of the flow resistance via
+                                           ///< time integration of the hardening-rate equation
+                                           ///(e.g., when using the Anand law)
+      failed_computation_flow_resistance_derivs,  ///< failed in the computation of the flow
+                                                  ///< resistance derivatives (e.g., when using the
+                                                  ///< Anand law)
+      failed_matrix_log_evaluation,   ///< failed evaluation of the matrix logarithm or its
+                                      ///< derivative
+      failed_matrix_exp_evaluation,   ///< failed evaluation of the matrix exponential or its
+                                      ///< derivative
+      failed_right_cg_interpolation,  ///< failed interpolation of the right Cauchy-Green tensor
+      under_yield_surface  ///< mechanical state is "under" the yield surface, i.e., the evaluated
+                           ///< stress is smaller than the yield stress, which should not occur
+                           ///< in the Local Newton loop
     };
 
-    /// enum class for error management actions in InelasticDefgradTransvIsotropElastViscoplast
+
+    /// enum class for error management actions in the iterations of the
+    // Local Newton loop
     enum class ErrorAction
     {
-      Continue,             ///< continue without any errors (NoErrors)
-      ReturnSolWithErrors,  ///< return the current solution with errors (if the current simulation
-                            ///< settings cannot lead to a solution)
-      NextIter,             ///< go to next iteration after performing certain reset steps
+      continue_iteration,           ///< continue iteration without any errors (NoErrors)
+      return_solution_with_errors,  ///< return the current solution with errors (if the current
+                                    ///< simulation settings cannot lead to a solution)
+      next_iteration,               ///< go to next iteration after performing certain reset steps
     };
 
+    /// convert error type to detailed error message
+    std::string get_detailed_error_message_for_error_type(ErrorType err_type);
 
-    /// to_string: error types to error messages in InelasticDefgradTransvIsotropElastViscoplast
-    inline std::string to_string(ErrorType err_type)
-    {
-      switch (err_type)
-      {
-        case ErrorType::NegativePlasticStrain:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: negative plastic strain!";
-        case ErrorType::OverflowError:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: overflow error related to "
-                 "the evaluation of the plastic strain increment!";
-        case ErrorType::NoPlasticIncompressibility:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: plastic incompressibility "
-                 "not satisfied!";
-        case ErrorType::FailedSolLinSystLNL:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: solution of the linear "
-                 "system in the Local Newton Loop failed!";
-        case ErrorType::FailedDetermLineSearchParam:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: could not determine a "
-                 "suitable line search parameter!";
-        case ErrorType::NoConvergenceLNL:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Local Newton Loop did not "
-                 "converge for the given loop settings!";
-        case ErrorType::SingularJacobian:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: singular Jacobian after "
-                 "converged Local Newton Loop, which does not allow for the analytical evaluation "
-                 "of "
-                 "the linearization!";
-        case ErrorType::FailedSolAnalytLinearization:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: solution of the linear "
-                 "system "
-                 "in the analytical linearization failed";
-          break;
-        case ErrorType::FailedComputationFlowResistance:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed while computing "
-                 "the "
-                 "flow resistance of the viscoplasticity law";
-          break;
-        case ErrorType::FailedComputationFlowResistanceDerivs:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed while computing "
-                 "the "
-                 "derivatives of the flow resistance of the viscoplasticity law";
-          break;
-        case ErrorType::FailedLogEval:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in evaluating the "
-                 "matrix logarithm or its derivative with respect to the argument";
-          break;
-        case ErrorType::FailedExpEval:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in evaluating the "
-                 "matrix exponential or its derivative with respect to the argument";
-          break;
-        case ErrorType::FailedRightCGInterp:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in interpolating "
-                 "the "
-                 "right Cauchy-Green deformation tensor";
-          break;
-        case ErrorType::UnderYieldSurface:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: we are 'under' the yield "
-                 "surface, sigma < sigma_yield!";
-          break;
-        default:
-          FOUR_C_THROW("to_string(ErrorType): You should not be here!");
-      }
-    }
-
-    /// enum class: success status of single Local Newton Loop iterations
+    /// enum class: success status of single Local Newton Loop
+    /// iterations to be tracked in the analysis utilities
     enum class LocalIterationStatus
     {
-      evaluation_successful,  // residual could be evaluated without errors
-      evaluation_failed,      // residual evaluation failed
-      converged,              // LNL converged in this iteration
-      not_evaluated,  // the iteration has not been evaluated (after reset, or when a previous
+      residual_evaluation_successful,  // residual could be evaluated without errors
+      residual_evaluation_failed,      // residual evaluation failed
+      converged,                       // Local Newton loop converged in this iteration
+      not_evaluated,  // the iteration has not yet been evaluated (also the case when a previous
                       // iteration has already converged)
       final_error,    // the LNL has finally failed after performing all possible error management
                       // actions or/and after the maximum number of
                       // iterations was reached
-
     };
 
-    /// enum to double conversion for the success status of single
-    /// iterations IterationStatus (required for Gauss-Point output,
-    /// which needs to be double)
-    inline double iteration_status_enum_to_double(const LocalIterationStatus iter_status)
-    {
-      switch (iter_status)
-      {
-        case LocalIterationStatus::converged:
-          return 0.0;
-        case LocalIterationStatus::final_error:
-          return 1.0;
-        case LocalIterationStatus::not_evaluated:
-          return -1.0;
-        case LocalIterationStatus::evaluation_successful:
-          return 2.0;
-        case LocalIterationStatus::evaluation_failed:
-          return 3.0;
-        default:
-          FOUR_C_THROW("Unhandled IterationStatus {}", EnumTools::enum_name(iter_status));
-      }
-    }
-
+    /// convert enum for the success status of single Local
+    /// Newton iterations to double (required for Gauss-Point output,
+    /// which needs to be of type <double>)
+    double local_iteration_status_enum_to_double(const LocalIterationStatus iter_status);
 
     /// enum class for material behavior types
-    /// (InelasticDefgradTransvIsotropElastViscoplast)
     enum class MatBehavior
     {
       isotrop,         ///< isotropic material behavior
-      transv_isotrop,  ///< isotropic material behavior
+      transv_isotrop,  ///< transversely isotropic material behavior
     };
 
-    /// enum class for time integration types (integration of internal
-    /// variables in the Local Newton Loop of InelasticDefgradTransvIsotropElastViscoplast)
+    /// enum class for time integration types (Local Newton integration)
     enum class TimIntType
     {
       standard,     ///< standard time integration,
@@ -197,68 +126,297 @@ namespace Mat
                     ///< evolution of the plastic deformation gradient
     };
 
-    /// enum class for material linearization types (linearization of
-    /// InelasticDefgradTransvIsotropElastViscoplast)
+    /// enum class for material linearization types
     enum class LinearizationType
     {
-      analytic,       ///< analytical linearization involving the solution of a linear system of
-                      ///< equations,
-      perturb_based,  ///< linearization based on perturbing the current state
+      analytic,  ///< analytical linearization involving the solution of a linear system of
+                 ///< equations,
+      perturbation_based,  ///< linearization based on perturbing the current state
     };
 
-    // names of the various error types
-    inline std::map<ErrorType, std::string> ErrorNames = {
-        {ErrorType::NegativePlasticStrain, "NegativePlasticStrain"},
-        {ErrorType::OverflowError, "OverflowError"},
-        {ErrorType::NoPlasticIncompressibility, "NoPlasticIncompressibility"},
-        {ErrorType::FailedSolLinSystLNL, "FailedSolLinSystLNL"},
-        {ErrorType::FailedDetermLineSearchParam, "FailedDetermLineSearchParam"},
-        {ErrorType::NoConvergenceLNL, "NoConvergenceLNL"},
-        {ErrorType::SingularJacobian, "SingularJacobian"},
-        {ErrorType::FailedSolAnalytLinearization, "FailedSolAnalytLinearization"},
-        {ErrorType::FailedLogEval, "FailedLogEval"},
-        {ErrorType::FailedExpEval, "FailedExpEval"},
-        {ErrorType::FailedRightCGInterp, "FailedRightCGInterp"},
-        {ErrorType::UnderYieldSurface, "UnderYieldSurface"},
+    //! matrix exponential and logarithm evaluation utilities
+    struct MatrixExpLogUtils
+    {
+      //! Pade approximation order (to be used consistently: the
+      //! derivative of the matrix functions should use the same Pade
+      //! order as the evaluation of the matrix functions)
+      unsigned int pade_order_ = 16;  // by default we set the highest order currently implemented
     };
 
-    //! class containing utilities for analyzing the material time integration:
-    //! error types, number of line searches, ... Currently only
-    //! employed for single-element single-processor simulations.
-    //! (InelastDefgradTransvIsotropElastViscoplast)
-    class TimIntAnalysisUtils
+    //! struct containing time step settings and time trackers
+    struct TimeStepTracker
+    {
+      //! time step length
+      double dt_;
+      //! currently computed time instant \f$ t_{n+1} \f$
+      double tnp_;
+      //! minimum substep length
+      double min_dt_;
+    };
+
+
+    //! struct containing quantities at the last and current time points (i.e., at \f[ t_n \f] and
+    //! \f[ t_{n+1} \f], respectively). The quantities are tracked at all Gauss points, in order to
+    //! update them simultaneously during the update method call
+    struct TimeStepQuantities
+    {
+      //! right Cauchy-Green deformation tensor at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_rightCG_;
+
+      //! inverse plastic deformation gradient at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_;
+
+      //! material stretch of the inverse plastic deformation gradient
+      //! at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_matstretch_;
+
+      //! rotation of the inverse plastic deformation gradient
+      //! at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_rot_;
+
+      //! (equivalent) plastic strain at the last time step (for all Gauss points)
+      std::vector<double> last_plastic_strain_;
+
+      //! last (reduced) deformation gradient: used to in the predictor
+      //! adaptation routine
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_defgrad_;
+
+      //! temporary variable, for which we store the right Cauchy-Green deformation tensor at each
+      //! evaluation (used in order to update last_rightCG_ once outer NR converges) (for all Gauss
+      //! points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_rightCG_;
+
+      //! current (reduced) deformation gradient: used to check whether the inverse inelastic
+      //! deformation gradient has already been evaluated (to improve the computation performance)
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_defgrad_;
+
+
+      //! current inverse plastic deformation gradient (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_plastic_defgrd_inverse_;
+
+      //! current plastic strain (for all Gauss points)
+      std::vector<double> current_plastic_strain_;
+
+      //! current equivalent stress (for all Gauss points)
+      std::vector<double> current_stress_;
+
+      //! inverse plastic deformation gradient at the last computed time instant (after the last
+      //! converged substep)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_substep_plastic_defgrd_inverse_;
+      //! plastic strain at the last computed time instant (after the last converged substep)
+      std::vector<double> last_substep_plastic_strain_;
+    };
+
+
+
+    /// struct: constant non-material tensors, such as different
+    /// identity tensors
+    struct ConstNonMatTensors
+    {
+      static const ConstNonMatTensors& instance()
+      {
+        static ConstNonMatTensors instance;
+        return instance;
+      }
+
+      // constructor
+      ConstNonMatTensors();
+      // second-order 3x3 identity tensor in matrix form \f$ \boldsymbol{I} \f$
+      Core::LinAlg::Matrix<3, 3> id3x3_{Core::LinAlg::Initialization::zero};
+      // second-order 3x3 identity in Voigt stress form \f$ \boldsymbol{I} \f$
+      Core::LinAlg::Matrix<6, 1> id6x1_{Core::LinAlg::Initialization::zero};
+      // symmetric identity four tensor of dimension 3 \f$ \mathbb{I}_\text{S} \f$
+      Core::LinAlg::Matrix<6, 6> id4_6x6_{Core::LinAlg::Initialization::zero};
+      // deviatoric operator \f$ \mathbb{P}_{\text{dev}}  =  \mathbb{I}_\text{S} -
+      // \frac{1}{3} \boldsymbol{I} \otimes \boldsymbol{I} \f$
+      Core::LinAlg::Matrix<6, 6> dev_op_{Core::LinAlg::Initialization::zero};
+      // identity fourth-order tensor in Voigt notation: delta_AC delta_BD in index notation
+      Core::LinAlg::Matrix<9, 9> id4_9x9_{Core::LinAlg::Initialization::zero};
+      // second-order 10x10 identity tensor in matrix form
+      Core::LinAlg::Matrix<10, 10> id10x10_{Core::LinAlg::Initialization::zero};
+    };
+
+
+
+    //! struct containing constant tensors which depend on the constant fiber direction \f$
+    //! \boldsymbol{m} \f$
+    struct ConstMatTensors
+    {
+      //! \f$ \boldsymbol{I} + \boldsymbol{m} \otimes \boldsymbol{m} \f$
+      Core::LinAlg::Matrix<3, 3> id_plus_mm_;
+      //! \f$ \boldsymbol{m} \otimes \boldsymbol{m} \f$
+      Core::LinAlg::Matrix<3, 3> mm_{Core::LinAlg::Initialization::zero};
+      //! deviatoric part \f$ \left( \boldsymbol{m} \otimes \boldsymbol{m}
+      //! \right)_\text{dev}\f$
+      Core::LinAlg::Matrix<3, 3> mm_dev_{Core::LinAlg::Initialization::zero};
+      //! \f$ \left( \boldsymbol{m} \otimes \boldsymbol{m} \right) \otimes \left( \boldsymbol{m}
+      //! \otimes \boldsymbol{m} \right) \f$ (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> mm_dyad_mm_{Core::LinAlg::Initialization::zero};
+      //!  \f$ \left( \boldsymbol{m} \otimes \boldsymbol{m} \right)_\text{dev} \otimes \left(
+      //!  \boldsymbol{m} \otimes \boldsymbol{m}
+      //!  \right) \f$
+      //! (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> mm_dev_dyad_mm_{Core::LinAlg::Initialization::zero};
+      //!  \f$ \boldsymbol{I} \otimes \left( \boldsymbol{m} \otimes \boldsymbol{m}
+      //!  \right) \f$
+      //! (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> id_dyad_mm_;
+
+      //! set tensors for a given fiber direction \f$ \boldsymbol{m} \f$
+      void set_material_const_tensors(const Core::LinAlg::Matrix<3, 1>& m);
+    };
+
+
+    //! class containing utilities for predictor interpolation
+    struct PredictorAdaptationUtils
+    {
+      //! interpolation factor set by the user
+      const double xi_user_;
+
+      //! interpolation factor \f$ \xi \f$ (saved for all GP) for the
+      //! current evaluation (current time step, current global iteration)
+      std::vector<double> current_xi_;
+
+      //! maximum interpolation factor \f$ \xi_{\mathrm{max}} \f$ (saved for all GP) for the
+      //! current evaluation (maximum over current time step)
+      std::vector<double> current_max_xi_;
+
+      //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
+      //! evaluated during the last global iteration of the previous
+      //! time step (previous time step, last global iteration)
+      std::vector<double> last_xi_;
+
+      //! maximum interpolation factor \f$ \xi_{n,\mathrm{max}} \f$
+      //! (saved for all GP) evaluated during the last time step
+      //! (maximum over previous time step)
+      std::vector<double> last_max_xi_;
+
+      //! optimal interpolation factor \f$ \xi_{n, \mathrm{optimal}} \f$
+      //! (saved for all GP) from the previous time step (determined
+      //! such that it leads to the previous LNL solution at the
+      //! considered GP)
+      std::vector<double> optimal_xi_;
+
+      //! lower interpolation factor (\f$ \xi_{\text{l}} \f$):
+      //! effectively, this is the lower bound for which the predictor
+      //! leads to a numerically evaluable state
+      double xi_l_;
+
+      //! upper interpolation factor (\f$ \xi_{\text{u}} \f$):
+      //! effectively, this is the upper bound for which the predictor
+      //! leads to plastic strain rate == 0.0
+      double xi_u_;
+
+      //! current number of predictor adaptations
+      unsigned int num_of_pred_adapt_;
+
+      //! maximum allowed number of predictor adaptations / repredictorizations
+      const unsigned int max_num_pred_adapt_;
+
+      // maximum allowed number number of predictor adaptation iterations
+      static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 50;
+
+      //! current predictor containing the inverse inelastic deformation
+      //! gradient (components 0-8) and the plastic strain (component 9)
+      Core::LinAlg::Matrix<10, 1> pred_;
+
+      //! constructor
+      PredictorAdaptationUtils(const double xi_user, const unsigned int max_num_pred_adapt);
+
+      //! setup method: set the correct number of Gauss Points to track the internal variables of
+      //! the class
+      void setup(const int num_gp);
+
+      //! preevaluate method: reset the non-const variables of the class at specific GP
+      void pre_evaluate(const int gp);
+
+      /*!
+       * @brief update method: update the internal variables of the predictor
+       * interpolation struct based on the time step quantities of the
+       * material. We have to specify whether we want to compute and
+       * update the optimal xi value.
+       *
+       * @param[in] compute_and_update_optimal_xi should the optimal
+       * interpolation factors be updated?
+       * @param[in] optimal_xi_at_all_gp values of the optimal
+       * interpolation factors at all Gauss points
+       */
+      void update(const bool update_optimal_xi, const std::vector<double> optimal_xi_at_all_gp);
+
+      //! pack method
+      void pack(Core::Communication::PackBuffer& data) const;
+
+      //! unpack method
+      void unpack(Core::Communication::UnpackBuffer& buffer);
+
+      //! update the maximum interpolation factor in the current time
+      //! step evaluation for the given Gauss point
+      void update_current_max_xi(const int gp);
+    };
+
+    //! struct with local substepping utilities
+    struct LocalSubsteppingUtils
+    {
+      //! current time parameter ranging from 0 to the problem time step \f$ \Delta t \f$
+      double t_;
+      //! counter of evaluated substeps
+      unsigned int substep_counter_;
+      //! current substep size
+      double curr_dt_;
+      //! number of times the problem time step \f$ \Delta t \f$ has been halved
+      unsigned int time_step_halving_counter_;
+      //!  current total number of substeps to be evaluated within the time step \f$ \Delta t
+      //! \f$; this is not always given by time_step_halving_counter, since the
+      //! halving does not have to be uniform (e.g. we could halve the time step twice and still
+      //! have 3 substeps to evaluate instead of 4, i.e. if the first substep was evaluable
+      //! numerically, but the second substep not, leading to another halving of the substep
+      //! length)
+      unsigned int total_num_of_substeps_;
+
+      //! reset routine: basically, create a new empty object
+      void reset();
+    };
+
+    /// class containing utilities for general analysis of the material
+    /// time integration (including predictor adaptation, Local Newton
+    /// loop, line search):
+    /// error types, number of line searches, timers, ... Currently only
+    /// employed for single-element single-processor simulations.
+    class GeneralLocalTimIntAnalysisUtils
     {
      public:
       //! number of LNL steps for the current timestep evaluation (LNL)
       unsigned int eval_num_of_LNL_steps_ = 0;
 
-      //! total number of steps
+      //! total number of LNL steps over all time steps
       unsigned int total_num_of_LNL_steps_ = 0;
 
       //! number of iterations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_iters_ = 0;
 
-      //! total number of LNL iterations
+      //! total number of LNL iterations over all time steps
       unsigned int total_num_of_iters_ = 0;
 
       //! number of repredictorizations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_repredict_ = 0;
 
-      //! total number of LNL repredictorizations
+      //! total number of LNL repredictorizations over all time steps
       unsigned int total_num_of_repredict_ = 0;
 
       //! number of iterations spent in the predictor adaptation for the
-      //! current timestep evaluation (LNL)
+      //! current timestep evaluation (including repredictorization)
       unsigned int eval_num_of_pred_adapt_iters_ = 0;
 
       //! total number of iterations spent in the predictor adaptation
+      //! over all time steps (including repredictorization)
       unsigned int total_num_of_pred_adapt_iters_ = 0;
 
       //! number of iterations spent in the predictor adaptation for the
       //! current timestep evaluation (LNL), in the specific case of repredictorization
       unsigned int eval_num_of_repredict_iters_ = 0;
 
-      //! total number of iterations spent in the predictor adaptation,
+      //! total number of iterations spent in the predictor adaptation
+      //! over all time steps,
       //! in the specific case of repredictorization
       unsigned int total_num_of_repredict_iters_ = 0;
 
@@ -275,7 +433,7 @@ namespace Mat
       //! (currently evaluated time step)
       unsigned int eval_num_of_alpha_neq_1 = 0;
 
-      //! total number of LNL line searches
+      //! total number of LNL line searches over all time steps
       unsigned int total_num_of_line_search_ = 0;
 
       //! line search: total number of times the step size \f$ \alpha \f$ of
@@ -290,7 +448,7 @@ namespace Mat
       //! number of iterations of the line searches for the current timestep evaluation (LNL)
       unsigned int eval_num_of_line_search_iters_ = 0;
 
-      //! total number of line search iterations
+      //! total number of line search iterations over all time steps
       unsigned int total_num_of_line_search_iters_ = 0;
 
       //! number of times the LNL convergences directly in its first
@@ -316,58 +474,64 @@ namespace Mat
       //! time step)
       double optimal_pred_interp_factor_ = 0;
 
-      //! LNL residual obtained from the optimal predictor interpolation factor
+      //! Local Newton residual obtained from the optimal predictor interpolation factor
       double lnl_res_optimal_pred_interp_factor_ = 0;
 
-      //! timer for the current timestep evaluation, from the start of preevaluate to the end of
-      //! update
-      Teuchos::Time eval_teuchos_timer_{
-          "InelasticDefgradTransvIsotropElastViscoplast::from_preevaluate_to_update"};
+      //! timer for the current inelastic deformation gradient evaluation in the current timestep
+      Teuchos::Time eval_teuchos_timer_inelastic_defgrad_{
+          "InelasticDefgradTransvIsotropElastViscoplast::inelastic deformation gradient "
+          "evaluation"};
 
-      //! timer for the time spent in the LNL
+      //! timer for the time spent in the Local Newton loop
       Teuchos::Time eval_teuchos_timer_LNL_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
 
-      //! timer for the time spent adapting the predictor
+      //! timer for the time spent adapting the predictor (including repredictorization)
       Teuchos::Time eval_teuchos_timer_pred_adapt_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation"};
 
-      //! timer for the time spent adapting the predictor in the
+      //! timer for the time spent adapting the predictor only in the
       //! specific case of repredictorization
       Teuchos::Time eval_teuchos_timer_repredict_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation "
           "(repredictorization)"};
 
-      //! timer for the time spent in the line search
+      //! timer for the time spent in the line search scheme
       Teuchos::Time eval_teuchos_timer_line_search_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
 
+      //! timer for the current linearization evaluation (additional cmat) in the current timestep
+      Teuchos::Time eval_teuchos_timer_additional_cmat_{
+          "InelasticDefgradTransvIsotropElastViscoplast::linearization "
+          "evaluation (additional cmat)"};
 
-      //! evaluation time
-      double eval_time_;
+      //! evaluation time for the current time step to compute the
+      //! inelastic deformation gradient
+      double eval_time_inelastic_defgrad_;
 
-      //! total time
-      double total_time_;
+      //! total evaluation time for the inelastic deformation gradient
+      //! over all times
+      double total_time_inelastic_defgrad_;
 
-      //! evaluation time spent in the LNL (current
+      //! evaluation time spent in the Local Newton loop (current
       //! time step)
       double eval_time_LNL_;
 
-      //! total time spent in the LNL
+      //! total time spent in the Local Newton Loop over all time steps
       double total_time_LNL_;
 
       //! evaluation time spent in the predictor adaptation (current
       //! time step)
       double eval_time_pred_adapt_;
 
-      //! total time spent in the predictor adaptation
+      //! total time spent in the predictor adaptation over all time steps
       double total_time_pred_adapt_;
 
       //! evaluation time spent in the predictor adaptation (current
       //! time step), in the specific case of repredictorization
       double eval_time_repredict_;
 
-      //! total time spent in the predictor adaptation, in the specific
+      //! total time spent in the predictor adaptation over all time steps, in the specific
       //! case of repredictorization
       double total_time_repredict_;
 
@@ -375,282 +539,193 @@ namespace Mat
       //! time step)
       double eval_time_line_search_;
 
-      //! total time spent in the line search
+      //! total time spent in the line search scheme over all time steps
       double total_time_line_search_;
 
-      //! error map of the current timestep evaluation, from the first preevaluate of this time step
-      //! to the first preevaluate of the next
+      //! evaluation time for the current time step to compute the
+      //! linearization (additional cmat)
+      double eval_time_additional_cmat_;
+
+      //! total evaluation time for the linearization (additional cmat)
+      //! over all times
+      double total_time_additional_cmat_;
+
+      //! error map (how many times an error occurs) of the current timestep evaluation, from the
+      //! first preevaluate of this time step to the first preevaluate of the next
       std::map<ErrorType, unsigned int> eval_error_map_ = {
-          {ErrorType::NegativePlasticStrain, 0},
-          {ErrorType::OverflowError, 0},
-          {ErrorType::NoPlasticIncompressibility, 0},
-          {ErrorType::FailedSolLinSystLNL, 0},
-          {ErrorType::FailedDetermLineSearchParam, 0},
-          {ErrorType::NoConvergenceLNL, 0},
-          {ErrorType::SingularJacobian, 0},
-          {ErrorType::FailedSolAnalytLinearization, 0},
-          {ErrorType::FailedLogEval, 0},
-          {ErrorType::FailedExpEval, 0},
-          {ErrorType::UnderYieldSurface, 0},
+          {ErrorType::negative_plastic_strain, 0},
+          {ErrorType::overflow_error, 0},
+          {ErrorType::no_plastic_incompressibility, 0},
+          {ErrorType::failed_solution_linear_system_lnl, 0},
+          {ErrorType::failed_determ_line_search_step, 0},
+          {ErrorType::no_convergence_local_newton, 0},
+          {ErrorType::singular_jacobian, 0},
+          {ErrorType::failed_solution_analytic_linearization, 0},
+          {ErrorType::failed_matrix_log_evaluation, 0},
+          {ErrorType::failed_matrix_exp_evaluation, 0},
+          {ErrorType::under_yield_surface, 0},
       };
 
-      //! error map of the total evaluation
+      //! error map (how many times an error occurs) of the total evaluation
       std::map<ErrorType, unsigned int> total_error_map_ = {
-          {ErrorType::NegativePlasticStrain, 0},
-          {ErrorType::OverflowError, 0},
-          {ErrorType::NoPlasticIncompressibility, 0},
-          {ErrorType::FailedSolLinSystLNL, 0},
-          {ErrorType::FailedDetermLineSearchParam, 0},
-          {ErrorType::NoConvergenceLNL, 0},
-          {ErrorType::SingularJacobian, 0},
-          {ErrorType::FailedSolAnalytLinearization, 0},
-          {ErrorType::FailedLogEval, 0},
-          {ErrorType::FailedExpEval, 0},
-          {ErrorType::FailedRightCGInterp, 0},
-          {ErrorType::UnderYieldSurface, 0},
+          {ErrorType::negative_plastic_strain, 0},
+          {ErrorType::overflow_error, 0},
+          {ErrorType::no_plastic_incompressibility, 0},
+          {ErrorType::failed_solution_linear_system_lnl, 0},
+          {ErrorType::failed_determ_line_search_step, 0},
+          {ErrorType::no_convergence_local_newton, 0},
+          {ErrorType::singular_jacobian, 0},
+          {ErrorType::failed_solution_analytic_linearization, 0},
+          {ErrorType::failed_matrix_log_evaluation, 0},
+          {ErrorType::failed_matrix_exp_evaluation, 0},
+          {ErrorType::failed_right_cg_interpolation, 0},
+          {ErrorType::under_yield_surface, 0},
       };
+
+      //! simulation time instant
+      double sim_time_ = 0.0;
+      //! simulation time step index
+      int sim_timestep_ = 0;
+
+      //! reset called for current time step?
+      bool is_reset_current_timestep_ = false;
+
+      //! how often was the update method called? (maximum:
+      //! num_of_global_elements, if only one processor
+      //! is considered)
+      int num_update_calls_ = 0;
 
       //! runtime csv writer
       std::optional<Core::IO::RuntimeCsvWriter> csv_writer_;
 
-      //! simulation time instant and time step
-      double sim_time_ = 0.0;
-      int sim_timestep_ = 0.0;
+      //! initialize csv writer
+      void init_csv_writer();
 
-      //! was the pre_evaluate method of the first element called?
-      bool pre_eval_called_ = false;
+      //! reset method: reset the stored internal variables for a new
+      //! evaluation / new timestep
+      void reset();
 
-      //! how often was the update method called? (max. num_of_global_elements if one processor is
-      //! considered)
-      int num_update_calls_ = 0;
+      //! update total values based on the evaluated values
+      void update_total();
 
-      //! reset method
-      void reset()
-      {
-        eval_num_of_LNL_steps_ = 0;
-        eval_num_of_iters_ = 0;
-        eval_num_of_repredict_ = 0;
-        eval_num_of_pred_adapt_iters_ = 0;
-        eval_num_of_repredict_iters_ = 0;
-        eval_num_of_line_search_ = 0;
-        eval_num_of_line_search_iters_ = 0;
-        eval_teuchos_timer_.reset();
-        eval_teuchos_timer_LNL_.reset();
-        eval_teuchos_timer_pred_adapt_.reset();
-        eval_teuchos_timer_repredict_.reset();
-        eval_teuchos_timer_line_search_.reset();
-        eval_time_ = 0;
-        eval_time_LNL_ = 0;
-        eval_time_pred_adapt_ = 0;
-        eval_time_repredict_ = 0;
-        eval_time_line_search_ = 0;
-        eval_error_map_ = {
-            {ErrorType::NegativePlasticStrain, 0},
-            {ErrorType::OverflowError, 0},
-            {ErrorType::NoPlasticIncompressibility, 0},
-            {ErrorType::FailedSolLinSystLNL, 0},
-            {ErrorType::FailedDetermLineSearchParam, 0},
-            {ErrorType::NoConvergenceLNL, 0},
-            {ErrorType::SingularJacobian, 0},
-            {ErrorType::FailedSolAnalytLinearization, 0},
-            {ErrorType::FailedLogEval, 0},
-            {ErrorType::FailedExpEval, 0},
-            {ErrorType::UnderYieldSurface, 0},
-        };
-        eval_num_of_alpha_neq_1 = 0;
-        eval_num_of_alpha_neq_1_last_iter = 0;
-        eval_num_of_first_iter_convergences = 0;
-        curr_pred_interp_factor_ = -1.0;
-        curr_max_pred_interp_factor_ = -1.0;
-        optimal_pred_interp_factor_ = -1.0;
-        lnl_res_optimal_pred_interp_factor_ = -1.0;
-      }
+      //! write the stored internal variables to csv
+      void write_to_csv();
 
-      //! initialize csv_writer
-      void init_csv_writer()
-      {
-        // get structure discretization
-        std::shared_ptr<Core::FE::Discretization> structure_dis =
-            Global::Problem::instance()->get_dis("structure");
-
-        // check whether we are using a single processor! (no implementation for multiple processors
-        // yet, and also not really required)
-        int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-        FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-            "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-            "output "
-            "for multiple processors");
-
-        // create csv_writer and register its columns
-        csv_writer_.emplace(
-            my_rank, *Global::Problem::instance()->output_control_file(), "timint_output");
-        csv_writer_->register_data_vector("Eval. steps (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
-        csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
-        csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
-        csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
-        csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
-        csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
-        csv_writer_->register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
-        csv_writer_->register_data_vector("Total # of first LNL iter. convergences", 1, 16);
-        csv_writer_->register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
-        csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Total time (line search)", 1, 16);
-        csv_writer_->register_data_vector(
-            "Interpolation factor of GP 0 of Ele 0 (last global iteration)", 1, 16);
-        csv_writer_->register_data_vector(
-            "Interpolation factor of GP 0 of Ele 0 (maximum over all global "
-            "iterations)",
-            1, 16);
-        csv_writer_->register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
-        csv_writer_->register_data_vector(
-            "LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
-        for (const auto& [key, value] : ErrorNames)
-        {
-          csv_writer_->register_data_vector(
-              "Eval. Error " + std::to_string(static_cast<int>(key)) + ": " + value, 1, 16);
-          csv_writer_->register_data_vector(
-              "Total Error " + std::to_string(static_cast<int>(key)) + ": " + value, 1, 16);
-        }
-      }
-
-      //! update total values
-      void update_total()
-      {
-        total_num_of_LNL_steps_ += eval_num_of_LNL_steps_;
-        total_num_of_iters_ += eval_num_of_iters_;
-        total_num_of_repredict_ += eval_num_of_repredict_;
-        total_num_of_pred_adapt_iters_ += eval_num_of_pred_adapt_iters_;
-        total_num_of_repredict_iters_ += eval_num_of_repredict_iters_;
-        total_num_of_line_search_ += eval_num_of_line_search_;
-        total_num_of_line_search_iters_ += eval_num_of_line_search_iters_;
-        total_num_of_alpha_neq_1 += eval_num_of_alpha_neq_1;
-        total_num_of_alpha_neq_1_last_iter += eval_num_of_alpha_neq_1_last_iter;
-        total_time_ += eval_time_;
-        total_time_LNL_ += eval_time_LNL_;
-        total_time_pred_adapt_ += eval_time_pred_adapt_;
-        total_time_repredict_ += eval_time_repredict_;
-        total_time_line_search_ += eval_time_line_search_;
-        for (const auto& [error_type, error_count] : eval_error_map_)
-        {
-          total_error_map_[error_type] += error_count;
-        }
-      }
-
-      //! write to csv after each timestep
-      void write_to_csv()
-      {
-        // output data
-        std::map<std::string, std::vector<double>> output_data;
-        output_data["Eval. steps (LNL)"] = {static_cast<double>(eval_num_of_LNL_steps_)};
-        output_data["Total steps (LNL)"] = {static_cast<double>(total_num_of_LNL_steps_)};
-        output_data["Eval. iterations (LNL)"] = {static_cast<double>(eval_num_of_iters_)};
-        output_data["Total iterations (LNL)"] = {static_cast<double>(total_num_of_iters_)};
-        output_data["Eval. repredictorizations (LNL)"] = {
-            static_cast<double>(eval_num_of_repredict_)};
-        output_data["Total repredictorizations (LNL)"] = {
-            static_cast<double>(total_num_of_repredict_)};
-        output_data["Eval. iterations (predictor adaptation)"] = {
-            static_cast<double>(eval_num_of_pred_adapt_iters_)};
-        output_data["Total iterations (predictor adaptation)"] = {
-            static_cast<double>(total_num_of_pred_adapt_iters_)};
-        output_data["Eval. iterations (repredictorization)"] = {
-            static_cast<double>(eval_num_of_repredict_iters_)};
-        output_data["Total iterations (repredictorization)"] = {
-            static_cast<double>(total_num_of_repredict_iters_)};
-        output_data["Eval. iterations (line search)"] = {
-            static_cast<double>(eval_num_of_line_search_iters_)};
-        output_data["Total iterations (line search)"] = {
-            static_cast<double>(total_num_of_line_search_iters_)};
-        output_data["Eval. line searches (LNL)"] = {static_cast<double>(eval_num_of_line_search_)};
-        output_data["Total line searches (LNL)"] = {static_cast<double>(total_num_of_line_search_)};
-        output_data["Eval. time (full: preevaluate -> update)"] = {static_cast<double>(eval_time_)};
-        output_data["Total time (full: preevaluate -> update)"] = {
-            static_cast<double>(total_time_)};
-        output_data["Eval. time (LNL)"] = {static_cast<double>(eval_time_LNL_)};
-        output_data["Total time (LNL)"] = {static_cast<double>(total_time_LNL_)};
-        output_data["Eval. time (predictor adaptation)"] = {
-            static_cast<double>(eval_time_pred_adapt_)};
-        output_data["Total time (predictor adaptation)"] = {
-            static_cast<double>(total_time_pred_adapt_)};
-        output_data["Eval. time (repredictorization)"] = {
-            static_cast<double>(eval_time_repredict_)};
-        output_data["Total time (repredictorization)"] = {
-            static_cast<double>(total_time_repredict_)};
-        output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
-        output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
-        output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
-            static_cast<double>(eval_num_of_alpha_neq_1)};
-        output_data["Eval. # of times: alpha neq 1 (last LNL iter)"] = {
-            static_cast<double>(eval_num_of_alpha_neq_1_last_iter)};
-        output_data["Eval. # of first LNL iter. convergences"] = {
-            static_cast<double>(eval_num_of_first_iter_convergences)};
-        output_data["Total # of times: alpha neq 1 (all LNL iters)"] = {
-            static_cast<double>(total_num_of_alpha_neq_1)};
-        output_data["Total # of times: alpha neq 1 (last LNL iter)"] = {
-            static_cast<double>(total_num_of_alpha_neq_1_last_iter)};
-        output_data["Total # of first LNL iter. convergences"] = {
-            static_cast<double>(total_num_of_first_iter_convergences)};
-
-
-        for (const auto& [key, value] : ErrorNames)
-        {
-          output_data["Eval. Error " + std::to_string(static_cast<int>(key)) + ": " + value] = {
-              static_cast<double>(eval_error_map_[key])};
-          output_data["Total Error " + std::to_string(static_cast<int>(key)) + ": " + value] = {
-              static_cast<double>(total_error_map_[key])};
-        }
-
-        // predictor interpolation factors
-        output_data
-            ["Interpolation factor of GP 0 of Ele 0 (last global "
-             "iteration)"] = {static_cast<double>(curr_pred_interp_factor_)};
-        output_data
-            ["Interpolation factor of GP 0 of Ele 0 (maximum over all global "
-             "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_)};
-        output_data["Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
-            static_cast<double>(optimal_pred_interp_factor_)};
-        output_data["LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
-            static_cast<double>(lnl_res_optimal_pred_interp_factor_)};
-
-
-        // write output data to csv
-        csv_writer_->write_data_to_file(sim_time_, sim_timestep_, output_data);
-      }
-
-      //! output routine routine of the csv writer in the case of an error
+      //! output routine of the csv writer in the case of an error
       //! during the Local Newton Loop routine
-      void output_error_local_newton_loop(unsigned int step_counter)
-      {  // add current number of steps
-        eval_num_of_LNL_steps_ += step_counter;
-
-        // stop (already started!) LNL timer
-        eval_time_LNL_ += eval_teuchos_timer_LNL_.stop();
-
-        // output routine
-        eval_time_ = eval_teuchos_timer_.stop();
-        update_total();
-        write_to_csv();
-      }
+      void output_error_local_newton_loop(unsigned int step_counter);
     };
+
+    //! struct containing quantities computed from a given elasticity/plasticity state;
+    //! given: current right Cauchy-Green deformation tensor, inelastic deformation gradient and
+    //! plastic strain at the previous time instant
+    struct StateQuantities
+    {
+      // ----- current state quantities (for the evaluated Gauss points) ----- //
+
+      //! elastic right Cauchy-Green deformation tensor
+      Core::LinAlg::Matrix<3, 3> curr_CeM_{Core::LinAlg::Initialization::zero};
+
+      //! isotropic stress factors
+      Core::LinAlg::Matrix<3, 1> curr_gamma_{Core::LinAlg::Initialization::zero};
+
+      //! isotropic constitutive tensor factors
+      Core::LinAlg::Matrix<8, 1> curr_delta_{Core::LinAlg::Initialization::zero};
+
+      //! elastic 2nd PK stress tensors (specifically only transversely-isotropic components)
+      Core::LinAlg::Matrix<3, 3> curr_SeM_{Core::LinAlg::Initialization::zero};
+
+      //! elastic stiffness tensor (specifically only transversely-isotropic components)
+      Core::LinAlg::Matrix<6, 6> curr_dSedCe_{Core::LinAlg::Initialization::zero};
+
+      //! deviatoric, symmetric part of the Mandel stress tensor
+      Core::LinAlg::Matrix<3, 3> curr_Me_dev_sym_M_{Core::LinAlg::Initialization::zero};
+
+      //! equivalent tensile stress
+      double curr_equiv_stress_{0.0};
+
+      //! equivalent plastic strain rate
+      double curr_equiv_plastic_strain_rate_{0.0};
+
+      //! plastic flow direction tensor
+      Core::LinAlg::Matrix<3, 3> curr_NpM_{Core::LinAlg::Initialization::zero};
+
+      //! plastic stretching tensor
+      Core::LinAlg::Matrix<3, 3> curr_dpM_{Core::LinAlg::Initialization::zero};
+
+      //! plastic velocity gradient tensor
+      Core::LinAlg::Matrix<3, 3> curr_lpM_{Core::LinAlg::Initialization::zero};
+
+      //! plastic update tensor
+      Core::LinAlg::Matrix<3, 3> curr_EpM_{Core::LinAlg::Initialization::zero};
+    };
+
+
+    //! struct containing specific derivatives of quantities computed from a given
+    //! elasticity/plasticity state; given: current right Cauchy-Green deformation tensor, inelastic
+    //! deformation gradient and plastic strain at the previous time instant
+    struct StateQuantityDerivatives
+    {
+      // ----- current state variable derivatives (for the evaluated Gauss points)----- //
+
+      //! derivative of the elastic right Cauchy_Green deformation tensor w.r.t. the inverse
+      //! inelastic deformation gradient (Voigt stress form)
+      Core::LinAlg::Matrix<6, 9> curr_dCediFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the elastic right Cauchy_Green deformation tensor w.r.t. the right
+      //! Cauchy-Green deformation tensor (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> curr_dCedC_{Core::LinAlg::Initialization::zero};
+
+      //! derivatives of the equivalent tensile stress w.r.t. the inverse inelastic deformation
+      //! gradient (Voigt notation)
+      Core::LinAlg::Matrix<1, 9> curr_dequiv_stress_diFin_{Core::LinAlg::Initialization::zero};
+      //! derivatives of the equivalent tensile stress w.r.t. the right Cauchy-Green deformation
+      //! tensor (Voigt stress form)
+      Core::LinAlg::Matrix<1, 6> curr_dequiv_stress_dC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
+      //! inverse inelastic deformation gradient (Voigt stress form)
+      Core::LinAlg::Matrix<6, 9> curr_dMe_dev_sym_diFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the right
+      //! Cauchy-Green deformation tensor (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> curr_dMe_dev_sym_dC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the plastic strain rate w.r.t. the equivalent stress
+      double curr_dpsr_dequiv_stress_{0.0};
+      //! derivative of the plastic strain rate w.r.t. the equivalent plastic strain
+      double curr_dpsr_depsp_{0.0};
+
+      //! derivative of the plastic stretching tensor w.r.t. the inverse inelastic deformation
+      //! gradient (Voigt stress form)
+      Core::LinAlg::Matrix<6, 9> curr_ddpdiFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic stretching tensor w.r.t. the equivalent plastic strain (Voigt
+      //! stress form)
+      Core::LinAlg::Matrix<6, 1> curr_ddpdepsp_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic stretching tensor w.r.t. the right Cauchy-Green deformation
+      //! tensor (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> curr_ddpdC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the plastic velocity gradient tensor w.r.t. the inverse inelastic
+      //! deformation gradient (Voigt notation)
+      Core::LinAlg::Matrix<9, 9> curr_dlpdiFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic velocity gradient tensor w.r.t. the equivalent plastic strain
+      //! (Voigt notation)
+      Core::LinAlg::Matrix<9, 1> curr_dlpdepsp_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic velocity gradient tensor w.r.t. the right Cauchy-Green
+      //! deformation tensor (Voigt stress form)
+      Core::LinAlg::Matrix<9, 6> curr_dlpdC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the plastic update tensor w.r.t. the inverse inelastic deformation gradient
+      //! (Voigt notation)
+      Core::LinAlg::Matrix<9, 9> curr_dEpdiFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic update tensor w.r.t. the equivalent plastic strain (Voigt
+      //! notation)
+      Core::LinAlg::Matrix<9, 1> curr_dEpdepsp_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic update tensor w.r.t. the right Cauchy-Green deformation tensor
+      //! (Voigt stress form)
+      Core::LinAlg::Matrix<9, 6> curr_dEpdC_{Core::LinAlg::Initialization::zero};
+    };
+
+
 
     /// enum class for state quantity evaluations in
     /// InelasticDefgradTransvIsotropElastViscoplast: what is the aim of
@@ -674,352 +749,298 @@ namespace Mat
                                     ///< derivatives of the plastic strain rate have been evaluated
     };
 
-    /// make sure StateQuantityDerivEvalType is stream-insertable
-    inline std::ostream& operator<<(
-        std::ostream& stream, const StateQuantityDerivEvalType& state_quant_deriv_eval_type)
-    {
-      stream << magic_enum::enum_name(state_quant_deriv_eval_type);
-      return stream;
-    }
-
-    //! DEBUG?: struct holding relevant tracking data when writing to csv
-    //! files (InelasticDefgradTransvIsotropElastViscoplast)
+    //! struct holding relevant tracking data when writing to csv
+    //! files
     struct CSVOutputTrackingData
     {
       //! global element id
-      const int ele_gid;
+      int ele_gid_;
 
       //! Gauss point index
-      const int gp;
+      int gp_;
 
       //! time instant \f$t_{n}\f$
-      const double tn;
+      double tn_;
 
       //! time instant \f$t_{n+1}\f$
-      const double tnp;
+      double tnp_;
+
+      //! tracker for the global iteration (if we have output every
+      //! iteration) or the timestep index; increased by 1 every time
+      //! the Gauss point output routine / or the update method (if no
+      //! Gauss point output is considered) is called
+      unsigned int globiter_or_timestep_index_;
+
+      //! tracker for the local NR iteration
+      unsigned int lnl_iter_;
+    };
+
+
+    //! struct containing settings and iteration data from the Local Newton-Raphson
+    //! Loop (time integration of the viscoplasticity equations)
+    //! (used for Gauss-Point output). In contrast to
+    //! GeneralLocalTimIntAnalysisUtils which tracks general information
+    //! over time steps (such as how many iterations were performed for
+    //! a specific time step), this utility struct considers the data
+    //! for each specific iteration of the Local Newton-Raphson Loop.
+    struct LocalNewtonData
+    {
+      //! constructor of data
+      LocalNewtonData();
+
+      //! convergence tolerance of the Local Newton Loop
+      static constexpr double tol_ = 1.0e-8;
+
+      //! maximum number of Local Newton Loop iterations
+      static constexpr unsigned max_iter_ = 200;
+
+      //! current LNL iteration
+      unsigned int iter_;
 
       //! tracker for the global iteration (if we have output every
       //! iteration) or the timestep index; increased by 1 every time
       //! the Gauss point output routine is called
       unsigned int globiter_or_timestep_index_;
 
-      //! tracker for the local NR iteration
-      unsigned int lnl_iter;
+      //! do we have Gauss point output every global iteration?
+      bool is_Gauss_point_output_every_global_iter_ = false;
+
+      //! success status of the iteration (can it even evaluate the
+      //! residual?); vector of GP values
+      std::vector<std::array<LocalIterationStatus, max_iter_>> all_iter_status_;
+
+      //! all iteration values of the LNL residual; vector of GP values
+      std::vector<std::array<double, max_iter_>> all_residual_;
+
+      //! all iteration values of the equivalent stress; vector of GP values
+      std::vector<std::array<double, max_iter_>> all_equiv_stress_;
+
+      //! all iteration values of the plastic strain; vector of GP values
+      std::vector<std::array<double, max_iter_>> all_plastic_strain_;
+
+      //! resize all relevant vectors based on the number of Gauss
+      //! points known only after setting up the problem -> each vector
+      //! item gets the same value for now
+      void set_num_of_gp(const unsigned int num_of_gp);
+
+      //! reset all arrays holding values for all iterations (for a
+      //! given Gauss point)
+      void reset_all_iteration_data(const unsigned int gp);
+
+      // maybe we need some pack and unpack methods perspectively? If
+      // this is to be used consistently in the future...-> would mainly
+      // concern the global iteration / time step tracker, but nothing else.
+
+      //! data collector for a single Local Newton iteration
+      struct LocalIterDataCollector
+      {
+        //! success status of the iteration (can it even evaluate the
+        //! residual?); vector of GP values
+        const LocalIterationStatus iter_status_;
+
+        //! residual of the current iteration
+        const double residual_;
+
+        //! equivalent stress of the current iteration
+        const double equiv_stress_;
+
+        //! plastic strain of the current iteration
+        const double plastic_strain_;
+      };
+
+      //! set data for a given iteration iter (specified via output
+      //! tracking data)
+      void set_iteration_data(const CSVOutputTrackingData csv_output_tracking_data,
+          const LocalIterDataCollector local_iter_data_collector);
+
+      //! write LNL iteration data to csv file, when the LNL fails
+      void write_failed_lnl_iteration_data_to_csv(
+          const CSVOutputTrackingData csv_output_tracking_data)
+      {
+        // get structure discretization
+        std::shared_ptr<Core::FE::Discretization> structure_dis =
+            Global::Problem::instance()->get_dis("structure");
+
+        // check whether we are using a single processor! (no implementation for multiple
+        // processors yet, and also not really required)
+        int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+        FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+            "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+            "output "
+            "for multiple processors");
+
+        // create csv_writer and register its columns
+        Core::IO::RuntimeCsvWriter csv_writer{my_rank,
+            *Global::Problem::instance()->output_control_file(), "failed_lnl_iteration_data"};
+
+        // register data to be added
+        csv_writer.register_data_vector("previous_time", 1, 16);
+        csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+        csv_writer.register_data_vector("element_gid", 1, 16);
+        csv_writer.register_data_vector("gauss_point", 1, 16);
+        csv_writer.register_data_vector("residual", 1, 16);
+        csv_writer.register_data_vector("iter_status", 1, 16);
+        csv_writer.register_data_vector("equiv_stress", 1, 16);
+        csv_writer.register_data_vector("plastic_strain", 1, 16);
+
+        // write to csv
+        for (unsigned iter = 0; iter < max_iter_; ++iter)
+        {
+          std::map<std::string, std::vector<double>> output_data;
+          output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn_)};
+          output_data["globiter_or_timestep_index"] = {
+              static_cast<double>(globiter_or_timestep_index_)};
+          output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid_)};
+          output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp_)};
+          output_data["residual"] = {
+              static_cast<double>(all_residual_[csv_output_tracking_data.gp_][iter])};
+          output_data["iter_status"] = {static_cast<double>(local_iteration_status_enum_to_double(
+              all_iter_status_[csv_output_tracking_data.gp_][iter]))};
+          output_data["equiv_stress"] = {
+              static_cast<double>(all_equiv_stress_[csv_output_tracking_data.gp_][iter])};
+          output_data["plastic_strain"] = {
+              static_cast<double>(all_plastic_strain_[csv_output_tracking_data.gp_][iter])};
+
+          // write output data to csv
+          csv_writer.write_data_to_file(csv_output_tracking_data.tnp_, iter, output_data);
+        }
+      }
     };
 
-    //! DEBUG?: struct holding the relevant output data of all
+    //! struct holding the relevant output data of all
     //! microiterations of a single predictor adaptation which can be
     //! written to a csv file
     struct CSVOutputPredAdaptMicroIterData
     {
       /*! @brief Constructor.
        *
-       * @param[in] max_num_pred_adapt_micro_iters maximum number of
-       * micro iterations within a single predictor adaptation
+       * @param[in] csv_output_tracking_data tracking data used to
+       * specify the settings for the csv output.
        */
-      CSVOutputPredAdaptMicroIterData(const unsigned int max_num_pred_adapt_micro_iters)
-          : max_num_pred_adapt_micro_iters_(max_num_pred_adapt_micro_iters)
-      {
-      }
+      CSVOutputPredAdaptMicroIterData(const CSVOutputTrackingData csv_output_tracking_data);
 
       //! data collector for a single micro iteration within the
-      //! predictor adaptation -> assigns the values at the specific microiterations
+      //! predictor adaptation -> used to assign the values at the specific microiterations
       struct MicroIterDataCollector
       {
         //! current interpolation factor \f$ \xi \f$
-        double current_xi = -1;
+        double current_xi_ = -1;
         //! current equivalent stress
-        double current_equiv_stress = -1;
+        double current_equiv_stress_ = -1;
         //! current plastic strain
-        double current_plastic_strain = -1;
+        double current_plastic_strain_ = -1;
         //! current error status
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status =
-            ErrorType::OverflowError;
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status_ =
+            ErrorType::overflow_error;
       };
 
-      //! all indices of the microiteration (iterations within the predictor
+      //! all indices of the microiterations (iterations within the predictor
       //! adaptation)
-      std::vector<unsigned int> all_microiter;
+      std::vector<unsigned int> all_microiter_;
 
       //! current interpolation factors \f$ \xi \f$ of all
       //! microiterations
-      std::vector<double> all_current_xi;
+      std::vector<double> all_current_xi_;
 
       //! current equivalent stresses of all microiterations (associated
       //! with the current interpolation factors)
-      std::vector<double> all_current_equiv_stress;
+      std::vector<double> all_current_equiv_stress_;
 
       //! current plastic strains of all microiterations (associated
       //! with the current interpolation factors)
-      std::vector<double> all_current_plastic_strain;
+      std::vector<double> all_current_plastic_strain_;
 
       //! current error status of all microiterations (associated with
       //! the current interpolation factors)
-      std::vector<ErrorType> all_current_error_status;
+      std::vector<ErrorType> all_current_error_status_;
 
-      //! set collected data for specific microiteration
-      void set_micro_iter_data(
-          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter)
-      {
-        all_microiter.push_back(micro_iter);
-        all_current_xi.push_back(mi_data_collector.current_xi);
-        all_current_equiv_stress.push_back(mi_data_collector.current_equiv_stress);
-        all_current_plastic_strain.push_back(mi_data_collector.current_plastic_strain);
-        all_current_error_status.push_back(mi_data_collector.current_error_status);
-      }
+      //! tracking data used to specify the settings for csv output
+      CSVOutputTrackingData csv_output_tracking_data_;
 
-      //! maximum number of microiterations within a single predictor
-      //! adaptation
-      const unsigned int max_num_pred_adapt_micro_iters_;
+      //! append collected data for specific microiteration
+      void append_micro_iter_data(
+          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter);
+
+      //! writes data from each microiteration of a single predictor
+      //! adaptation (specified via tracking data) to a dedicated csv file
+      void write_pred_adapt_micro_iter_data_to_csv();
     };
 
-    //! DEBUG?: struct holding the relevant output data of all
+    //! struct holding the relevant output data of all
     //! microiterations of a single line search which can be
     //! written to a csv file
     struct CSVOutputLineSearchMicroIterData
     {
-      /*! @brief Constructor.
-       *
-       * @param[in] max_num_line_search_micro_iters maximum number of
-       * micro iterations within a single line search
+      /*!
+       * @param[in] csv_output_tracking_data tracking data used to
+       * specify the settings for the csv output.
        */
-      CSVOutputLineSearchMicroIterData(const unsigned int max_num_line_search_micro_iters)
-          : max_num_line_search_micro_iters_(max_num_line_search_micro_iters)
-      {
-      }
+      CSVOutputLineSearchMicroIterData(const CSVOutputTrackingData csv_output_tracking_data);
 
       //! data collector for a single micro iteration within the
       //! predictor adaptation -> assigns the values at the specific microiterations
       struct MicroIterDataCollector
       {
         //! current step size \f$ \alpha \f$
-        double current_alpha = -1;
+        double current_alpha_ = -1;
         //! maximum allowed step size \f$ \alpha_{\mathrm{max}} \f$
         //! accounting for eventual errors
-        double max_alpha = -1;
+        double max_alpha_ = -1;
         //! current equivalent stress
-        double current_equiv_stress = -1;
+        double current_equiv_stress_ = -1;
         //! current plastic strain
-        double current_plastic_strain = -1;
+        double current_plastic_strain_ = -1;
         //! current quadratic residual norm for the current step size
-        double current_quadratic_residual_norm = -1;
+        double current_quadratic_residual_norm_ = -1;
         //! maximum allowed quadratic residual norm for the current step size
-        double max_quadratic_residual_norm = -1;
+        double max_quadratic_residual_norm_ = -1;
         //! current error status
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status =
-            ErrorType::OverflowError;
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status_ =
+            ErrorType::overflow_error;
       };
 
-      //! all indices of the microiteration (iterations within the line search)
-      std::vector<unsigned int> all_microiter;
+      //! all indices of the microiterations (iterations within the line search)
+      std::vector<unsigned int> all_microiter_;
 
       //! current step sizes \f$ \alpha \f$ of all
       //! microiterations
-      std::vector<double> all_current_alpha;
+      std::vector<double> all_current_alpha_;
 
       //! maximum step sizes \f$ \alpha_{\mathrm{}} \f$ of all
       //! microiterations
-      std::vector<double> all_max_alpha;
+      std::vector<double> all_max_alpha_;
 
       //! current equivalent stresses of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_current_equiv_stress;
+      std::vector<double> all_current_equiv_stress_;
 
       //! current plastic strains of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_current_plastic_strain;
+      std::vector<double> all_current_plastic_strain_;
 
       //! current quadratic residual norm of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_current_quadratic_residual_norm;
+      std::vector<double> all_current_quadratic_residual_norm_;
 
       //! maximum allowed quadratic residual norm of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_max_quadratic_residual_norm;
+      std::vector<double> all_max_quadratic_residual_norm_;
 
       //! current error status of all microiterations (associated with
       //! the current line search ste sizes)
-      std::vector<ErrorType> all_current_error_status;
+      std::vector<ErrorType> all_current_error_status_;
 
-      //! set collected data for specific microiteration
-      void set_micro_iter_data(
-          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter)
-      {
-        all_microiter.push_back(micro_iter);
-        all_current_alpha.push_back(mi_data_collector.current_alpha);
-        all_max_alpha.push_back(mi_data_collector.max_alpha);
-        all_current_equiv_stress.push_back(mi_data_collector.current_equiv_stress);
-        all_current_plastic_strain.push_back(mi_data_collector.current_plastic_strain);
-        all_current_quadratic_residual_norm.push_back(
-            mi_data_collector.current_quadratic_residual_norm);
-        all_max_quadratic_residual_norm.push_back(mi_data_collector.max_quadratic_residual_norm);
-        all_current_error_status.push_back(mi_data_collector.current_error_status);
-      }
+      //! append collected data for specific microiteration
+      void append_micro_iter_data(
+          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter);
 
-      //! maximum number of microiterations within a single predictor
-      //! adaptation
-      const unsigned int max_num_line_search_micro_iters_;
+      //! tracking data used to specify the settings for csv output
+      CSVOutputTrackingData csv_output_tracking_data_;
+
+      //! writes data from each microiteration of a single line search (specified via tracking data)
+      //! to a dedicated csv file
+      void write_line_search_micro_iter_data_to_csv();
     };
-
-
-
-    //! writes data from each microiteration of a single predictor
-    //! adaptation (specified via tracking data) to a dedicated csv file
-    inline void write_pred_adapt_micro_iter_data_to_csv(
-        CSVOutputTrackingData csv_output_tracking_data,
-        CSVOutputPredAdaptMicroIterData csv_output_micro_iter_data)
-    {
-      // get structure discretization
-      std::shared_ptr<Core::FE::Discretization> structure_dis =
-          Global::Problem::instance()->get_dis("structure");
-
-      // check whether we are using a single processor! (no implementation for multiple
-      // processors yet, and also not really required)
-      int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-      FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-          "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-          "output "
-          "for multiple processors");
-
-      // create csv_writer and register its columns
-      Core::IO::RuntimeCsvWriter csv_writer{my_rank,
-          *Global::Problem::instance()->output_control_file(),
-          "pred-adapt-micro-iter-output-ele-gid-" +
-              std::to_string(csv_output_tracking_data.ele_gid) + "-gp-" +
-              std::to_string(csv_output_tracking_data.gp) + "-tn-" +
-              std::to_string(csv_output_tracking_data.tn) + "-globiter-or-timestep-index-" +
-              std::to_string(csv_output_tracking_data.globiter_or_timestep_index_) + "-lnl-iter-" +
-              std::to_string(csv_output_tracking_data.lnl_iter)};
-      csv_writer.register_data_vector("element_gid", 1, 16);
-      csv_writer.register_data_vector("gauss_point", 1, 16);
-      csv_writer.register_data_vector("previous_time", 1, 16);
-      csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
-      csv_writer.register_data_vector("lnl_iter", 1, 16);
-      csv_writer.register_data_vector("current_xi", 1, 16);
-      csv_writer.register_data_vector("current_equiv_stress", 1, 16);
-      csv_writer.register_data_vector("current_plastic_strain", 1, 16);
-      csv_writer.register_data_vector("current_err_status", 1, 16);
-
-      // already fill the columns containing solely the tracking data
-      for (unsigned int mi = 0; mi < csv_output_micro_iter_data.all_microiter.size(); ++mi)
-      {
-        std::map<std::string, std::vector<double>> output_data;
-        output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid)};
-        output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp)};
-        output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn)};
-        output_data["globiter_or_timestep_index"] = {
-            static_cast<double>(csv_output_tracking_data.globiter_or_timestep_index_)};
-        output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data.lnl_iter)};
-        output_data["current_xi"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_xi[mi])};
-        output_data["current_equiv_stress"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_equiv_stress[mi])};
-        output_data["current_plastic_strain"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_plastic_strain[mi])};
-        switch (csv_output_micro_iter_data.all_current_error_status[mi])
-        {
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors:
-            output_data["current_err_status"] = {0.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::OverflowError:
-            output_data["current_err_status"] = {1.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::UnderYieldSurface:
-            output_data["current_err_status"] = {2.0};
-            break;
-          default:
-            output_data["current_err_status"] = {-1.0};
-            break;
-        }
-
-        // write output data to csv
-        csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
-      }
-    }
-
-
-    //! writes data from each microiteration of a single line search (specified via tracking data)
-    //! to a dedicated csv file
-    inline void write_line_search_micro_iter_data_to_csv(
-        CSVOutputTrackingData csv_output_tracking_data,
-        CSVOutputLineSearchMicroIterData csv_output_micro_iter_data)
-    {
-      // get structure discretization
-      std::shared_ptr<Core::FE::Discretization> structure_dis =
-          Global::Problem::instance()->get_dis("structure");
-
-      // check whether we are using a single processor! (no implementation for multiple
-      // processors yet, and also not really required)
-      int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-      FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-          "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-          "output "
-          "for multiple processors");
-
-      // create csv_writer and register its columns
-      Core::IO::RuntimeCsvWriter csv_writer{my_rank,
-          *Global::Problem::instance()->output_control_file(),
-          "line-search-micro-iter-output-ele-gid-" +
-              std::to_string(csv_output_tracking_data.ele_gid) + "-gp-" +
-              std::to_string(csv_output_tracking_data.gp) + "-tn-" +
-              std::to_string(csv_output_tracking_data.tn) + "-globiter-or-timestep-index-" +
-              std::to_string(csv_output_tracking_data.globiter_or_timestep_index_) + "-lnl-iter-" +
-              std::to_string(csv_output_tracking_data.lnl_iter)};
-      csv_writer.register_data_vector("element_gid", 1, 16);
-      csv_writer.register_data_vector("gauss_point", 1, 16);
-      csv_writer.register_data_vector("previous_time", 1, 16);
-      csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
-      csv_writer.register_data_vector("lnl_iter", 1, 16);
-      csv_writer.register_data_vector("current_alpha", 1, 16);
-      csv_writer.register_data_vector("max_alpha", 1, 16);
-      csv_writer.register_data_vector("current_equiv_stress", 1, 16);
-      csv_writer.register_data_vector("current_plastic_strain", 1, 16);
-      csv_writer.register_data_vector("current_quadratic_residual_norm", 1, 16);
-      csv_writer.register_data_vector("max_quadratic_residual_norm", 1, 16);
-      csv_writer.register_data_vector("current_err_status", 1, 16);
-
-      // already fill the columns containing solely the tracking data
-      for (unsigned int mi = 0; mi < csv_output_micro_iter_data.all_microiter.size(); ++mi)
-      {
-        std::map<std::string, std::vector<double>> output_data;
-        output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid)};
-        output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp)};
-        output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn)};
-        output_data["globiter_or_timestep_index"] = {
-            static_cast<double>(csv_output_tracking_data.globiter_or_timestep_index_)};
-        output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data.lnl_iter)};
-        output_data["current_alpha"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_alpha[mi])};
-        output_data["max_alpha"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_max_alpha[mi])};
-        output_data["current_equiv_stress"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_equiv_stress[mi])};
-        output_data["current_plastic_strain"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_plastic_strain[mi])};
-        output_data["current_quadratic_residual_norm"] = {static_cast<double>(
-            csv_output_micro_iter_data.all_current_quadratic_residual_norm[mi])};
-        output_data["max_quadratic_residual_norm"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_max_quadratic_residual_norm[mi])};
-        switch (csv_output_micro_iter_data.all_current_error_status[mi])
-        {
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors:
-            output_data["current_err_status"] = {0.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::OverflowError:
-            output_data["current_err_status"] = {1.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::UnderYieldSurface:
-            output_data["current_err_status"] = {2.0};
-            break;
-          default:
-            output_data["current_err_status"] = {-1.0};
-            break;
-        }
-
-        // write output data to csv
-        csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
-      }
-    }
 
 
 

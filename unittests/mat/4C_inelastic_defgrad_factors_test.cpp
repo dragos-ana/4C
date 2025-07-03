@@ -511,9 +511,9 @@ namespace
     void set_up_state_quantities_solution()
     {
       // clang-format on
-      Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities& transv =
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities& transv =
           state_quantities_solution_transv_isotrop_;
-      Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities& iso =
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities& iso =
           state_quantities_solution_isotrop_;
 
       // clang-format off
@@ -574,9 +574,9 @@ namespace
 
     void set_up_state_quantity_derivatives_solution(){
       // clang-format on
-      Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives& transv =
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives& transv =
           state_quantity_derivatives_solution_transv_isotrop_;
-      Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives& iso =
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives& iso =
           state_quantity_derivatives_solution_isotrop_;
 
       // curr_dCediFin_
@@ -1408,19 +1408,19 @@ namespace
     std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> params_debug_vplast_;
     // reference StateQuantities struct of InelasticDefgradTransvIsotropElastViscoplast
     // (transversely isotropic, logarithmic substepping, Reformulated Johnson-Cook viscoplasticity)
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
         state_quantities_solution_transv_isotrop_;
     // reference StateQuantities struct of InelasticDefgradTransvIsotropElastViscoplast (isotropic,
     // logarithmic substepping, Reformulated Johnson-Cook viscoplasticity)
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
         state_quantities_solution_isotrop_;
     // reference StateQuantityDerivatives struct of InelasticDefgradTransvIsotropElastViscoplast
     // (transversely isotropic, logarithmic substepping, Reformulated Johnson-Cook viscoplasticity)
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
         state_quantity_derivatives_solution_transv_isotrop_;
     // reference StateQuantityDerivatives struct of InelasticDefgradTransvIsotropElastViscoplast
     // (isotropic, logarithmic substepping, Reformulated Johnson-Cook viscoplasticity)
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
         state_quantity_derivatives_solution_isotrop_;
 
     Core::Utils::SingletonOwnerRegistry::ScopeGuard guard;
@@ -1803,23 +1803,23 @@ namespace
 
     // declare error status
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status =
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors;
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute StateQuantities objects
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
         computed_state_quantities_transv_isotrop =
             transv_isotrop_vplast_refJC_->evaluate_state_quantities(CM,
                 iFin_transv_isotrop_vplast_refJC_solution_,
                 plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
                     FullEval);
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
         computed_state_quantities_isotrop = isotrop_vplast_refJC_->evaluate_state_quantities(CM,
             iFin_transv_isotrop_vplast_refJC_solution_,
             plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
             Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
                 FullEval);
-    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
+    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
     }
@@ -1872,10 +1872,10 @@ namespace
     CM.multiply_tn(1.0, FM_, FM_, 0.0);
 
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status =
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors;
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute StateQuantityDerivatives objects
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
         computed_state_quantity_derivatives_transv_isotrop =
             transv_isotrop_vplast_refJC_->evaluate_state_quantity_derivatives(CM,
                 iFin_transv_isotrop_vplast_refJC_solution_,
@@ -1884,7 +1884,7 @@ namespace
                     FullEval,
                 true);
 
-    Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
         computed_state_quantity_derivatives_isotrop =
             isotrop_vplast_refJC_->evaluate_state_quantity_derivatives(CM,
                 iFin_transv_isotrop_vplast_refJC_solution_,
@@ -1893,7 +1893,7 @@ namespace
                     FullEval,
                 true);
 
-    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
+    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantityDerivatives");
     }
