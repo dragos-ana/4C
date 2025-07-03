@@ -4161,8 +4161,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   //          check the set value first, and only then the
   //          elastic predictor (if it was not evaluated during 1.) -> SEE BELOW
   bool eval_elastic_pred_one =
-      check_original_pred && (!use_performance_boosting_strategy !=
-                                 (std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
+      check_original_pred && (!use_performance_boosting_strategy ||
+                                 +(use_performance_boosting_strategy &&
+                                     std::abs(pred_interp_factors_.current_xi_[gp_]) <= zero_tol));
   if (eval_elastic_pred_one)
   {
 #ifdef DEBUGVPLAST_TIMINT
