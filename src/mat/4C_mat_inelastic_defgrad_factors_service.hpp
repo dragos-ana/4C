@@ -14,6 +14,9 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_io_runtime_csv_writer.hpp"
+#include "4C_linalg_fixedsizematrix_tensor_products.hpp"
+#include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
+#include "4C_linalg_four_tensor_generators.hpp"
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
@@ -130,7 +133,248 @@ namespace Mat
       perturbation_based,  ///< linearization based on perturbing the current state
     };
 
+    //! matrix exponential and logarithm evaluation utilities
+    struct MatrixExpLogUtils
+    {
+      //! Pade approximation order (to be used consistently: the
+      //! derivative of the matrix functions should use the same Pade
+      //! order as the evaluation of the matrix functions)
+      unsigned int pade_order_ = 16;  // by default we set the highest order currently implemented
+    };
 
+    //! struct containing time step settings and time trackers
+    struct TimeStepTracker
+    {
+      //! time step length
+      double dt_;
+      //! currently computed time instant \f$ t_{n+1} \f$
+      double tnp_;
+      //! minimum substep length
+      double min_dt_;
+    };
+
+
+    //! struct containing quantities at the last and current time points (i.e., at \f[ t_n \f] and
+    //! \f[ t_{n+1} \f], respectively). The quantities are tracked at all Gauss points, in order to
+    //! update them simultaneously during the update method call
+    struct TimeStepQuantities
+    {
+      //! right Cauchy-Green deformation tensor at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_rightCG_;
+
+      //! inverse plastic deformation gradient at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_;
+
+      //! material stretch of the inverse plastic deformation gradient
+      //! at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_matstretch_;
+
+      //! rotation of the inverse plastic deformation gradient
+      //! at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_rot_;
+
+      //! (equivalent) plastic strain at the last time step (for all Gauss points)
+      std::vector<double> last_plastic_strain_;
+
+      //! last (reduced) deformation gradient: used to in the predictor
+      //! adaptation routine
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_defgrad_;
+
+      //! temporary variable, for which we store the right Cauchy-Green deformation tensor at each
+      //! evaluation (used in order to update last_rightCG_ once outer NR converges) (for all Gauss
+      //! points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_rightCG_;
+
+      //! current (reduced) deformation gradient: used to check whether the inverse inelastic
+      //! deformation gradient has already been evaluated (to improve the computation performance)
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_defgrad_;
+
+
+      //! current inverse plastic deformation gradient (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_plastic_defgrd_inverse_;
+
+      //! current plastic strain (for all Gauss points)
+      std::vector<double> current_plastic_strain_;
+
+      //! current equivalent stress (for all Gauss points)
+      std::vector<double> current_stress_;
+
+      //! inverse plastic deformation gradient at the last computed time instant (after the last
+      //! converged substep)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_substep_plastic_defgrd_inverse_;
+      //! plastic strain at the last computed time instant (after the last converged substep)
+      std::vector<double> last_substep_plastic_strain_;
+    };
+
+
+
+    /// struct: constant non-material tensors, such as different
+    /// identity tensors
+    struct ConstNonMatTensors
+    {
+      static const ConstNonMatTensors& instance()
+      {
+        static ConstNonMatTensors instance;
+        return instance;
+      }
+
+      // constructor
+      ConstNonMatTensors();
+      // second-order 3x3 identity tensor in matrix form \f$ \boldsymbol{I} \f$
+      Core::LinAlg::Matrix<3, 3> id3x3_{Core::LinAlg::Initialization::zero};
+      // second-order 3x3 identity in Voigt stress form \f$ \boldsymbol{I} \f$
+      Core::LinAlg::Matrix<6, 1> id6x1_{Core::LinAlg::Initialization::zero};
+      // symmetric identity four tensor of dimension 3 \f$ \mathbb{I}_\text{S} \f$
+      Core::LinAlg::Matrix<6, 6> id4_6x6_{Core::LinAlg::Initialization::zero};
+      // deviatoric operator \f$ \mathbb{P}_{\text{dev}}  =  \mathbb{I}_\text{S} -
+      // \frac{1}{3} \boldsymbol{I} \otimes \boldsymbol{I} \f$
+      Core::LinAlg::Matrix<6, 6> dev_op_{Core::LinAlg::Initialization::zero};
+      // identity fourth-order tensor in Voigt notation: delta_AC delta_BD in index notation
+      Core::LinAlg::Matrix<9, 9> id4_9x9_{Core::LinAlg::Initialization::zero};
+      // second-order 10x10 identity tensor in matrix form
+      Core::LinAlg::Matrix<10, 10> id10x10_{Core::LinAlg::Initialization::zero};
+    };
+
+
+
+    //! struct containing constant tensors which depend on the constant fiber direction \f$
+    //! \boldsymbol{m} \f$
+    struct ConstMatTensors
+    {
+      //! \f$ \boldsymbol{I} + \boldsymbol{m} \otimes \boldsymbol{m} \f$
+      Core::LinAlg::Matrix<3, 3> id_plus_mm_;
+      //! \f$ \boldsymbol{m} \otimes \boldsymbol{m} \f$
+      Core::LinAlg::Matrix<3, 3> mm_{Core::LinAlg::Initialization::zero};
+      //! deviatoric part \f$ \left( \boldsymbol{m} \otimes \boldsymbol{m}
+      //! \right)_\text{dev}\f$
+      Core::LinAlg::Matrix<3, 3> mm_dev_{Core::LinAlg::Initialization::zero};
+      //! \f$ \left( \boldsymbol{m} \otimes \boldsymbol{m} \right) \otimes \left( \boldsymbol{m}
+      //! \otimes \boldsymbol{m} \right) \f$ (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> mm_dyad_mm_{Core::LinAlg::Initialization::zero};
+      //!  \f$ \left( \boldsymbol{m} \otimes \boldsymbol{m} \right)_\text{dev} \otimes \left(
+      //!  \boldsymbol{m} \otimes \boldsymbol{m}
+      //!  \right) \f$
+      //! (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> mm_dev_dyad_mm_{Core::LinAlg::Initialization::zero};
+      //!  \f$ \boldsymbol{I} \otimes \left( \boldsymbol{m} \otimes \boldsymbol{m}
+      //!  \right) \f$
+      //! (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> id_dyad_mm_;
+
+      //! set tensors for a given fiber direction \f$ \boldsymbol{m} \f$
+      void set_material_const_tensors(const Core::LinAlg::Matrix<3, 1>& m);
+    };
+
+
+    //! class containing utilities for predictor interpolation
+    struct PredictorAdaptationUtils
+    {
+      //! interpolation factor set by the user
+      const double xi_user_;
+
+      //! interpolation factor \f$ \xi \f$ (saved for all GP) for the
+      //! current evaluation (current time step, current global iteration)
+      std::vector<double> current_xi_;
+
+      //! maximum interpolation factor \f$ \xi_{\mathrm{max}} \f$ (saved for all GP) for the
+      //! current evaluation (maximum over current time step)
+      std::vector<double> current_max_xi_;
+
+      //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
+      //! evaluated during the last global iteration of the previous
+      //! time step (previous time step, last global iteration)
+      std::vector<double> last_xi_;
+
+      //! maximum interpolation factor \f$ \xi_{n,\mathrm{max}} \f$
+      //! (saved for all GP) evaluated during the last time step
+      //! (maximum over previous time step)
+      std::vector<double> last_max_xi_;
+
+      //! optimal interpolation factor \f$ \xi_{n, \mathrm{optimal}} \f$
+      //! (saved for all GP) from the previous time step (determined
+      //! such that it leads to the previous LNL solution at the
+      //! considered GP)
+      std::vector<double> optimal_xi_;
+
+      //! lower interpolation factor (\f$ \xi_{\text{l}} \f$):
+      //! effectively, this is the lower bound for which the predictor
+      //! leads to a numerically evaluable state
+      double xi_l_;
+
+      //! upper interpolation factor (\f$ \xi_{\text{u}} \f$):
+      //! effectively, this is the upper bound for which the predictor
+      //! leads to plastic strain rate == 0.0
+      double xi_u_;
+
+      //! current number of predictor adaptations
+      unsigned int num_of_pred_adapt_;
+
+      //! maximum allowed number of predictor adaptations / repredictorizations
+      const unsigned int max_num_pred_adapt_;
+
+      // maximum allowed number number of predictor adaptation iterations
+      static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 50;
+
+      //! current predictor containing the inverse inelastic deformation
+      //! gradient (components 0-8) and the plastic strain (component 9)
+      Core::LinAlg::Matrix<10, 1> pred_;
+
+      //! constructor
+      PredictorAdaptationUtils(const double xi_user, const unsigned int max_num_pred_adapt);
+
+      //! setup method: set the correct number of Gauss Points to track the internal variables of
+      //! the class
+      void setup(const int num_gp);
+
+      //! preevaluate method: reset the non-const variables of the class at specific GP
+      void pre_evaluate(const int gp);
+
+      /*!
+       * @brief update method: update the internal variables of the predictor
+       * interpolation struct based on the time step quantities of the
+       * material. We have to specify whether we want to compute and
+       * update the optimal xi value.
+       *
+       * @param[in] compute_and_update_optimal_xi should the optimal
+       * interpolation factors be updated?
+       * @param[in] optimal_xi_at_all_gp values of the optimal
+       * interpolation factors at all Gauss points
+       */
+      void update(const bool update_optimal_xi, const std::vector<double> optimal_xi_at_all_gp);
+
+      //! pack method
+      void pack(Core::Communication::PackBuffer& data) const;
+
+      //! unpack method
+      void unpack(Core::Communication::UnpackBuffer& buffer);
+
+      //! update the maximum interpolation factor in the current time
+      //! step evaluation for the given Gauss point
+      void update_current_max_xi(const int gp);
+    };
+
+    //! struct with local substepping utilities
+    struct LocalSubsteppingUtils
+    {
+      //! current time parameter ranging from 0 to the problem time step \f$ \Delta t \f$
+      double t_;
+      //! counter of evaluated substeps
+      unsigned int substep_counter_;
+      //! current substep size
+      double curr_dt_;
+      //! number of times the problem time step \f$ \Delta t \f$ has been halved
+      unsigned int time_step_halving_counter_;
+      //!  current total number of substeps to be evaluated within the time step \f$ \Delta t
+      //! \f$; this is not always given by time_step_halving_counter, since the
+      //! halving does not have to be uniform (e.g. we could halve the time step twice and still
+      //! have 3 substeps to evaluate instead of 4, i.e. if the first substep was evaluable
+      //! numerically, but the second substep not, leading to another halving of the substep
+      //! length)
+      unsigned int total_num_of_substeps_;
+
+      //! reset routine: basically, create a new empty object
+      void reset();
+    };
 
     /// class containing utilities for general analysis of the material
     /// time integration (including predictor adaptation, Local Newton
@@ -349,6 +593,117 @@ namespace Mat
       //! during the Local Newton Loop routine
       void output_error_local_newton_loop(unsigned int step_counter);
     };
+
+    //! struct containing quantities computed from a given elasticity/plasticity state;
+    //! given: current right Cauchy-Green deformation tensor, inelastic deformation gradient and
+    //! plastic strain at the previous time instant
+    struct StateQuantities
+    {
+      // ----- current state quantities (for the evaluated Gauss points) ----- //
+
+      //! elastic right Cauchy-Green deformation tensor
+      Core::LinAlg::Matrix<3, 3> curr_CeM_{Core::LinAlg::Initialization::zero};
+
+      //! isotropic stress factors
+      Core::LinAlg::Matrix<3, 1> curr_gamma_{Core::LinAlg::Initialization::zero};
+
+      //! isotropic constitutive tensor factors
+      Core::LinAlg::Matrix<8, 1> curr_delta_{Core::LinAlg::Initialization::zero};
+
+      //! elastic 2nd PK stress tensors (specifically only transversely-isotropic components)
+      Core::LinAlg::Matrix<3, 3> curr_SeM_{Core::LinAlg::Initialization::zero};
+
+      //! elastic stiffness tensor (specifically only transversely-isotropic components)
+      Core::LinAlg::Matrix<6, 6> curr_dSedCe_{Core::LinAlg::Initialization::zero};
+
+      //! deviatoric, symmetric part of the Mandel stress tensor
+      Core::LinAlg::Matrix<3, 3> curr_Me_dev_sym_M_{Core::LinAlg::Initialization::zero};
+
+      //! equivalent tensile stress
+      double curr_equiv_stress_{0.0};
+
+      //! equivalent plastic strain rate
+      double curr_equiv_plastic_strain_rate_{0.0};
+
+      //! plastic flow direction tensor
+      Core::LinAlg::Matrix<3, 3> curr_NpM_{Core::LinAlg::Initialization::zero};
+
+      //! plastic stretching tensor
+      Core::LinAlg::Matrix<3, 3> curr_dpM_{Core::LinAlg::Initialization::zero};
+
+      //! plastic velocity gradient tensor
+      Core::LinAlg::Matrix<3, 3> curr_lpM_{Core::LinAlg::Initialization::zero};
+
+      //! plastic update tensor
+      Core::LinAlg::Matrix<3, 3> curr_EpM_{Core::LinAlg::Initialization::zero};
+    };
+
+
+    //! struct containing specific derivatives of quantities computed from a given
+    //! elasticity/plasticity state; given: current right Cauchy-Green deformation tensor, inelastic
+    //! deformation gradient and plastic strain at the previous time instant
+    struct StateQuantityDerivatives
+    {
+      // ----- current state variable derivatives (for the evaluated Gauss points)----- //
+
+      //! derivative of the elastic right Cauchy_Green deformation tensor w.r.t. the inverse
+      //! inelastic deformation gradient (Voigt stress form)
+      Core::LinAlg::Matrix<6, 9> curr_dCediFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the elastic right Cauchy_Green deformation tensor w.r.t. the right
+      //! Cauchy-Green deformation tensor (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> curr_dCedC_{Core::LinAlg::Initialization::zero};
+
+      //! derivatives of the equivalent tensile stress w.r.t. the inverse inelastic deformation
+      //! gradient (Voigt notation)
+      Core::LinAlg::Matrix<1, 9> curr_dequiv_stress_diFin_{Core::LinAlg::Initialization::zero};
+      //! derivatives of the equivalent tensile stress w.r.t. the right Cauchy-Green deformation
+      //! tensor (Voigt stress form)
+      Core::LinAlg::Matrix<1, 6> curr_dequiv_stress_dC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
+      //! inverse inelastic deformation gradient (Voigt stress form)
+      Core::LinAlg::Matrix<6, 9> curr_dMe_dev_sym_diFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the right
+      //! Cauchy-Green deformation tensor (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> curr_dMe_dev_sym_dC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the plastic strain rate w.r.t. the equivalent stress
+      double curr_dpsr_dequiv_stress_{0.0};
+      //! derivative of the plastic strain rate w.r.t. the equivalent plastic strain
+      double curr_dpsr_depsp_{0.0};
+
+      //! derivative of the plastic stretching tensor w.r.t. the inverse inelastic deformation
+      //! gradient (Voigt stress form)
+      Core::LinAlg::Matrix<6, 9> curr_ddpdiFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic stretching tensor w.r.t. the equivalent plastic strain (Voigt
+      //! stress form)
+      Core::LinAlg::Matrix<6, 1> curr_ddpdepsp_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic stretching tensor w.r.t. the right Cauchy-Green deformation
+      //! tensor (Voigt stress-stress form)
+      Core::LinAlg::Matrix<6, 6> curr_ddpdC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the plastic velocity gradient tensor w.r.t. the inverse inelastic
+      //! deformation gradient (Voigt notation)
+      Core::LinAlg::Matrix<9, 9> curr_dlpdiFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic velocity gradient tensor w.r.t. the equivalent plastic strain
+      //! (Voigt notation)
+      Core::LinAlg::Matrix<9, 1> curr_dlpdepsp_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic velocity gradient tensor w.r.t. the right Cauchy-Green
+      //! deformation tensor (Voigt stress form)
+      Core::LinAlg::Matrix<9, 6> curr_dlpdC_{Core::LinAlg::Initialization::zero};
+
+      //! derivative of the plastic update tensor w.r.t. the inverse inelastic deformation gradient
+      //! (Voigt notation)
+      Core::LinAlg::Matrix<9, 9> curr_dEpdiFin_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic update tensor w.r.t. the equivalent plastic strain (Voigt
+      //! notation)
+      Core::LinAlg::Matrix<9, 1> curr_dEpdepsp_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic update tensor w.r.t. the right Cauchy-Green deformation tensor
+      //! (Voigt stress form)
+      Core::LinAlg::Matrix<9, 6> curr_dEpdC_{Core::LinAlg::Initialization::zero};
+    };
+
+
 
     /// enum class for state quantity evaluations in
     /// InelasticDefgradTransvIsotropElastViscoplast: what is the aim of

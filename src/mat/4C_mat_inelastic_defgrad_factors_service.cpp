@@ -14,6 +14,8 @@
 
 FOUR_C_NAMESPACE_OPEN
 
+
+
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 std::string
@@ -91,6 +93,175 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::local_iteration_status_e
       FOUR_C_THROW("Unhandled IterationStatus {}", EnumTools::enum_name(iter_status));
   }
 }
+
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ConstNonMatTensors::ConstNonMatTensors()
+{  // auxiliaries
+  Core::LinAlg::Matrix<3, 3> id3x3(Core::LinAlg::Initialization::zero);
+  for (int i = 0; i < 3; ++i) id3x3(i, i) = 1.0;
+  Core::LinAlg::Matrix<6, 6> temp6x6(Core::LinAlg::Initialization::zero);
+
+  // set constant non-material tensors
+
+  // 3x3 identity
+  id3x3_.update(1.0, id3x3, 0.0);
+
+  // Voigt stress form of 3x3 identity
+  Core::LinAlg::Voigt::VoigtUtils<Core::LinAlg::Voigt::NotationType::stress>::matrix_to_vector(
+      id3x3_, id6x1_);
+
+  // symmetric identity four tensor
+  Core::LinAlg::FourTensorOperations::add_kronecker_tensor_product(
+      id4_6x6_, 1.0, id3x3, id3x3, 0.0);
+
+  // deviatoric operator
+  Core::LinAlg::FourTensor<3> dev_op_four_tensor =
+      Core::LinAlg::setup_deviatoric_projection_tensor<3>();
+  Core::LinAlg::Voigt::setup_6x6_voigt_matrix_from_four_tensor(temp6x6, dev_op_four_tensor);
+  dev_op_ = Core::LinAlg::Voigt::modify_voigt_representation(temp6x6, 1.0, 2.0);
+
+  // identity four tensor
+  id4_9x9_.clear();
+  Core::LinAlg::FourTensorOperations::add_non_symmetric_product(1.0, id3x3_, id3x3_, id4_9x9_);
+
+  // 10x10 identity
+  id10x10_.clear();
+  for (int i = 0; i < 10; ++i) id10x10_(i, i) = 1.0;
+}
+
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ConstMatTensors::
+    set_material_const_tensors(const Core::LinAlg::Matrix<3, 1>& m)
+{
+  // get instance of constant non-material tensors
+  const auto& const_non_mat_tensors = ConstNonMatTensors::instance();
+
+  // set material-dependent tensors (fiber orientation)
+
+  // structural tensor
+  mm_.multiply_nt(1.0, m, m, 0.0);
+
+  // deviatoric part of the structural tensor
+  double tr_mm_ = mm_(0, 0) + mm_(1, 1) + mm_(2, 2);
+  mm_dev_.update(1.0, mm_, -1.0 / 3.0 * tr_mm_, const_non_mat_tensors.id3x3_);
+
+  // dyadic product of structural tensors
+  Core::LinAlg::Matrix<6, 1> mm_V(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Voigt::VoigtUtils<Core::LinAlg::Voigt::NotationType::stress>::matrix_to_vector(
+      mm_, mm_V);
+  mm_dyad_mm_.multiply_nt(1.0, mm_V, mm_V, 0.0);
+
+  // dyadic product of deviatoric structural tensor with the structural tensor
+  Core::LinAlg::Matrix<6, 1> mm_dev_V(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Voigt::VoigtUtils<Core::LinAlg::Voigt::NotationType::stress>::matrix_to_vector(
+      mm_dev_, mm_dev_V);
+  mm_dev_dyad_mm_.multiply_nt(1.0, mm_dev_V, mm_V, 0.0);
+
+  // dyadic product of identity with the structural tensor
+  id_dyad_mm_.multiply_nt(1.0, const_non_mat_tensors.id6x1_, mm_V, 0.0);
+
+  // sum of identity with the structural tensor
+  id_plus_mm_.update(1.0, const_non_mat_tensors.id3x3_, 1.0, mm_, 0.0);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::
+    PredictorAdaptationUtils(const double xi_user, const unsigned int max_num_pred_adapt)
+    : xi_user_(xi_user),
+      xi_l_(0.0),
+      xi_u_(1.0),
+      num_of_pred_adapt_(0),
+      max_num_pred_adapt_(max_num_pred_adapt),
+      pred_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}}
+{
+  last_xi_.resize(1, 0.0);
+  last_max_xi_.resize(1, 0.0);
+  optimal_xi_.resize(1, 0.0);
+  current_xi_.resize(1, 0.0);
+  current_max_xi_.resize(1, 0.0);
+};
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::setup(
+    const int num_gp)
+{
+  last_xi_.resize(num_gp, last_xi_[0]);
+  last_max_xi_.resize(num_gp, last_max_xi_[0]);
+  optimal_xi_.resize(num_gp, optimal_xi_[0]);
+  current_xi_.resize(num_gp, current_xi_[0]);
+  current_max_xi_.resize(num_gp, current_max_xi_[0]);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::pre_evaluate(
+    const int gp)
+{
+  xi_l_ = 0.0;
+  xi_u_ = 1.0;
+  pred_.clear();
+  num_of_pred_adapt_ = 0;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::update(
+    const bool update_optimal_xi, const std::vector<double> optimal_xi_at_all_gp)
+{
+  last_xi_ = current_xi_;
+  last_max_xi_ = current_max_xi_;
+  if (update_optimal_xi) optimal_xi_ = optimal_xi_at_all_gp;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::pack(
+    Core::Communication::PackBuffer& data) const
+{
+  Core::Communication::add_to_pack(data, last_xi_);
+  Core::Communication::add_to_pack(data, last_max_xi_);
+  Core::Communication::add_to_pack(data, optimal_xi_);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::unpack(
+    Core::Communication::UnpackBuffer& buffer)
+{
+  Core::Communication::extract_from_pack(buffer, last_xi_);
+  Core::Communication::extract_from_pack(buffer, last_max_xi_);
+  Core::Communication::extract_from_pack(buffer, optimal_xi_);
+  current_xi_ = last_xi_;
+  current_max_xi_ = last_max_xi_;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::
+    update_current_max_xi(const int gp)
+{
+  if (current_xi_[gp] > current_max_xi_[gp])
+  {
+    current_max_xi_[gp] = current_xi_[gp];
+  }
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalSubsteppingUtils::reset()
+{
+  t_ = 0.0;
+  substep_counter_ = 0;
+  curr_dt_ = 0.0;
+  time_step_halving_counter_ = 0;
+  total_num_of_substeps_ = 0;
+}
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
