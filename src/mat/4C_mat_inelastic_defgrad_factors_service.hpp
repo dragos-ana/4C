@@ -131,6 +131,7 @@ namespace Mat
     };
 
 
+
     /// class containing utilities for general analysis of the material
     /// time integration (including predictor adaptation, Local Newton
     /// loop, line search):
@@ -376,16 +377,16 @@ namespace Mat
     struct CSVOutputTrackingData
     {
       //! global element id
-      const int ele_gid;
+      const int ele_gid_;
 
       //! Gauss point index
-      const int gp;
+      const int gp_;
 
       //! time instant \f$t_{n}\f$
-      const double tn;
+      const double tn_;
 
       //! time instant \f$t_{n+1}\f$
-      const double tnp;
+      const double tnp_;
 
       //! tracker for the global iteration (if we have output every
       //! iteration) or the timestep index; increased by 1 every time
@@ -394,7 +395,136 @@ namespace Mat
       unsigned int globiter_or_timestep_index_;
 
       //! tracker for the local NR iteration
-      unsigned int lnl_iter;
+      unsigned int lnl_iter_;
+    };
+
+
+    //! struct containing settings and iteration data from the Local Newton-Raphson
+    //! Loop (time integration of the viscoplasticity equations)
+    //! (used for Gauss-Point output)
+    struct LocalNewtonData
+    {
+      //! constructor of data
+      LocalNewtonData();
+
+      //! convergence tolerance of the Local Newton Loop
+      static constexpr double tol_ = 1.0e-8;
+
+      //! maximum number of Local Newton Loop iterations
+      static constexpr unsigned max_iter_ = 200;
+
+      //! current LNL iteration
+      unsigned int iter_;
+
+      //! tracker for the global iteration (if we have output every
+      //! iteration) or the timestep index; increased by 1 every time
+      //! the Gauss point output routine is called
+      unsigned int globiter_or_timestep_index_;
+
+      //! do we have Gauss point output every global iteration?
+      bool is_Gauss_point_output_every_global_iter_ = false;
+
+      //! success status of the iteration (can it even evaluate the
+      //! residual?); vector of GP values
+      std::vector<std::array<LocalIterationStatus, max_iter_>> all_iter_status_;
+
+      //! all iteration values of the LNL residual; vector of GP values
+      std::vector<std::array<double, max_iter_>> all_residual_;
+
+      //! all iteration values of the equivalent stress; vector of GP values
+      std::vector<std::array<double, max_iter_>> all_equiv_stress_;
+
+      //! all iteration values of the plastic strain; vector of GP values
+      std::vector<std::array<double, max_iter_>> all_plastic_strain_;
+
+      //! resize all relevant vectors based on the number of Gauss
+      //! points known only after setting up the problem -> each vector
+      //! item gets the same value for now
+      void set_num_of_gp(const unsigned int num_of_gp);
+
+      //! reset all arrays holding values for all iterations (for a
+      //! given Gauss point)
+      void reset_all_iteration_data(const unsigned int gp);
+
+      // maybe we need some pack and unpack methods perspectively? If
+      // this is to be used consistently in the future...-> would mainly
+      // concern the global iteration / time step tracker, but nothing else.
+
+      //! data collector for a single Local Newton iteration
+      struct LocalIterDataCollector
+      {
+        //! success status of the iteration (can it even evaluate the
+        //! residual?); vector of GP values
+        const LocalIterationStatus iter_status_;
+
+        //! residual of the current iteration
+        const double residual_;
+
+        //! equivalent stress of the current iteration
+        const double equiv_stress_;
+
+        //! plastic strain of the current iteration
+        const double plastic_strain_;
+      };
+
+      //! set data for a given iteration iter (specified via output
+      //! tracking data)
+      void set_iteration_data(const CSVOutputTrackingData csv_output_tracking_data,
+          const LocalIterDataCollector local_iter_data_collector);
+
+      //! write LNL iteration data to csv file, when the LNL fails
+      void write_failed_lnl_iteration_data_to_csv(
+          const CSVOutputTrackingData csv_output_tracking_data)
+      {
+        // get structure discretization
+        std::shared_ptr<Core::FE::Discretization> structure_dis =
+            Global::Problem::instance()->get_dis("structure");
+
+        // check whether we are using a single processor! (no implementation for multiple
+        // processors yet, and also not really required)
+        int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+        FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+            "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+            "output "
+            "for multiple processors");
+
+        // create csv_writer and register its columns
+        Core::IO::RuntimeCsvWriter csv_writer{my_rank,
+            *Global::Problem::instance()->output_control_file(), "failed_lnl_iteration_data"};
+
+        // register data to be added
+        csv_writer.register_data_vector("previous_time", 1, 16);
+        csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+        csv_writer.register_data_vector("element_gid", 1, 16);
+        csv_writer.register_data_vector("gauss_point", 1, 16);
+        csv_writer.register_data_vector("residual", 1, 16);
+        csv_writer.register_data_vector("iter_status", 1, 16);
+        csv_writer.register_data_vector("equiv_stress", 1, 16);
+        csv_writer.register_data_vector("plastic_strain", 1, 16);
+
+        // write to csv
+        for (unsigned iter = 0; iter < max_iter_; ++iter)
+        {
+          std::map<std::string, std::vector<double>> output_data;
+          output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn_)};
+          output_data["globiter_or_timestep_index"] = {
+              static_cast<double>(globiter_or_timestep_index_)};
+          output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid_)};
+          output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp_)};
+          output_data["residual_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+              static_cast<double>(all_residual_[csv_output_tracking_data.gp_][iter])};
+          output_data["iter_status_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+              static_cast<double>(local_iteration_status_enum_to_double(
+                  all_iter_status_[csv_output_tracking_data.gp_][iter]))};
+          output_data["equiv_stress_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+              static_cast<double>(all_equiv_stress_[csv_output_tracking_data.gp_][iter])};
+          output_data["plastic_strain_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+              static_cast<double>(all_plastic_strain_[csv_output_tracking_data.gp_][iter])};
+
+          // write output data to csv
+          csv_writer.write_data_to_file(csv_output_tracking_data.tnp_, iter, output_data);
+        }
+      }
     };
 
     //! struct holding the relevant output data of all

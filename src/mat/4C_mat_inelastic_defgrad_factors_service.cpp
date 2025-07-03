@@ -315,6 +315,63 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   write_to_csv();
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::LocalNewtonData()
+{
+  /// set number of Gauss points to 1 temporarily, since we don't
+  /// know it at this point in time
+  all_residual_.resize(1);
+  all_equiv_stress_.resize(1);
+  all_plastic_strain_.resize(1);
+  all_iter_status_.resize(1);
+
+  /// reset the values (set initial 0-values to all arrays above)
+  reset_all_iteration_data(0);
+
+  /// initialize global iteration / timestep index tracker
+  globiter_or_timestep_index_ = 0;
+};
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::set_num_of_gp(
+    const unsigned int num_of_gp)
+{
+  all_residual_.resize(num_of_gp, all_residual_[0]);
+  all_equiv_stress_.resize(num_of_gp, all_equiv_stress_[0]);
+  all_plastic_strain_.resize(num_of_gp, all_plastic_strain_[0]);
+  all_iter_status_.resize(num_of_gp, all_iter_status_[0]);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::
+    reset_all_iteration_data(const unsigned int gp)
+{
+  iter_ = 0;
+  all_residual_[gp].fill(-1.0);
+  all_equiv_stress_[gp].fill(-1.0);
+  all_plastic_strain_[gp].fill(-1.0);
+  all_iter_status_[gp].fill(LocalIterationStatus::not_evaluated);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::set_iteration_data(
+    CSVOutputTrackingData csv_output_tracking_data,
+    LocalIterDataCollector local_iter_data_collector)
+{
+  all_residual_[csv_output_tracking_data.gp_][csv_output_tracking_data.lnl_iter_] =
+      local_iter_data_collector.residual_;
+  all_iter_status_[csv_output_tracking_data.gp_][csv_output_tracking_data.lnl_iter_] =
+      local_iter_data_collector.iter_status_;
+  all_equiv_stress_[csv_output_tracking_data.gp_][csv_output_tracking_data.lnl_iter_] =
+      local_iter_data_collector.equiv_stress_;
+  all_plastic_strain_[csv_output_tracking_data.gp_][csv_output_tracking_data.lnl_iter_] =
+      local_iter_data_collector.plastic_strain_;
+}
+
 
 
 /*--------------------------------------------------------------------*
@@ -401,11 +458,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptM
   // create csv_writer and register its columns
   Core::IO::RuntimeCsvWriter csv_writer{my_rank,
       *Global::Problem::instance()->output_control_file(),
-      "pred-adapt-micro-iter-output-ele-gid-" + std::to_string(csv_output_tracking_data_.ele_gid) +
-          "-gp-" + std::to_string(csv_output_tracking_data_.gp) + "-tn-" +
-          std::to_string(csv_output_tracking_data_.tn) + "-globiter-or-timestep-index-" +
+      "pred-adapt-micro-iter-output-ele-gid-" + std::to_string(csv_output_tracking_data_.ele_gid_) +
+          "-gp-" + std::to_string(csv_output_tracking_data_.gp_) + "-tn-" +
+          std::to_string(csv_output_tracking_data_.tn_) + "-globiter-or-timestep-index-" +
           std::to_string(csv_output_tracking_data_.globiter_or_timestep_index_) + "-lnl-iter-" +
-          std::to_string(csv_output_tracking_data_.lnl_iter)};
+          std::to_string(csv_output_tracking_data_.lnl_iter_)};
   csv_writer.register_data_vector("element_gid", 1, 16);
   csv_writer.register_data_vector("gauss_point", 1, 16);
   csv_writer.register_data_vector("previous_time", 1, 16);
@@ -420,12 +477,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptM
   for (unsigned int mi = 0; mi < all_microiter_.size(); ++mi)
   {
     std::map<std::string, std::vector<double>> output_data;
-    output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data_.ele_gid)};
-    output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data_.gp)};
-    output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data_.tn)};
+    output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data_.ele_gid_)};
+    output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data_.gp_)};
+    output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data_.tn_)};
     output_data["globiter_or_timestep_index"] = {
         static_cast<double>(csv_output_tracking_data_.globiter_or_timestep_index_)};
-    output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data_.lnl_iter)};
+    output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data_.lnl_iter_)};
     output_data["current_xi"] = {static_cast<double>(all_current_xi_[mi])};
     output_data["current_equiv_stress"] = {static_cast<double>(all_current_equiv_stress_[mi])};
     output_data["current_plastic_strain"] = {static_cast<double>(all_current_plastic_strain_[mi])};
@@ -446,7 +503,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptM
     }
 
     // write output data to csv
-    csv_writer.write_data_to_file(csv_output_tracking_data_.tnp, mi, output_data);
+    csv_writer.write_data_to_file(csv_output_tracking_data_.tnp_, mi, output_data);
   }
 }
 
@@ -470,11 +527,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
   // create csv_writer and register its columns
   Core::IO::RuntimeCsvWriter csv_writer{my_rank,
       *Global::Problem::instance()->output_control_file(),
-      "line-search-micro-iter-output-ele-gid-" + std::to_string(csv_output_tracking_data_.ele_gid) +
-          "-gp-" + std::to_string(csv_output_tracking_data_.gp) + "-tn-" +
-          std::to_string(csv_output_tracking_data_.tn) + "-globiter-or-timestep-index-" +
+      "line-search-micro-iter-output-ele-gid-" +
+          std::to_string(csv_output_tracking_data_.ele_gid_) + "-gp-" +
+          std::to_string(csv_output_tracking_data_.gp_) + "-tn-" +
+          std::to_string(csv_output_tracking_data_.tn_) + "-globiter-or-timestep-index-" +
           std::to_string(csv_output_tracking_data_.globiter_or_timestep_index_) + "-lnl-iter-" +
-          std::to_string(csv_output_tracking_data_.lnl_iter)};
+          std::to_string(csv_output_tracking_data_.lnl_iter_)};
   csv_writer.register_data_vector("element_gid", 1, 16);
   csv_writer.register_data_vector("gauss_point", 1, 16);
   csv_writer.register_data_vector("previous_time", 1, 16);
@@ -492,12 +550,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
   for (unsigned int mi = 0; mi < all_microiter_.size(); ++mi)
   {
     std::map<std::string, std::vector<double>> output_data;
-    output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data_.ele_gid)};
-    output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data_.gp)};
-    output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data_.tn)};
+    output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data_.ele_gid_)};
+    output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data_.gp_)};
+    output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data_.tn_)};
     output_data["globiter_or_timestep_index"] = {
         static_cast<double>(csv_output_tracking_data_.globiter_or_timestep_index_)};
-    output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data_.lnl_iter)};
+    output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data_.lnl_iter_)};
     output_data["current_alpha"] = {static_cast<double>(all_current_alpha_[mi])};
     output_data["max_alpha"] = {static_cast<double>(all_max_alpha_[mi])};
     output_data["current_equiv_stress"] = {static_cast<double>(all_current_equiv_stress_[mi])};
@@ -523,7 +581,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
     }
 
     // write output data to csv
-    csv_writer.write_data_to_file(csv_output_tracking_data_.tnp, mi, output_data);
+    csv_writer.write_data_to_file(csv_output_tracking_data_.tnp_, mi, output_data);
   }
 }
 
