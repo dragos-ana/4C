@@ -1020,23 +1020,6 @@ namespace Mat
         csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
       }
     }
-
-
-
-/// defines
-// flag for debug output (viscoplastic material) related to
-// time integration
-#define DEBUGVPLAST_TIMINT
-
-    // flag for debug output (viscoplastic material) related to the
-    // inverse inelastic defgrad computation; less detailed than
-    // DEBUGVPLAST_TIMINT
-    // #define DEBUGVPLAST_INELDEFGRAD
-
-    // flag for debug output (viscoplastic material) related to the
-    // stiffness contribution
-    // #define DEBUGVPLAST_LINEARIZATION
-
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
 }  // namespace Mat
