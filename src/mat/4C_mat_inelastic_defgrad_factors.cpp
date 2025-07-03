@@ -3402,16 +3402,38 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
       {
         // LNL data: successful evaluation
-        lnl_data_.set_iteration_data(gp_, lnl_data_.iter_ - 1,
-            LocalIterationStatus::residual_evaluation_successful, residualNorm2,
-            state_quantities_.curr_equiv_stress_, sol(9));
+        lnl_data_.set_iteration_data(
+            CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                .gp_ = gp_,
+                .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                .tnp_ = time_step_tracker_.tnp_,
+                .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                .lnl_iter_ =
+                    lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
+                                           // updating the iteration count at the beginning
+            LocalNewtonData::LocalIterDataCollector{
+                .iter_status_ = LocalIterationStatus::residual_evaluation_successful,
+                .residual_ = residualNorm2,
+                .equiv_stress_ = state_quantities_.curr_equiv_stress_,
+                .plastic_strain_ = sol(9)});
       }
       else
       {
         // LNL data: failed evaluation
-        lnl_data_.set_iteration_data(gp_, lnl_data_.iter_ - 1,
-            LocalIterationStatus::residual_evaluation_failed, -1.0,
-            state_quantities_.curr_equiv_stress_, sol(9));
+        lnl_data_.set_iteration_data(
+            CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                .gp_ = gp_,
+                .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                .tnp_ = time_step_tracker_.tnp_,
+                .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                .lnl_iter_ =
+                    lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
+                                           // updating the iteration count at the beginning
+            LocalNewtonData::LocalIterDataCollector{
+                .iter_status_ = LocalIterationStatus::residual_evaluation_failed,
+                .residual_ = -1.0,
+                .equiv_stress_ = state_quantities_.curr_equiv_stress_,
+                .plastic_strain_ = sol(9)});
       }
 
 
@@ -3420,16 +3442,31 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       if (err_action == ErrorAction::return_solution_with_errors)
       {
         // LNL data: nothing do be done anymore, final error
-        lnl_data_.set_iteration_data(gp_, lnl_data_.iter_ - 1, LocalIterationStatus::final_error,
-            -1.0, state_quantities_.curr_equiv_stress_, sol(9));
+        lnl_data_.set_iteration_data(
+            CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                .gp_ = gp_,
+                .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                .tnp_ = time_step_tracker_.tnp_,
+                .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                .lnl_iter_ =
+                    lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
+                                           // updating the iteration count at the beginning
+            LocalNewtonData::LocalIterDataCollector{
+                .iter_status_ = LocalIterationStatus::final_error,
+                .residual_ = -1.0,
+                .equiv_stress_ = state_quantities_.curr_equiv_stress_,
+                .plastic_strain_ = sol(9)});
+
 
         // write the data of the failed LNL to csv
         if (parameter()->use_csv_output_failed_local_newton_iter())
           lnl_data_.write_failed_lnl_iteration_data_to_csv(
-              LocalNewtonData::FailedLnlData{.tnp = time_step_tracker_.tnp_,
-                  .tn = time_step_tracker_.tnp_ - time_step_tracker_.dt_,
-                  .element_gid = ele_gid_,
-                  .gauss_point = gp_});
+              CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                  .gp_ = gp_,
+                  .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                  .tnp_ = time_step_tracker_.tnp_,
+                  .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                  .lnl_iter_ = lnl_data_.iter_ - 1});
 
         // return bad solution
         return sol;
@@ -3505,10 +3542,12 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         // write the data of the failed LNL to csv
         if (parameter()->use_csv_output_failed_local_newton_iter())
           lnl_data_.write_failed_lnl_iteration_data_to_csv(
-              LocalNewtonData::FailedLnlData{.tnp = time_step_tracker_.tnp_,
-                  .tn = time_step_tracker_.tnp_ - time_step_tracker_.dt_,
-                  .element_gid = ele_gid_,
-                  .gauss_point = gp_});
+              CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                  .gp_ = gp_,
+                  .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                  .tnp_ = time_step_tracker_.tnp_,
+                  .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                  .lnl_iter_ = lnl_data_.iter_ - 1});
 
 
         // if no substepping is applied: then we have nor converged,
@@ -3598,9 +3637,18 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   }
 
   // append LNL data (for the successful last iteration)
-  lnl_data_.set_iteration_data(gp_, lnl_data_.iter_ - 1, LocalIterationStatus::converged,
-      residualNorm2, state_quantities_.curr_equiv_stress_, sol(9));
-
+  lnl_data_.set_iteration_data(
+      CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+          .gp_ = gp_,
+          .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+          .tnp_ = time_step_tracker_.tnp_,
+          .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+          .lnl_iter_ = lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
+                                              // updating the iteration count at the beginning
+      LocalNewtonData::LocalIterDataCollector{.iter_status_ = LocalIterationStatus::converged,
+          .residual_ = -1.0,
+          .equiv_stress_ = state_quantities_.curr_equiv_stress_,
+          .plastic_strain_ = sol(9)});
 
   // return the obtained solution
   return sol;
@@ -3815,12 +3863,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
   // initialize tracking data for the csv output of the predictor
   // adaptation
-  CSVOutputTrackingData csv_output_tracking_data{.ele_gid = ele_gid_,
-      .gp = gp_,
-      .tn = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
-      .tnp = time_step_tracker_.tnp_,
+  CSVOutputTrackingData csv_output_tracking_data{.ele_gid_ = ele_gid_,
+      .gp_ = gp_,
+      .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+      .tnp_ = time_step_tracker_.tnp_,
       .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
-      .lnl_iter = lnl_data_.iter_};
+      .lnl_iter_ = lnl_data_.iter_};
 
   // initialize micro iteration data for all "micro"
   // iterations of the subsequent predictor adaptation, to be written to csv
@@ -4242,14 +4290,14 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_parame
     const Core::LinAlg::Matrix<10, 1>& incr, ErrorType& err_status)
 {
   // initialize tracking data for the csv output of the line search
-  CSVOutputTrackingData csv_output_tracking_data{.ele_gid = ele_gid_,
-      .gp = gp_,
-      .tn = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
-      .tnp = time_step_tracker_.tnp_,
+  CSVOutputTrackingData csv_output_tracking_data{.ele_gid_ = ele_gid_,
+      .gp_ = gp_,
+      .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+      .tnp_ = time_step_tracker_.tnp_,
       .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
-      .lnl_iter = lnl_data_.iter_ -
-                  1};  // we subtract 1 from the current iteration number to start with 0, and make
-                       // this consistent with the output of the predictor adaptation
+      .lnl_iter_ = lnl_data_.iter_ -
+                   1};  // we subtract 1 from the current iteration number to start with 0, and make
+                        // this consistent with the output of the predictor adaptation
 
   // initialize micro iteration data for all "micro"
   // iterations of the subsequent line search, to be written to csv
@@ -4777,7 +4825,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = lnl_data_.plastic_strain_[gp][it];
+        data(gp, it) = lnl_data_.all_plastic_strain_[gp][it];
       }
     }
     return true;
@@ -4797,7 +4845,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = lnl_data_.equiv_stress_[gp][it];
+        data(gp, it) = lnl_data_.all_equiv_stress_[gp][it];
       }
     }
     return true;
@@ -4809,7 +4857,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = local_iteration_status_enum_to_double(lnl_data_.iter_status_[gp][it]);
+        data(gp, it) = local_iteration_status_enum_to_double(lnl_data_.all_iter_status_[gp][it]);
       }
     }
     return true;
@@ -4821,7 +4869,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
-        data(gp, it) = lnl_data_.residual_[gp][it];
+        data(gp, it) = lnl_data_.all_residual_[gp][it];
       }
     }
     return true;
