@@ -34,162 +34,87 @@ namespace Mat
   namespace InelasticDefgradTransvIsotropElastViscoplastUtils
   {
     /// enum class for error types in InelasticDefgradTransvIsotropElastViscoplast, used for
-    /// triggering different procedures (e.g. repredictorization, substepping) during the
+    /// triggering different procedures (e.g. repredictorization,
+    /// substepping, line search) during the
     /// Local Newton Loop
     enum class ErrorType
     {
-      NoErrors,
-      NegativePlasticStrain,  ///< negative plastic strain which does not allow for evaluations
-                              ///< inside the viscoplasticity laws
-      OverflowError,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
-                      ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
-                      ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$)
-      NoFlowResistance,  ///< the material has no flow resistance anymore, such that the evaluations
-                         ///< model non-physical phenomena
-      NoPlasticIncompressibility,  ///< no plastic incompressibility, meaning that our determinant
-                                   ///< of the inelastic defgrad is far from
-                                   ///< 1
-      FailedSolLinSystLNL,  ///< solution of the linear system in the Local Newton-Raphson Loop
-                            ///< failed
-      FailedDetermLineSearchParam,  ///< the computation of a suitable line search parameter failed
-      NoConvergenceLNL,  ///< the Local Newton Loop did not converge for the given loop settings
-      SingularJacobian,  ///< singular Jacobian after converged LNL, which does not enable our
-                         ///< analytical evaluation of the linearization
-      FailedSolAnalytLinearization,     ///< solution of the linear system in the analytical
-                                        ///< linearization failed
-      FailedComputationFlowResistance,  ///< failed in the computation of the flow resistance via
-                                        ///< time integration of the hardening-rate equation (e.g.,
-                                        ///< Anand model)
-      FailedComputationFlowResistanceDerivs,  ///< failed in the computation of the flow resistance
-                                              ///< derivatives (e.g., Anand model)
-      FailedLogEval,        ///< failed evaluation of the matrix logarithm or its derivative
-      FailedExpEval,        ///< failed evaluation of the matrix exponential or its derivative
-      FailedRightCGInterp,  ///< failed interpolation of the right Cauchy-Green tensor
-      UnderYieldSurface,    ///< mechanical state is "under" the yield surface, i.e., the evaluated
-                            ///< stress is smaller than the yield stress
+      no_errors,                ///< no errors
+      negative_plastic_strain,  ///< negative plastic strain which does not allow for evaluations
+                                ///< inside the viscoplasticity laws
+      overflow_error,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
+                       ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
+                       ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$)
+      no_flow_resistance,            ///< the material has no flow resistance anymore, such that the
+                                     ///< evaluations model non-physical phenomena
+      no_plastic_incompressibility,  ///< no plastic incompressibility, meaning that the determinant
+                                     ///< of the inelastic defgrad is far from 1
+      failed_solution_linear_system_lnl,  ///< solution of the linear system in the Local
+                                          ///< Newton-Raphson Loop failed
+      failed_determ_line_search_step,     ///< the computation of a suitable line search step failed
+      no_convergence_local_newton,  ///< the Local Newton Loop did not converge for the given loop
+                                    ///< settings
+      singular_jacobian,  ///< singular Jacobian after converged LNL, which does not enable our
+                          ///< analytical evaluation of the linearization
+      failed_solution_analytic_linearization,  ///< solution of the linear system in the analytical
+                                               ///< linearization failed
+      failed_computation_flow_resistance,  ///< failed in the computation of the flow resistance via
+                                           ///< time integration of the hardening-rate equation
+                                           ///(e.g., when using the Anand law)
+      failed_computation_flow_resistance_derivs,  ///< failed in the computation of the flow
+                                                  ///< resistance derivatives (e.g., when using the
+                                                  ///< Anand law)
+      failed_matrix_log_evaluation,   ///< failed evaluation of the matrix logarithm or its
+                                      ///< derivative
+      failed_matrix_exp_evaluation,   ///< failed evaluation of the matrix exponential or its
+                                      ///< derivative
+      failed_right_cg_interpolation,  ///< failed interpolation of the right Cauchy-Green tensor
+      under_yield_surface  ///< mechanical state is "under" the yield surface, i.e., the evaluated
+                           ///< stress is smaller than the yield stress, which should not occur
+                           ///< in the Local Newton loop
     };
 
-    /// enum class for error management actions in InelasticDefgradTransvIsotropElastViscoplast
+
+    /// enum class for error management actions in the iterations of the
+    // Local Newton loop
     enum class ErrorAction
     {
-      Continue,             ///< continue without any errors (NoErrors)
-      ReturnSolWithErrors,  ///< return the current solution with errors (if the current simulation
-                            ///< settings cannot lead to a solution)
-      NextIter,             ///< go to next iteration after performing certain reset steps
+      continue_iteration,           ///< continue iteration without any errors (NoErrors)
+      return_solution_with_errors,  ///< return the current solution with errors (if the current
+                                    ///< simulation settings cannot lead to a solution)
+      next_iteration,               ///< go to next iteration after performing certain reset steps
     };
 
+    /// convert error type to detailed error message
+    std::string get_detailed_error_message_for_error_type(ErrorType err_type);
 
-    /// to_string: error types to error messages in InelasticDefgradTransvIsotropElastViscoplast
-    inline std::string to_string(ErrorType err_type)
-    {
-      switch (err_type)
-      {
-        case ErrorType::NegativePlasticStrain:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: negative plastic strain!";
-        case ErrorType::OverflowError:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: overflow error related to "
-                 "the evaluation of the plastic strain increment!";
-        case ErrorType::NoPlasticIncompressibility:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: plastic incompressibility "
-                 "not satisfied!";
-        case ErrorType::FailedSolLinSystLNL:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: solution of the linear "
-                 "system in the Local Newton Loop failed!";
-        case ErrorType::FailedDetermLineSearchParam:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: could not determine a "
-                 "suitable line search parameter!";
-        case ErrorType::NoConvergenceLNL:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Local Newton Loop did not "
-                 "converge for the given loop settings!";
-        case ErrorType::SingularJacobian:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: singular Jacobian after "
-                 "converged Local Newton Loop, which does not allow for the analytical evaluation "
-                 "of "
-                 "the linearization!";
-        case ErrorType::FailedSolAnalytLinearization:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: solution of the linear "
-                 "system "
-                 "in the analytical linearization failed";
-          break;
-        case ErrorType::FailedComputationFlowResistance:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed while computing "
-                 "the "
-                 "flow resistance of the viscoplasticity law";
-          break;
-        case ErrorType::FailedComputationFlowResistanceDerivs:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed while computing "
-                 "the "
-                 "derivatives of the flow resistance of the viscoplasticity law";
-          break;
-        case ErrorType::FailedLogEval:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in evaluating the "
-                 "matrix logarithm or its derivative with respect to the argument";
-          break;
-        case ErrorType::FailedExpEval:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in evaluating the "
-                 "matrix exponential or its derivative with respect to the argument";
-          break;
-        case ErrorType::FailedRightCGInterp:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: Failed in interpolating "
-                 "the "
-                 "right Cauchy-Green deformation tensor";
-          break;
-        case ErrorType::UnderYieldSurface:
-          return "Error in InelasticDefgradTransvIsotropElastViscoplast: we are 'under' the yield "
-                 "surface, sigma < sigma_yield!";
-          break;
-        default:
-          FOUR_C_THROW("to_string(ErrorType): You should not be here!");
-      }
-    }
-
-    /// enum class: success status of single Local Newton Loop iterations
+    /// enum class: success status of single Local Newton Loop
+    /// iterations to be tracked in the analysis utilities
     enum class LocalIterationStatus
     {
-      evaluation_successful,  // residual could be evaluated without errors
-      evaluation_failed,      // residual evaluation failed
-      converged,              // LNL converged in this iteration
-      not_evaluated,  // the iteration has not been evaluated (after reset, or when a previous
+      residual_evaluation_successful,  // residual could be evaluated without errors
+      residual_evaluation_failed,      // residual evaluation failed
+      converged,                       // Local Newton loop converged in this iteration
+      not_evaluated,  // the iteration has not yet been evaluated (also the case when a previous
                       // iteration has already converged)
       final_error,    // the LNL has finally failed after performing all possible error management
                       // actions or/and after the maximum number of
                       // iterations was reached
-
     };
 
-    /// enum to double conversion for the success status of single
-    /// iterations IterationStatus (required for Gauss-Point output,
-    /// which needs to be double)
-    inline double iteration_status_enum_to_double(const LocalIterationStatus iter_status)
-    {
-      switch (iter_status)
-      {
-        case LocalIterationStatus::converged:
-          return 0.0;
-        case LocalIterationStatus::final_error:
-          return 1.0;
-        case LocalIterationStatus::not_evaluated:
-          return -1.0;
-        case LocalIterationStatus::evaluation_successful:
-          return 2.0;
-        case LocalIterationStatus::evaluation_failed:
-          return 3.0;
-        default:
-          FOUR_C_THROW("Unhandled IterationStatus {}", EnumTools::enum_name(iter_status));
-      }
-    }
-
+    /// convert enum for the success status of single Local
+    /// Newton iterations to double (required for Gauss-Point output,
+    /// which needs to be of type <double>)
+    double local_iteration_status_enum_to_double(const LocalIterationStatus iter_status);
 
     /// enum class for material behavior types
-    /// (InelasticDefgradTransvIsotropElastViscoplast)
     enum class MatBehavior
     {
       isotrop,         ///< isotropic material behavior
-      transv_isotrop,  ///< isotropic material behavior
+      transv_isotrop,  ///< transversely isotropic material behavior
     };
 
-    /// enum class for time integration types (integration of internal
-    /// variables in the Local Newton Loop of InelasticDefgradTransvIsotropElastViscoplast)
+    /// enum class for time integration types (Local Newton integration)
     enum class TimIntType
     {
       standard,     ///< standard time integration,
@@ -197,36 +122,21 @@ namespace Mat
                     ///< evolution of the plastic deformation gradient
     };
 
-    /// enum class for material linearization types (linearization of
-    /// InelasticDefgradTransvIsotropElastViscoplast)
+    /// enum class for material linearization types
     enum class LinearizationType
     {
-      analytic,       ///< analytical linearization involving the solution of a linear system of
-                      ///< equations,
-      perturb_based,  ///< linearization based on perturbing the current state
+      analytic,  ///< analytical linearization involving the solution of a linear system of
+                 ///< equations,
+      perturbation_based,  ///< linearization based on perturbing the current state
     };
 
-    // names of the various error types
-    inline std::map<ErrorType, std::string> ErrorNames = {
-        {ErrorType::NegativePlasticStrain, "NegativePlasticStrain"},
-        {ErrorType::OverflowError, "OverflowError"},
-        {ErrorType::NoPlasticIncompressibility, "NoPlasticIncompressibility"},
-        {ErrorType::FailedSolLinSystLNL, "FailedSolLinSystLNL"},
-        {ErrorType::FailedDetermLineSearchParam, "FailedDetermLineSearchParam"},
-        {ErrorType::NoConvergenceLNL, "NoConvergenceLNL"},
-        {ErrorType::SingularJacobian, "SingularJacobian"},
-        {ErrorType::FailedSolAnalytLinearization, "FailedSolAnalytLinearization"},
-        {ErrorType::FailedLogEval, "FailedLogEval"},
-        {ErrorType::FailedExpEval, "FailedExpEval"},
-        {ErrorType::FailedRightCGInterp, "FailedRightCGInterp"},
-        {ErrorType::UnderYieldSurface, "UnderYieldSurface"},
-    };
 
-    //! class containing utilities for analyzing the material time integration:
-    //! error types, number of line searches, ... Currently only
-    //! employed for single-element single-processor simulations.
-    //! (InelastDefgradTransvIsotropElastViscoplast)
-    class TimIntAnalysisUtils
+    /// class containing utilities for general analysis of the material
+    /// time integration (including predictor adaptation, Local Newton
+    /// loop, line search):
+    /// error types, number of line searches, ... Currently only
+    /// employed for single-element single-processor simulations.
+    class GeneralLocalTimIntAnalysisUtils
     {
      public:
       //! number of LNL steps for the current timestep evaluation (LNL)
@@ -316,7 +226,7 @@ namespace Mat
       //! time step)
       double optimal_pred_interp_factor_ = 0;
 
-      //! LNL residual obtained from the optimal predictor interpolation factor
+      //! Local Newton residual obtained from the optimal predictor interpolation factor
       double lnl_res_optimal_pred_interp_factor_ = 0;
 
       //! timer for the current timestep evaluation, from the start of preevaluate to the end of
@@ -324,36 +234,37 @@ namespace Mat
       Teuchos::Time eval_teuchos_timer_{
           "InelasticDefgradTransvIsotropElastViscoplast::from_preevaluate_to_update"};
 
-      //! timer for the time spent in the LNL
+      //! timer for the time spent in the Local Newton loop
       Teuchos::Time eval_teuchos_timer_LNL_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
 
-      //! timer for the time spent adapting the predictor
+      //! timer for the time spent adapting the predictor (including repredictorization)
       Teuchos::Time eval_teuchos_timer_pred_adapt_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation"};
 
-      //! timer for the time spent adapting the predictor in the
+      //! timer for the time spent adapting the predictor only in the
       //! specific case of repredictorization
       Teuchos::Time eval_teuchos_timer_repredict_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation "
           "(repredictorization)"};
 
-      //! timer for the time spent in the line search
+      //! timer for the time spent in the line search scheme
       Teuchos::Time eval_teuchos_timer_line_search_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
 
-
-      //! evaluation time
+      //! evaluation time for the current time step, from the start of
+      //! preevaluate to the end of update
       double eval_time_;
 
-      //! total time
+      //! total evaluation time, from the start of
+      //! preevaluate to the end of update
       double total_time_;
 
-      //! evaluation time spent in the LNL (current
+      //! evaluation time spent in the Local Newton loop (current
       //! time step)
       double eval_time_LNL_;
 
-      //! total time spent in the LNL
+      //! total time spent in the Local Newton Loop
       double total_time_LNL_;
 
       //! evaluation time spent in the predictor adaptation (current
@@ -378,278 +289,64 @@ namespace Mat
       //! total time spent in the line search
       double total_time_line_search_;
 
-      //! error map of the current timestep evaluation, from the first preevaluate of this time step
-      //! to the first preevaluate of the next
+      //! error map (how many times an error occurs) of the current timestep evaluation, from the
+      //! first preevaluate of this time step to the first preevaluate of the next
       std::map<ErrorType, unsigned int> eval_error_map_ = {
-          {ErrorType::NegativePlasticStrain, 0},
-          {ErrorType::OverflowError, 0},
-          {ErrorType::NoPlasticIncompressibility, 0},
-          {ErrorType::FailedSolLinSystLNL, 0},
-          {ErrorType::FailedDetermLineSearchParam, 0},
-          {ErrorType::NoConvergenceLNL, 0},
-          {ErrorType::SingularJacobian, 0},
-          {ErrorType::FailedSolAnalytLinearization, 0},
-          {ErrorType::FailedLogEval, 0},
-          {ErrorType::FailedExpEval, 0},
-          {ErrorType::UnderYieldSurface, 0},
+          {ErrorType::negative_plastic_strain, 0},
+          {ErrorType::overflow_error, 0},
+          {ErrorType::no_plastic_incompressibility, 0},
+          {ErrorType::failed_solution_linear_system_lnl, 0},
+          {ErrorType::failed_determ_line_search_step, 0},
+          {ErrorType::no_convergence_local_newton, 0},
+          {ErrorType::singular_jacobian, 0},
+          {ErrorType::failed_solution_analytic_linearization, 0},
+          {ErrorType::failed_matrix_log_evaluation, 0},
+          {ErrorType::failed_matrix_exp_evaluation, 0},
+          {ErrorType::under_yield_surface, 0},
       };
 
-      //! error map of the total evaluation
+      //! error map (how many times an error occurs) of the total evaluation
       std::map<ErrorType, unsigned int> total_error_map_ = {
-          {ErrorType::NegativePlasticStrain, 0},
-          {ErrorType::OverflowError, 0},
-          {ErrorType::NoPlasticIncompressibility, 0},
-          {ErrorType::FailedSolLinSystLNL, 0},
-          {ErrorType::FailedDetermLineSearchParam, 0},
-          {ErrorType::NoConvergenceLNL, 0},
-          {ErrorType::SingularJacobian, 0},
-          {ErrorType::FailedSolAnalytLinearization, 0},
-          {ErrorType::FailedLogEval, 0},
-          {ErrorType::FailedExpEval, 0},
-          {ErrorType::FailedRightCGInterp, 0},
-          {ErrorType::UnderYieldSurface, 0},
+          {ErrorType::negative_plastic_strain, 0},
+          {ErrorType::overflow_error, 0},
+          {ErrorType::no_plastic_incompressibility, 0},
+          {ErrorType::failed_solution_linear_system_lnl, 0},
+          {ErrorType::failed_determ_line_search_step, 0},
+          {ErrorType::no_convergence_local_newton, 0},
+          {ErrorType::singular_jacobian, 0},
+          {ErrorType::failed_solution_analytic_linearization, 0},
+          {ErrorType::failed_matrix_log_evaluation, 0},
+          {ErrorType::failed_matrix_exp_evaluation, 0},
+          {ErrorType::failed_right_cg_interpolation, 0},
+          {ErrorType::under_yield_surface, 0},
       };
 
-      //! runtime csv writer
-      std::optional<Core::IO::RuntimeCsvWriter> csv_writer_;
-
-      //! simulation time instant and time step
+      //! simulation time instant
       double sim_time_ = 0.0;
-      int sim_timestep_ = 0.0;
+      //! simulation time step index
+      int sim_timestep_ = 0;
 
       //! was the pre_evaluate method of the first element called?
       bool pre_eval_called_ = false;
 
-      //! how often was the update method called? (max. num_of_global_elements if one processor is
-      //! considered)
+      //! how often was the update method called? (maximum:
+      //! num_of_global_elements, if only one processor
+      //! is considered)
       int num_update_calls_ = 0;
 
-      //! reset method
-      void reset()
-      {
-        eval_num_of_LNL_steps_ = 0;
-        eval_num_of_iters_ = 0;
-        eval_num_of_repredict_ = 0;
-        eval_num_of_pred_adapt_iters_ = 0;
-        eval_num_of_repredict_iters_ = 0;
-        eval_num_of_line_search_ = 0;
-        eval_num_of_line_search_iters_ = 0;
-        eval_teuchos_timer_.reset();
-        eval_teuchos_timer_LNL_.reset();
-        eval_teuchos_timer_pred_adapt_.reset();
-        eval_teuchos_timer_repredict_.reset();
-        eval_teuchos_timer_line_search_.reset();
-        eval_time_ = 0;
-        eval_time_LNL_ = 0;
-        eval_time_pred_adapt_ = 0;
-        eval_time_repredict_ = 0;
-        eval_time_line_search_ = 0;
-        eval_error_map_ = {
-            {ErrorType::NegativePlasticStrain, 0},
-            {ErrorType::OverflowError, 0},
-            {ErrorType::NoPlasticIncompressibility, 0},
-            {ErrorType::FailedSolLinSystLNL, 0},
-            {ErrorType::FailedDetermLineSearchParam, 0},
-            {ErrorType::NoConvergenceLNL, 0},
-            {ErrorType::SingularJacobian, 0},
-            {ErrorType::FailedSolAnalytLinearization, 0},
-            {ErrorType::FailedLogEval, 0},
-            {ErrorType::FailedExpEval, 0},
-            {ErrorType::UnderYieldSurface, 0},
-        };
-        eval_num_of_alpha_neq_1 = 0;
-        eval_num_of_alpha_neq_1_last_iter = 0;
-        eval_num_of_first_iter_convergences = 0;
-        curr_pred_interp_factor_ = -1.0;
-        curr_max_pred_interp_factor_ = -1.0;
-        optimal_pred_interp_factor_ = -1.0;
-        lnl_res_optimal_pred_interp_factor_ = -1.0;
-      }
+      //! reset method: reset the stored internal variables for a new
+      //! evaluation / new timestep
+      void reset();
 
-      //! initialize csv_writer
-      void init_csv_writer()
-      {
-        // get structure discretization
-        std::shared_ptr<Core::FE::Discretization> structure_dis =
-            Global::Problem::instance()->get_dis("structure");
+      //! update total values based on the evaluated values
+      void update_total();
 
-        // check whether we are using a single processor! (no implementation for multiple processors
-        // yet, and also not really required)
-        int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-        FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-            "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-            "output "
-            "for multiple processors");
+      //! write the stored internal variables to csv
+      void write_to_csv();
 
-        // create csv_writer and register its columns
-        csv_writer_.emplace(
-            my_rank, *Global::Problem::instance()->output_control_file(), "timint_output");
-        csv_writer_->register_data_vector("Eval. steps (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
-        csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
-        csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
-        csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
-        csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
-        csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
-        csv_writer_->register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
-        csv_writer_->register_data_vector("Total # of first LNL iter. convergences", 1, 16);
-        csv_writer_->register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
-        csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
-        csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
-        csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
-        csv_writer_->register_data_vector("Total time (line search)", 1, 16);
-        csv_writer_->register_data_vector(
-            "Interpolation factor of GP 0 of Ele 0 (last global iteration)", 1, 16);
-        csv_writer_->register_data_vector(
-            "Interpolation factor of GP 0 of Ele 0 (maximum over all global "
-            "iterations)",
-            1, 16);
-        csv_writer_->register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
-        csv_writer_->register_data_vector(
-            "LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
-        for (const auto& [key, value] : ErrorNames)
-        {
-          csv_writer_->register_data_vector(
-              "Eval. Error " + std::to_string(static_cast<int>(key)) + ": " + value, 1, 16);
-          csv_writer_->register_data_vector(
-              "Total Error " + std::to_string(static_cast<int>(key)) + ": " + value, 1, 16);
-        }
-      }
-
-      //! update total values
-      void update_total()
-      {
-        total_num_of_LNL_steps_ += eval_num_of_LNL_steps_;
-        total_num_of_iters_ += eval_num_of_iters_;
-        total_num_of_repredict_ += eval_num_of_repredict_;
-        total_num_of_pred_adapt_iters_ += eval_num_of_pred_adapt_iters_;
-        total_num_of_repredict_iters_ += eval_num_of_repredict_iters_;
-        total_num_of_line_search_ += eval_num_of_line_search_;
-        total_num_of_line_search_iters_ += eval_num_of_line_search_iters_;
-        total_num_of_alpha_neq_1 += eval_num_of_alpha_neq_1;
-        total_num_of_alpha_neq_1_last_iter += eval_num_of_alpha_neq_1_last_iter;
-        total_time_ += eval_time_;
-        total_time_LNL_ += eval_time_LNL_;
-        total_time_pred_adapt_ += eval_time_pred_adapt_;
-        total_time_repredict_ += eval_time_repredict_;
-        total_time_line_search_ += eval_time_line_search_;
-        for (const auto& [error_type, error_count] : eval_error_map_)
-        {
-          total_error_map_[error_type] += error_count;
-        }
-      }
-
-      //! write to csv after each timestep
-      void write_to_csv()
-      {
-        // output data
-        std::map<std::string, std::vector<double>> output_data;
-        output_data["Eval. steps (LNL)"] = {static_cast<double>(eval_num_of_LNL_steps_)};
-        output_data["Total steps (LNL)"] = {static_cast<double>(total_num_of_LNL_steps_)};
-        output_data["Eval. iterations (LNL)"] = {static_cast<double>(eval_num_of_iters_)};
-        output_data["Total iterations (LNL)"] = {static_cast<double>(total_num_of_iters_)};
-        output_data["Eval. repredictorizations (LNL)"] = {
-            static_cast<double>(eval_num_of_repredict_)};
-        output_data["Total repredictorizations (LNL)"] = {
-            static_cast<double>(total_num_of_repredict_)};
-        output_data["Eval. iterations (predictor adaptation)"] = {
-            static_cast<double>(eval_num_of_pred_adapt_iters_)};
-        output_data["Total iterations (predictor adaptation)"] = {
-            static_cast<double>(total_num_of_pred_adapt_iters_)};
-        output_data["Eval. iterations (repredictorization)"] = {
-            static_cast<double>(eval_num_of_repredict_iters_)};
-        output_data["Total iterations (repredictorization)"] = {
-            static_cast<double>(total_num_of_repredict_iters_)};
-        output_data["Eval. iterations (line search)"] = {
-            static_cast<double>(eval_num_of_line_search_iters_)};
-        output_data["Total iterations (line search)"] = {
-            static_cast<double>(total_num_of_line_search_iters_)};
-        output_data["Eval. line searches (LNL)"] = {static_cast<double>(eval_num_of_line_search_)};
-        output_data["Total line searches (LNL)"] = {static_cast<double>(total_num_of_line_search_)};
-        output_data["Eval. time (full: preevaluate -> update)"] = {static_cast<double>(eval_time_)};
-        output_data["Total time (full: preevaluate -> update)"] = {
-            static_cast<double>(total_time_)};
-        output_data["Eval. time (LNL)"] = {static_cast<double>(eval_time_LNL_)};
-        output_data["Total time (LNL)"] = {static_cast<double>(total_time_LNL_)};
-        output_data["Eval. time (predictor adaptation)"] = {
-            static_cast<double>(eval_time_pred_adapt_)};
-        output_data["Total time (predictor adaptation)"] = {
-            static_cast<double>(total_time_pred_adapt_)};
-        output_data["Eval. time (repredictorization)"] = {
-            static_cast<double>(eval_time_repredict_)};
-        output_data["Total time (repredictorization)"] = {
-            static_cast<double>(total_time_repredict_)};
-        output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
-        output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
-        output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
-            static_cast<double>(eval_num_of_alpha_neq_1)};
-        output_data["Eval. # of times: alpha neq 1 (last LNL iter)"] = {
-            static_cast<double>(eval_num_of_alpha_neq_1_last_iter)};
-        output_data["Eval. # of first LNL iter. convergences"] = {
-            static_cast<double>(eval_num_of_first_iter_convergences)};
-        output_data["Total # of times: alpha neq 1 (all LNL iters)"] = {
-            static_cast<double>(total_num_of_alpha_neq_1)};
-        output_data["Total # of times: alpha neq 1 (last LNL iter)"] = {
-            static_cast<double>(total_num_of_alpha_neq_1_last_iter)};
-        output_data["Total # of first LNL iter. convergences"] = {
-            static_cast<double>(total_num_of_first_iter_convergences)};
-
-
-        for (const auto& [key, value] : ErrorNames)
-        {
-          output_data["Eval. Error " + std::to_string(static_cast<int>(key)) + ": " + value] = {
-              static_cast<double>(eval_error_map_[key])};
-          output_data["Total Error " + std::to_string(static_cast<int>(key)) + ": " + value] = {
-              static_cast<double>(total_error_map_[key])};
-        }
-
-        // predictor interpolation factors
-        output_data
-            ["Interpolation factor of GP 0 of Ele 0 (last global "
-             "iteration)"] = {static_cast<double>(curr_pred_interp_factor_)};
-        output_data
-            ["Interpolation factor of GP 0 of Ele 0 (maximum over all global "
-             "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_)};
-        output_data["Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
-            static_cast<double>(optimal_pred_interp_factor_)};
-        output_data["LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
-            static_cast<double>(lnl_res_optimal_pred_interp_factor_)};
-
-
-        // write output data to csv
-        csv_writer_->write_data_to_file(sim_time_, sim_timestep_, output_data);
-      }
-
-      //! output routine routine of the csv writer in the case of an error
+      //! output routine of the csv writer in the case of an error
       //! during the Local Newton Loop routine
-      void output_error_local_newton_loop(unsigned int step_counter)
-      {  // add current number of steps
-        eval_num_of_LNL_steps_ += step_counter;
-
-        // stop (already started!) LNL timer
-        eval_time_LNL_ += eval_teuchos_timer_LNL_.stop();
-
-        // output routine
-        eval_time_ = eval_teuchos_timer_.stop();
-        update_total();
-        write_to_csv();
-      }
+      void output_error_local_newton_loop(unsigned int step_counter);
     };
 
     /// enum class for state quantity evaluations in
@@ -674,16 +371,8 @@ namespace Mat
                                     ///< derivatives of the plastic strain rate have been evaluated
     };
 
-    /// make sure StateQuantityDerivEvalType is stream-insertable
-    inline std::ostream& operator<<(
-        std::ostream& stream, const StateQuantityDerivEvalType& state_quant_deriv_eval_type)
-    {
-      stream << magic_enum::enum_name(state_quant_deriv_eval_type);
-      return stream;
-    }
-
-    //! DEBUG?: struct holding relevant tracking data when writing to csv
-    //! files (InelasticDefgradTransvIsotropElastViscoplast)
+    //! struct holding relevant tracking data when writing to csv
+    //! files
     struct CSVOutputTrackingData
     {
       //! global element id
@@ -700,326 +389,149 @@ namespace Mat
 
       //! tracker for the global iteration (if we have output every
       //! iteration) or the timestep index; increased by 1 every time
-      //! the Gauss point output routine is called
+      //! the Gauss point output routine / or the update method (if no
+      //! Gauss point output is considered) is called
       unsigned int globiter_or_timestep_index_;
 
       //! tracker for the local NR iteration
       unsigned int lnl_iter;
     };
 
-    //! DEBUG?: struct holding the relevant output data of all
+    //! struct holding the relevant output data of all
     //! microiterations of a single predictor adaptation which can be
     //! written to a csv file
     struct CSVOutputPredAdaptMicroIterData
     {
       /*! @brief Constructor.
        *
-       * @param[in] max_num_pred_adapt_micro_iters maximum number of
-       * micro iterations within a single predictor adaptation
+       * @param[in] csv_output_tracking_data tracking data used to
+       * specify the settings for the csv output.
        */
-      CSVOutputPredAdaptMicroIterData(const unsigned int max_num_pred_adapt_micro_iters)
-          : max_num_pred_adapt_micro_iters_(max_num_pred_adapt_micro_iters)
-      {
-      }
+      CSVOutputPredAdaptMicroIterData(const CSVOutputTrackingData csv_output_tracking_data);
 
       //! data collector for a single micro iteration within the
-      //! predictor adaptation -> assigns the values at the specific microiterations
+      //! predictor adaptation -> used to assign the values at the specific microiterations
       struct MicroIterDataCollector
       {
         //! current interpolation factor \f$ \xi \f$
-        double current_xi = -1;
+        double current_xi_ = -1;
         //! current equivalent stress
-        double current_equiv_stress = -1;
+        double current_equiv_stress_ = -1;
         //! current plastic strain
-        double current_plastic_strain = -1;
+        double current_plastic_strain_ = -1;
         //! current error status
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status =
-            ErrorType::OverflowError;
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status_ =
+            ErrorType::overflow_error;
       };
 
-      //! all indices of the microiteration (iterations within the predictor
+      //! all indices of the microiterations (iterations within the predictor
       //! adaptation)
-      std::vector<unsigned int> all_microiter;
+      std::vector<unsigned int> all_microiter_;
 
       //! current interpolation factors \f$ \xi \f$ of all
       //! microiterations
-      std::vector<double> all_current_xi;
+      std::vector<double> all_current_xi_;
 
       //! current equivalent stresses of all microiterations (associated
       //! with the current interpolation factors)
-      std::vector<double> all_current_equiv_stress;
+      std::vector<double> all_current_equiv_stress_;
 
       //! current plastic strains of all microiterations (associated
       //! with the current interpolation factors)
-      std::vector<double> all_current_plastic_strain;
+      std::vector<double> all_current_plastic_strain_;
 
       //! current error status of all microiterations (associated with
       //! the current interpolation factors)
-      std::vector<ErrorType> all_current_error_status;
+      std::vector<ErrorType> all_current_error_status_;
 
-      //! set collected data for specific microiteration
-      void set_micro_iter_data(
-          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter)
-      {
-        all_microiter.push_back(micro_iter);
-        all_current_xi.push_back(mi_data_collector.current_xi);
-        all_current_equiv_stress.push_back(mi_data_collector.current_equiv_stress);
-        all_current_plastic_strain.push_back(mi_data_collector.current_plastic_strain);
-        all_current_error_status.push_back(mi_data_collector.current_error_status);
-      }
+      //! tracking data used to specify the settings for csv output
+      const CSVOutputTrackingData csv_output_tracking_data_;
 
-      //! maximum number of microiterations within a single predictor
-      //! adaptation
-      const unsigned int max_num_pred_adapt_micro_iters_;
+      //! append collected data for specific microiteration
+      void append_micro_iter_data(
+          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter);
+
+      //! writes data from each microiteration of a single predictor
+      //! adaptation (specified via tracking data) to a dedicated csv file
+      void write_pred_adapt_micro_iter_data_to_csv();
     };
 
-    //! DEBUG?: struct holding the relevant output data of all
+    //! struct holding the relevant output data of all
     //! microiterations of a single line search which can be
     //! written to a csv file
     struct CSVOutputLineSearchMicroIterData
     {
-      /*! @brief Constructor.
-       *
-       * @param[in] max_num_line_search_micro_iters maximum number of
-       * micro iterations within a single line search
+      /*!
+       * @param[in] csv_output_tracking_data tracking data used to
+       * specify the settings for the csv output.
        */
-      CSVOutputLineSearchMicroIterData(const unsigned int max_num_line_search_micro_iters)
-          : max_num_line_search_micro_iters_(max_num_line_search_micro_iters)
-      {
-      }
+      CSVOutputLineSearchMicroIterData(const CSVOutputTrackingData csv_output_tracking_data);
 
       //! data collector for a single micro iteration within the
       //! predictor adaptation -> assigns the values at the specific microiterations
       struct MicroIterDataCollector
       {
         //! current step size \f$ \alpha \f$
-        double current_alpha = -1;
+        double current_alpha_ = -1;
         //! maximum allowed step size \f$ \alpha_{\mathrm{max}} \f$
         //! accounting for eventual errors
-        double max_alpha = -1;
+        double max_alpha_ = -1;
         //! current equivalent stress
-        double current_equiv_stress = -1;
+        double current_equiv_stress_ = -1;
         //! current plastic strain
-        double current_plastic_strain = -1;
+        double current_plastic_strain_ = -1;
         //! current quadratic residual norm for the current step size
-        double current_quadratic_residual_norm = -1;
+        double current_quadratic_residual_norm_ = -1;
         //! maximum allowed quadratic residual norm for the current step size
-        double max_quadratic_residual_norm = -1;
+        double max_quadratic_residual_norm_ = -1;
         //! current error status
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status =
-            ErrorType::OverflowError;
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType current_error_status_ =
+            ErrorType::overflow_error;
       };
 
-      //! all indices of the microiteration (iterations within the line search)
-      std::vector<unsigned int> all_microiter;
+      //! all indices of the microiterations (iterations within the line search)
+      std::vector<unsigned int> all_microiter_;
 
       //! current step sizes \f$ \alpha \f$ of all
       //! microiterations
-      std::vector<double> all_current_alpha;
+      std::vector<double> all_current_alpha_;
 
       //! maximum step sizes \f$ \alpha_{\mathrm{}} \f$ of all
       //! microiterations
-      std::vector<double> all_max_alpha;
+      std::vector<double> all_max_alpha_;
 
       //! current equivalent stresses of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_current_equiv_stress;
+      std::vector<double> all_current_equiv_stress_;
 
       //! current plastic strains of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_current_plastic_strain;
+      std::vector<double> all_current_plastic_strain_;
 
       //! current quadratic residual norm of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_current_quadratic_residual_norm;
+      std::vector<double> all_current_quadratic_residual_norm_;
 
       //! maximum allowed quadratic residual norm of all microiterations (associated
       //! with the current line search step sizes)
-      std::vector<double> all_max_quadratic_residual_norm;
+      std::vector<double> all_max_quadratic_residual_norm_;
 
       //! current error status of all microiterations (associated with
       //! the current line search ste sizes)
-      std::vector<ErrorType> all_current_error_status;
+      std::vector<ErrorType> all_current_error_status_;
 
-      //! set collected data for specific microiteration
-      void set_micro_iter_data(
-          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter)
-      {
-        all_microiter.push_back(micro_iter);
-        all_current_alpha.push_back(mi_data_collector.current_alpha);
-        all_max_alpha.push_back(mi_data_collector.max_alpha);
-        all_current_equiv_stress.push_back(mi_data_collector.current_equiv_stress);
-        all_current_plastic_strain.push_back(mi_data_collector.current_plastic_strain);
-        all_current_quadratic_residual_norm.push_back(
-            mi_data_collector.current_quadratic_residual_norm);
-        all_max_quadratic_residual_norm.push_back(mi_data_collector.max_quadratic_residual_norm);
-        all_current_error_status.push_back(mi_data_collector.current_error_status);
-      }
+      //! append collected data for specific microiteration
+      void append_micro_iter_data(
+          const MicroIterDataCollector mi_data_collector, const unsigned micro_iter);
 
-      //! maximum number of microiterations within a single predictor
-      //! adaptation
-      const unsigned int max_num_line_search_micro_iters_;
+      //! tracking data used to specify the settings for csv output
+      const CSVOutputTrackingData csv_output_tracking_data_;
+
+      //! writes data from each microiteration of a single line search (specified via tracking data)
+      //! to a dedicated csv file
+      void write_line_search_micro_iter_data_to_csv();
     };
 
-
-
-    //! writes data from each microiteration of a single predictor
-    //! adaptation (specified via tracking data) to a dedicated csv file
-    inline void write_pred_adapt_micro_iter_data_to_csv(
-        CSVOutputTrackingData csv_output_tracking_data,
-        CSVOutputPredAdaptMicroIterData csv_output_micro_iter_data)
-    {
-      // get structure discretization
-      std::shared_ptr<Core::FE::Discretization> structure_dis =
-          Global::Problem::instance()->get_dis("structure");
-
-      // check whether we are using a single processor! (no implementation for multiple
-      // processors yet, and also not really required)
-      int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-      FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-          "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-          "output "
-          "for multiple processors");
-
-      // create csv_writer and register its columns
-      Core::IO::RuntimeCsvWriter csv_writer{my_rank,
-          *Global::Problem::instance()->output_control_file(),
-          "pred-adapt-micro-iter-output-ele-gid-" +
-              std::to_string(csv_output_tracking_data.ele_gid) + "-gp-" +
-              std::to_string(csv_output_tracking_data.gp) + "-tn-" +
-              std::to_string(csv_output_tracking_data.tn) + "-globiter-or-timestep-index-" +
-              std::to_string(csv_output_tracking_data.globiter_or_timestep_index_) + "-lnl-iter-" +
-              std::to_string(csv_output_tracking_data.lnl_iter)};
-      csv_writer.register_data_vector("element_gid", 1, 16);
-      csv_writer.register_data_vector("gauss_point", 1, 16);
-      csv_writer.register_data_vector("previous_time", 1, 16);
-      csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
-      csv_writer.register_data_vector("lnl_iter", 1, 16);
-      csv_writer.register_data_vector("current_xi", 1, 16);
-      csv_writer.register_data_vector("current_equiv_stress", 1, 16);
-      csv_writer.register_data_vector("current_plastic_strain", 1, 16);
-      csv_writer.register_data_vector("current_err_status", 1, 16);
-
-      // already fill the columns containing solely the tracking data
-      for (unsigned int mi = 0; mi < csv_output_micro_iter_data.all_microiter.size(); ++mi)
-      {
-        std::map<std::string, std::vector<double>> output_data;
-        output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid)};
-        output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp)};
-        output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn)};
-        output_data["globiter_or_timestep_index"] = {
-            static_cast<double>(csv_output_tracking_data.globiter_or_timestep_index_)};
-        output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data.lnl_iter)};
-        output_data["current_xi"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_xi[mi])};
-        output_data["current_equiv_stress"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_equiv_stress[mi])};
-        output_data["current_plastic_strain"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_plastic_strain[mi])};
-        switch (csv_output_micro_iter_data.all_current_error_status[mi])
-        {
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors:
-            output_data["current_err_status"] = {0.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::OverflowError:
-            output_data["current_err_status"] = {1.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::UnderYieldSurface:
-            output_data["current_err_status"] = {2.0};
-            break;
-          default:
-            output_data["current_err_status"] = {-1.0};
-            break;
-        }
-
-        // write output data to csv
-        csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
-      }
-    }
-
-
-    //! writes data from each microiteration of a single line search (specified via tracking data)
-    //! to a dedicated csv file
-    inline void write_line_search_micro_iter_data_to_csv(
-        CSVOutputTrackingData csv_output_tracking_data,
-        CSVOutputLineSearchMicroIterData csv_output_micro_iter_data)
-    {
-      // get structure discretization
-      std::shared_ptr<Core::FE::Discretization> structure_dis =
-          Global::Problem::instance()->get_dis("structure");
-
-      // check whether we are using a single processor! (no implementation for multiple
-      // processors yet, and also not really required)
-      int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-      FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-          "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-          "output "
-          "for multiple processors");
-
-      // create csv_writer and register its columns
-      Core::IO::RuntimeCsvWriter csv_writer{my_rank,
-          *Global::Problem::instance()->output_control_file(),
-          "line-search-micro-iter-output-ele-gid-" +
-              std::to_string(csv_output_tracking_data.ele_gid) + "-gp-" +
-              std::to_string(csv_output_tracking_data.gp) + "-tn-" +
-              std::to_string(csv_output_tracking_data.tn) + "-globiter-or-timestep-index-" +
-              std::to_string(csv_output_tracking_data.globiter_or_timestep_index_) + "-lnl-iter-" +
-              std::to_string(csv_output_tracking_data.lnl_iter)};
-      csv_writer.register_data_vector("element_gid", 1, 16);
-      csv_writer.register_data_vector("gauss_point", 1, 16);
-      csv_writer.register_data_vector("previous_time", 1, 16);
-      csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
-      csv_writer.register_data_vector("lnl_iter", 1, 16);
-      csv_writer.register_data_vector("current_alpha", 1, 16);
-      csv_writer.register_data_vector("max_alpha", 1, 16);
-      csv_writer.register_data_vector("current_equiv_stress", 1, 16);
-      csv_writer.register_data_vector("current_plastic_strain", 1, 16);
-      csv_writer.register_data_vector("current_quadratic_residual_norm", 1, 16);
-      csv_writer.register_data_vector("max_quadratic_residual_norm", 1, 16);
-      csv_writer.register_data_vector("current_err_status", 1, 16);
-
-      // already fill the columns containing solely the tracking data
-      for (unsigned int mi = 0; mi < csv_output_micro_iter_data.all_microiter.size(); ++mi)
-      {
-        std::map<std::string, std::vector<double>> output_data;
-        output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid)};
-        output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp)};
-        output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn)};
-        output_data["globiter_or_timestep_index"] = {
-            static_cast<double>(csv_output_tracking_data.globiter_or_timestep_index_)};
-        output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data.lnl_iter)};
-        output_data["current_alpha"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_alpha[mi])};
-        output_data["max_alpha"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_max_alpha[mi])};
-        output_data["current_equiv_stress"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_equiv_stress[mi])};
-        output_data["current_plastic_strain"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_current_plastic_strain[mi])};
-        output_data["current_quadratic_residual_norm"] = {static_cast<double>(
-            csv_output_micro_iter_data.all_current_quadratic_residual_norm[mi])};
-        output_data["max_quadratic_residual_norm"] = {
-            static_cast<double>(csv_output_micro_iter_data.all_max_quadratic_residual_norm[mi])};
-        switch (csv_output_micro_iter_data.all_current_error_status[mi])
-        {
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors:
-            output_data["current_err_status"] = {0.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::OverflowError:
-            output_data["current_err_status"] = {1.0};
-            break;
-          case InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::UnderYieldSurface:
-            output_data["current_err_status"] = {2.0};
-            break;
-          default:
-            output_data["current_err_status"] = {-1.0};
-            break;
-        }
-
-        // write output data to csv
-        csv_writer.write_data_to_file(csv_output_tracking_data.tnp, mi, output_data);
-      }
-    }
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
 }  // namespace Mat

@@ -1803,7 +1803,7 @@ namespace
 
     // declare error status
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status =
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors;
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute StateQuantities objects
     Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantities
@@ -1819,7 +1819,7 @@ namespace
             plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
             Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
                 FullEval);
-    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
+    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
     }
@@ -1872,7 +1872,7 @@ namespace
     CM.multiply_tn(1.0, FM_, FM_, 0.0);
 
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status =
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors;
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute StateQuantityDerivatives objects
     Mat::InelasticDefgradTransvIsotropElastViscoplast::StateQuantityDerivatives
@@ -1893,7 +1893,7 @@ namespace
                     FullEval,
                 true);
 
-    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::NoErrors)
+    if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantityDerivatives");
     }
