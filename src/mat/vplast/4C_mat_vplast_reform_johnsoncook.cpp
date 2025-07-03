@@ -68,13 +68,13 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
     const double max_plastic_strain_incr, ErrorType& err_status, const bool update_hist_var)
 {
   // first set error status to "no errors"
-  err_status = ErrorType::NoErrors;
+  err_status = ErrorType::no_errors;
 
   // Check if plastic strain is negative and throw error (handled by the parent material,
   // substepping)
   if (equiv_plastic_strain < 0.0)
   {
-    err_status = ErrorType::NegativePlasticStrain;
+    err_status = ErrorType::negative_plastic_strain;
     return -1;
   }
 
@@ -104,7 +104,7 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
     // error if so
     if (std::log(dt) + log_temp > std::log(max_plastic_strain_incr + const_pars_.p * dt))
     {
-      err_status = ErrorType::OverflowError;
+      err_status = ErrorType::overflow_error;
       return -1;
     }
 
@@ -125,7 +125,7 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
   Core::LinAlg::Matrix<2, 1> equiv_plastic_strain_rate_ders(Core::LinAlg::Initialization::zero);
 
   // first set error status to "no errors"
-  err_status = ErrorType::NoErrors;
+  err_status = ErrorType::no_errors;
 
   // used equivalent plastic strain
   double used_equiv_plastic_strain = equiv_plastic_strain;
@@ -141,7 +141,7 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
   // substepping)
   if (equiv_plastic_strain < 0.0)
   {
-    err_status = ErrorType::NegativePlasticStrain;
+    err_status = ErrorType::negative_plastic_strain;
     return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
   }
 
@@ -178,7 +178,7 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
     if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) &&
         (log_dt + log_deriv_eps > log_max_plastic_strain_deriv_value))
     {
-      err_status = ErrorType::OverflowError;
+      err_status = ErrorType::no_errors;
       return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
     }
 
@@ -209,7 +209,7 @@ bool Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_output_data(
   if (name == "yield_strength")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_yield_strength_.size());
-         ++gp)
+        ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_yield_strength_[gp];
     }

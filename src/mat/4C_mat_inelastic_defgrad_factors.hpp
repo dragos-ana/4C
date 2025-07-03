@@ -1372,7 +1372,7 @@ namespace Mat
    public:
     //! struct containing quantities computed from a given elasticity/plasticity state;
     //! given: current right Cauchy-Green deformation tensor, inelastic deformation gradient and
-    //! plastic strain
+    //! plastic strain at the previous time instant
     struct StateQuantities
     {
       // ----- current state quantities (for the evaluated Gauss points) ----- //
@@ -1417,7 +1417,7 @@ namespace Mat
 
     //! struct containing specific derivatives of quantities computed from a given
     //! elasticity/plasticity state; given: current right Cauchy-Green deformation tensor, inelastic
-    //! deformation gradient and plastic strain
+    //! deformation gradient and plastic strain at the previous time instant
     struct StateQuantityDerivatives
     {
       // ----- current state variable derivatives (for the evaluated Gauss points)----- //
@@ -1545,8 +1545,6 @@ namespace Mat
      */
     void prepare_non_repeat_tasks();
 
-
-
     void update() override;
 
     void pack_inelastic(Core::Communication::PackBuffer& data) const override;
@@ -1632,8 +1630,6 @@ namespace Mat
     {
       update_hist_var_ = update_hist_var;
     }
-
-
 
    private:
     //! struct containing constant tensors which depend on the constant fiber direction \f$
@@ -1958,17 +1954,17 @@ namespace Mat
       //! constructor of data
       LocalNewtonData()
       {
-        // set number of Gauss points to 1 temporarily, since we don't
-        // know it at this point in time
+        /// set number of Gauss points to 1 temporarily, since we don't
+        /// know it at this point in time
         residual_.resize(1);
         equiv_stress_.resize(1);
         plastic_strain_.resize(1);
         iter_status_.resize(1);
 
-        // reset the values (set initial 0-values to all arrays above)
+        /// reset the values (set initial 0-values to all arrays above)
         reset_all_iteration_data(0);
 
-        // initialize global iteration / timestep index tracker
+        /// initialize global iteration / timestep index tracker
         globiter_or_timestep_index_ = 0;
       };
 
@@ -1985,6 +1981,9 @@ namespace Mat
       //! iteration) or the timestep index; increased by 1 every time
       //! the Gauss point output routine is called
       unsigned int globiter_or_timestep_index_;
+
+      //! do we have Gauss point output every global iteration?
+      bool is_Gauss_point_output_every_global_iter_ = false;
 
       //! success status of the iteration (can it even evaluate the
       //! residual?); vector of GP values
@@ -2096,7 +2095,7 @@ namespace Mat
               static_cast<double>(residual_[data.gauss_point][iter])};
           output_data["iter_status_LNL_gp_" + std::to_string((data.gauss_point))] = {
               static_cast<double>(
-                  iteration_status_enum_to_double(iter_status_[data.gauss_point][iter]))};
+                  local_iteration_status_enum_to_double(iter_status_[data.gauss_point][iter]))};
           output_data["equiv_stress_LNL_gp_" + std::to_string((data.gauss_point))] = {
               static_cast<double>(equiv_stress_[data.gauss_point][iter])};
           output_data["plastic_strain_LNL_gp_" + std::to_string((data.gauss_point))] = {
