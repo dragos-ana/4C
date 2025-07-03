@@ -53,7 +53,7 @@ MATERIALS:
       YIELD_COND_B: 0
       YIELD_COND_F: 0
       MAT_BEHAVIOR: isotrop
-      MAX_HALVE_NUM_SUBSTEP: 1
+      MAX_SUBSTEPPING_HALVE_NUM: 1
   - MAT: 4
     MAT_ViscoplasticLawAnand:
       STRAIN_RATE_PREFAC: 0.01389
