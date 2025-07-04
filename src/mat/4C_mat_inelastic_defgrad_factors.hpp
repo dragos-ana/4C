@@ -1626,6 +1626,9 @@ namespace Mat
     /*!
      * @brief Calculate the residual for the Local Newton Loop (LNL)
      *
+     * @note The state quantities are updated in this method, since they
+     * are used for the computation of the residual!
+     *
      * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
      * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the
      * inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and plastic
@@ -1647,6 +1650,10 @@ namespace Mat
      * @brief For a given right Cauchy_Green tensor and the Local NR Loop unknown vector,
      * compute the 10 x 10 Jacobian matrix required for the Local Newton Loop and the
      * linearization for the Global Newton Loop
+     *
+     * @note The state quantity derivatives are updated in this method.
+     * They require the state quantities, which were evaluated and stored
+     * previously when calculating the residual.
      *
      * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
      * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the
