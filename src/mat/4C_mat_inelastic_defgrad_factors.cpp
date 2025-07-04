@@ -2686,13 +2686,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     // predictor
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
     Core::LinAlg::Matrix<10, 1> x_adapted{x};
+
+    // adapt predictor
     if (parameter()->use_pred_adapt())
     {
       x_adapted = adapt_predictor_local_newton_loop(x, FredM);
-      // update the maximum interpolation factor (if required - this is
-      // checked within the update function)
+      // update the maximum interpolation factor at the considered GP
       pred_adapt_utils_.update_current_max_xi(gp_);
 
+      // increment the number of performed predictor adaptations
       ++pred_adapt_utils_.num_of_pred_adapt_;
     }
 
@@ -3280,11 +3282,11 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // set reference matrices for interpolation
   ref_matrices_ = {time_step_quantities_.last_rightCG_[gp_], CM};
 
-  // declare error status for the new substep, to check whether we have halved the time step too
-  // many times (false) or if a new substep is possible (true)
+  // declare error status for considering a new substep: used to check whether we have halved the
+  // time step too many times (false) or if a new substep is possible (true)
   bool new_substep_status = true;
 
-  // declare the line search parameter
+  // declare the line search step size \f$ alpha \f$
   double alpha = 1.0;
 
   // initialize error management action
@@ -3304,6 +3306,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     // get the right Cauchy-Green tensor of the current substep
     if (parameter()->use_substepping())
     {
+      // interpolate right Cauchy-Green tensor if we use local substepping
       curr_CM = tensor_interpolator_.get_interpolated_matrix(ref_matrices_, ref_locs_,
           (local_substepping_utils_.t_ + local_substepping_utils_.curr_dt_) /
               time_step_tracker_.dt_,
@@ -3317,12 +3320,14 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     }
     else
     {
+      // use the previously computed right Cauchy-Green tensor
       curr_CM = ref_matrices_[1];
     }
 
     // Newton-Raphson scheme for the current substep
     while (true)
     {
+      // set error status to no_errors
       err_status = ErrorType::no_errors;
 
       // increment iteration counter
@@ -3330,7 +3335,6 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
       // general local time integration analysis: increment iterations
       if (parameter()->analyze_timint()) ++general_local_timint_analysis_utils.eval_num_of_iters_;
-
 
       // compute residual
       residual = calculate_local_newton_loop_residual(curr_CM, sol,
@@ -3780,8 +3784,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
       .lnl_iter_ = lnl_data_.iter_};
 
-  // initialize micro iteration data for all "micro"
-  // iterations of the subsequent predictor adaptation, to be written to csv
+  // initialize micro iteration data for all microiterations
+  // of the subsequent predictor adaptation, to be written to csv
   CSVOutputPredAdaptMicroIterData csv_output_micro_iter_data{csv_output_tracking_data};
 
   // compute right CG tensor
@@ -3802,21 +3806,17 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   double plastic_strain_adapt_pred{0.0};
 
   // boolean: check if we need to evaluate the elastic predictor
-  //          --> 1). If we don't use a performance boosting strategy,
+  //          --> If we don't use a performance boosting strategy,
   //          then we need to check this directly before
   //          computing the other predictor extremum and interpolating.
   //          We also need to evaluate the elastic predictor in the case where the current
   //          interpolation factor is 0 and a performance boosting
   //          strategy is employed.
-  //          -> HERE
-  //          --> 2). If we use a performance boosting strategy, then we
-  //          check the set value first, and only then the
-  //          elastic predictor (if it was not evaluated during 1.) -> SEE BELOW
-  bool eval_elastic_pred_one =
+  bool eval_elastic_pred =
       check_original_pred && (!use_performance_boosting_strategy ||
                                  +(use_performance_boosting_strategy &&
                                      std::abs(pred_adapt_utils_.current_xi_[gp_]) <= zero_tol));
-  if (eval_elastic_pred_one)
+  if (eval_elastic_pred)
   {
     iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
     plastic_strain_adapt_pred = original_pred(9);
@@ -3923,124 +3923,23 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       FOUR_C_THROW("See above");
     }
 
-
+    // set error status to no errors
     err_status = ErrorType::no_errors;
 
-    // boolean: check if we need to evaluate the elastic predictor
-    //          --> 1). If we don't use a performance boosting strategy,
-    //          then we need to check this directly before
-    //          computing the other predictor extremum and interpolating.
-    //          We also need to evaluate the elastic predictor in the case where the current
-    //          interpolation factor is 0 and a performance boosting
-    //          strategy is employed.
-    //          -> SEE ABOVE
-    //          --> 2). If we use a performance boosting strategy, then we
-    //          check the set value first, and only then the
-    //          elastic predictor (if it was not evaluated during 1.)). -> HERE
-    const double eval_elastic_pred_two = check_original_pred && use_performance_boosting_strategy &&
-                                         (pred_adapt_step_counter == 2) && (!eval_elastic_pred_one);
-
-    // only evaluate the elastic predictor if the first evaluation fails (and if it has not been
-    // evaluated already with xi = 0.0)
-    if (eval_elastic_pred_two)
+    // interpolate predictor of the inverse plastic deformation gradient
+    iFin_adapt_pred = tensor_interpolator_.get_interpolated_matrix(
+        ref_matrices, ref_locs, pred_adapt_utils_.current_xi_[gp_], tensor_interp_err_status);
+    if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
     {
-      iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
-      plastic_strain_adapt_pred = original_pred(9);
-      // check if the original predictor can be evaluated
-      state_quantities_ = evaluate_state_quantities(CM,
-          extract_inverse_inelastic_defgrad(original_pred), original_pred(9, 0), err_status,
-          time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
-
-      // set micro iteration data for the current evaluation
-      csv_output_micro_iter_data.append_micro_iter_data(
-          {
-              .current_xi_ = pred_adapt_utils_.current_xi_[gp_],
-              .current_equiv_stress_ = state_quantities_.curr_equiv_stress_,
-              .current_plastic_strain_ = plastic_strain_adapt_pred,
-              .current_error_status_ = err_status,
-          },
-          pred_adapt_step_counter);
-
-
-      // if the original predictor can be evaluated: return it
-      if (err_status == ErrorType::no_errors)
-      {
-        // adapt current interpolation factor to 0.0; the maximum
-        // interpolation factor
-        // does not have to be adapted
-        pred_adapt_utils_.current_xi_[gp_] = 0.0;
-        pred_adapt_utils_.pred_ = original_pred;
-
-
-        // general local time integration analysis actions
-        if (parameter()->analyze_timint())
-        {
-          // general local time integration analysis: stop timer
-          general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-              general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
-
-          // general local time integration analysis: save number of performed iterations
-          general_local_timint_analysis_utils.eval_num_of_pred_adapt_iters_ +=
-              pred_adapt_step_counter;
-
-          // general local time integration analysis:  perform the same actions for
-          // repredictorization, if this is the case
-          if (pred_adapt_utils_.num_of_pred_adapt_ >= 1)
-          {
-            general_local_timint_analysis_utils.eval_time_repredict_ +=
-                general_local_timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
-            general_local_timint_analysis_utils.eval_num_of_repredict_iters_ +=
-                pred_adapt_step_counter;
-          }
-        }
-
-
-        // write micro iteration data to csv
-        if (parameter()->use_csv_output_pred_adapt_micro_iter())
-          csv_output_micro_iter_data.write_pred_adapt_micro_iter_data_to_csv();
+      // write micro iteration data to csv
+      if (parameter()->use_csv_output_pred_adapt_micro_iter())
+        csv_output_micro_iter_data.write_pred_adapt_micro_iter_data_to_csv();
 
 
 
-        return pred_adapt_utils_.pred_;
-      }
-
-      // if the original predictor cannot be evaluated, proceed with
-      // interpolation
-      // pred_adapt_step_counter += 1;
-
-
-      // adapt the lower bound of the xi parameter and recompute
-      // interpolation factor (only if the predictor interpolation factor is
-      // currently 0.0 otherwise we get stuck. If the predictor
-      // interpolation factor is non-0, this lower bound adaptation has already been
-      // performed.)
-      if (pred_adapt_utils_.current_xi_[gp_] < zero_tol)
-      {
-        pred_adapt_utils_.xi_l_ = pred_adapt_utils_.current_xi_[gp_];
-        pred_adapt_utils_.current_xi_[gp_] =
-            pred_adapt_utils_.xi_l_ +
-            pred_adapt_utils_.xi_user_ * (pred_adapt_utils_.xi_u_ - pred_adapt_utils_.xi_l_);
-      }
-      continue;
-    }
-    else
-    {
-      // interpolate predictor of the inverse plastic deformation gradient
-      iFin_adapt_pred = tensor_interpolator_.get_interpolated_matrix(
-          ref_matrices, ref_locs, pred_adapt_utils_.current_xi_[gp_], tensor_interp_err_status);
-      if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
-      {
-        // write micro iteration data to csv
-        if (parameter()->use_csv_output_pred_adapt_micro_iter())
-          csv_output_micro_iter_data.write_pred_adapt_micro_iter_data_to_csv();
-
-
-
-        std::cout << debug_get_error_info(
-                         Core::LinAlg::make_error_message(tensor_interp_err_status))
-                  << std::endl;
-        FOUR_C_THROW("See above");
-      }
+      std::cout << debug_get_error_info(Core::LinAlg::make_error_message(tensor_interp_err_status))
+                << std::endl;
+      FOUR_C_THROW("See above");
     }
     // evaluate the current state with the adapted predictor
     state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, original_pred(9), err_status,
@@ -4100,8 +3999,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     }
 
 
-    // if there was an evaluation error: set \f$ \xi_{\text{curr}}
-    // \leftarrow  \xi_{\text{curr}} \xi_{\text{user}}\f$
+    // if there was an evaluation error: adapt interpolation bounds
     if (err_status != ErrorType::no_errors)
     {
       // set micro iteration data for the current evaluation
@@ -4169,21 +4067,25 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       general_local_timint_analysis_utils.eval_num_of_repredict_iters_ += pred_adapt_step_counter;
     }
   }
-  // append last micro iteration data for the last micro iteration which
-  // was successful
-  csv_output_micro_iter_data.append_micro_iter_data(
-      {
-          .current_xi_ = pred_adapt_utils_.current_xi_[gp_],
-          .current_equiv_stress_ = state_quantities_.curr_equiv_stress_,
-          .current_plastic_strain_ = plastic_strain_adapt_pred,
-          .current_error_status_ = err_status,
-      },
-      pred_adapt_step_counter);
 
 
   // write micro iteration data to csv
   if (parameter()->use_csv_output_pred_adapt_micro_iter())
+  {
+    // append last micro iteration data for the last micro iteration which
+    // was successful
+    csv_output_micro_iter_data.append_micro_iter_data(
+        {
+            .current_xi_ = pred_adapt_utils_.current_xi_[gp_],
+            .current_equiv_stress_ = state_quantities_.curr_equiv_stress_,
+            .current_plastic_strain_ = plastic_strain_adapt_pred,
+            .current_error_status_ = err_status,
+        },
+        pred_adapt_step_counter);
+
+
     csv_output_micro_iter_data.write_pred_adapt_micro_iter_data_to_csv();
+  }
 
   // return adapted predictor
   return pred_adapt_utils_.pred_;
@@ -4238,11 +4140,14 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
     // error.
     if (curr_sol(9) == 0.0)
     {
+      // append microiteration data
+      csv_output_micro_iter_data.append_micro_iter_data(
+          CSVOutputLineSearchMicroIterData::MicroIterDataCollector{}, 0);
+
+
       // write microiteration data to csv
       if (parameter()->use_csv_output_line_search_micro_iter())
       {
-        csv_output_micro_iter_data.append_micro_iter_data(
-            CSVOutputLineSearchMicroIterData::MicroIterDataCollector{}, 0);
         csv_output_micro_iter_data.write_line_search_micro_iter_data_to_csv();
       }
 
@@ -4257,7 +4162,6 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
   // save maximum value of the step size
   const double max_alpha = alpha_u;
 
-
   // set our current step size to the maximum step size
   alpha = alpha_u;
   // consistently update the next solution
@@ -4266,13 +4170,15 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
   // declare residual to be computed with the updated line search step
   Core::LinAlg::Matrix<10, 1> next_res{Core::LinAlg::Initialization::zero};
 
-  // compute residual norm of the current iteration and declare the
-  // residual norm of the updated solution to be computed
+  // compute residual norm of the current iteration vector
   double curr_res_norm = curr_res.norm2();
-  // square the obtained residual in order to obtain the consistent
-  // minimization function \f$ f = \| r \|^2 \f$
+  // square the residual of the current iteration vector in order to obtain the consistent
+  // minimization function \f$ f_{\mathrm{curr}} = \| \boldsymbol{r}_{\mathrm{curr}} \|^2 \f$
   double curr_f = curr_res_norm * curr_res_norm;
+  // compute residual norm of the next iteration vector
   double next_res_norm{1.0e8};
+  // square the residual of the next iteration vector in order to obtain the consistent
+  // minimization function \f$ f_{\mathrm{next}} = \| \boldsymbol{r}_{\mathrm{next}} \|^2 \f$
   double next_f{1.0e8};
 
   // compute squared increment, used afterwards to check the
@@ -4288,7 +4194,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
   // backtracking condition is met
   while (true)
   {
-    // increment number of parameter decrease steps
+    // increment number of step size decrease procedures
     ++dec_times;
 
     // check whether we have decreased the line search parameter too many
@@ -4298,23 +4204,26 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
       // general local time integration analysis: set number of required iterations
       general_local_timint_analysis_utils.eval_num_of_line_search_iters_ += dec_times;
 
+      // set error status (determination of line search step has failed)
       err_status = ErrorType::failed_determ_line_search_step;
+
+      // set micro iteration data for the current evaluation
+      csv_output_micro_iter_data.append_micro_iter_data(
+          {
+              .current_alpha_ = alpha,
+              .max_alpha_ = max_alpha,
+              .current_equiv_stress_ = state_quantities_.curr_equiv_stress_,
+              .current_plastic_strain_ = next_sol(9),
+              .current_quadratic_residual_norm_ = -1,
+              .max_quadratic_residual_norm_ = -1,
+              .current_error_status_ = err_status,
+          },
+          dec_times - 1);
+
 
       // output microiteration data
       if (parameter()->use_csv_output_line_search_micro_iter())
       {
-        // set micro iteration data for the current evaluation
-        csv_output_micro_iter_data.append_micro_iter_data(
-            {
-                .current_alpha_ = alpha,
-                .max_alpha_ = max_alpha,
-                .current_equiv_stress_ = state_quantities_.curr_equiv_stress_,
-                .current_plastic_strain_ = next_sol(9),
-                .current_quadratic_residual_norm_ = -1,
-                .max_quadratic_residual_norm_ = -1,
-                .current_error_status_ = err_status,
-            },
-            dec_times - 1);
         // write micro iteration data to csv
         csv_output_micro_iter_data.write_line_search_micro_iter_data_to_csv();
       }
@@ -4324,16 +4233,16 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
     // reset error status
     err_status = ErrorType::no_errors;
 
-    // compute the residual associated with the upper bound
+    // compute the residual associated with the considered step size
+    // ("next iteration")
     next_res = calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp_],
         next_sol, time_step_quantities_.last_plastic_defgrd_inverse_[gp_],
         time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
 
     if (err_status == ErrorType::no_errors)
     {
+      // compute the corresponding residual norms and minimization functions
       next_res_norm = next_res.norm2();
-      // square the obtained residual in order to obtain the consistent
-      // minimization function \f$ f = \| r \|^2 \f$
       next_f = next_res_norm * next_res_norm;
     }
     else
@@ -4351,13 +4260,9 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
           },
           dec_times - 1);
 
-
-
       // decrease line search parameter
       alpha *= alpha_dec_fac;
       next_sol.update(1.0, curr_sol, alpha, incr, 0.0);
-
-
 
       continue;
     }
@@ -4375,8 +4280,6 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
         },
         dec_times - 1);
 
-
-
     // check backtracking condition / LNL convergence
     if ((next_f < curr_f - 2.0 * rho * alpha * incr_squared) || (next_res_norm < tolLNL))
     {
@@ -4391,7 +4294,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
       return alpha;
     }
 
-    // decrease line search parameter
+    // decrease line search step size if the above backtracking checks were not successful
     alpha *= alpha_dec_fac;
     next_sol.update(1.0, curr_sol, alpha, incr, 0.0);
   }
@@ -4472,6 +4375,7 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     const ErrorType& err_status, Core::LinAlg::Matrix<10, 1>& sol,
     Core::LinAlg::Matrix<3, 3>& curr_CM)
 {
+  // return directly if there is no evaluation error
   if (err_status == ErrorType::no_errors)
   {
     return ErrorAction::continue_iteration;
@@ -4518,11 +4422,8 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     sol = adapt_predictor_local_newton_loop(
         pred_adapt_utils_.pred_, time_step_quantities_.current_defgrad_[gp_], false);
 
-    // update the maximum interpolation factor (if required - this is
-    // checked within the update function)
+    // update the maximum interpolation factor
     pred_adapt_utils_.update_current_max_xi(gp_);
-
-
 
     // general local time integration analysis: increment number of repredictorizations
     if (parameter()->analyze_timint()) ++general_local_timint_analysis_utils.eval_num_of_repredict_;
