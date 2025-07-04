@@ -379,7 +379,7 @@ namespace Mat
     /// class containing utilities for general analysis of the material
     /// time integration (including predictor adaptation, Local Newton
     /// loop, line search):
-    /// error types, number of line searches, ... Currently only
+    /// error types, number of line searches, timers, ... Currently only
     /// employed for single-element single-processor simulations.
     class GeneralLocalTimIntAnalysisUtils
     {
@@ -756,7 +756,11 @@ namespace Mat
 
     //! struct containing settings and iteration data from the Local Newton-Raphson
     //! Loop (time integration of the viscoplasticity equations)
-    //! (used for Gauss-Point output)
+    //! (used for Gauss-Point output). In contrast to
+    //! GeneralLocalTimIntAnalysisUtils which tracks general information
+    //! over time steps (such as how many iterations were performed for
+    //! a specific time step), this utility struct considers the data
+    //! for each specific iteration of the Local Newton-Raphson Loop.
     struct LocalNewtonData
     {
       //! constructor of data
