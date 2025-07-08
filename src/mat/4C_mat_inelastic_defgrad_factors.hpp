@@ -1587,6 +1587,18 @@ namespace Mat
     //! tracker object for the predictor adaptation
     PredictorAdaptationUtils pred_adapt_utils_;
 
+    //! tracking data to be used for csv runtime output of local Newton
+    //! loop, predictor adaptation, line search
+    CSVOutputTrackingData csv_output_tracking_data_;
+
+    //! micro iteration data for all microiterations
+    //! of the predictor adaptation, to be written to csv
+    CSVOutputPredAdaptMicroIterData csv_output_pred_adapt_micro_iter_data_;
+
+    //! micro iteration data for all microiterations
+    //! of the line search, to be written to csv
+    CSVOutputLineSearchMicroIterData csv_output_line_search_micro_iter_data_;
+
     //! tracker object for the local substepping procedure
     LocalSubsteppingUtils local_substepping_utils_;
 
