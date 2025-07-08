@@ -23,6 +23,7 @@
 #include <magic_enum/magic_enum.hpp>
 
 #include <map>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -578,6 +579,12 @@ namespace Mat
       //! num_of_global_elements, if only one processor
       //! is considered)
       int num_update_calls_ = 0;
+
+      //! runtime csv writer
+      std::optional<Core::IO::RuntimeCsvWriter> csv_writer_;
+
+      //! initialize csv writer
+      void init_csv_writer();
 
       //! reset method: reset the stored internal variables for a new
       //! evaluation / new timestep
