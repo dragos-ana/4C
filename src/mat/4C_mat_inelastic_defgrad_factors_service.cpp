@@ -262,6 +262,75 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalSubsteppingUti
   total_num_of_substeps_ = 0;
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntAnalysisUtils::
+    init_csv_writer()
+{
+  // get structure discretization
+  std::shared_ptr<Core::FE::Discretization> structure_dis =
+      Global::Problem::instance()->get_dis("structure");
+
+  // check whether we are using a single processor! (no implementation for multiple processors
+  // yet, and also not really required)
+  int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+  FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+      "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+      "output "
+      "for multiple processors");
+
+  // create csv_writer and register its columns
+  csv_writer_.emplace(
+      my_rank, *Global::Problem::instance()->output_control_file(), "timint_output");
+  csv_writer_->register_data_vector("Eval. steps (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
+  csv_writer_->register_data_vector("Eval. iterations (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
+  csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
+  csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
+  csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
+  csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
+  csv_writer_->register_data_vector("Total iterations (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
+  csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
+  csv_writer_->register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
+  csv_writer_->register_data_vector("Total # of first LNL iter. convergences", 1, 16);
+  csv_writer_->register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
+  csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
+  csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
+  csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Total time (line search)", 1, 16);
+  csv_writer_->register_data_vector(
+      "Interpolation factor of GP 0 of Ele 0 (last global iteration)", 1, 16);
+  csv_writer_->register_data_vector(
+      "Interpolation factor of GP 0 of Ele 0 (maximum over all global "
+      "iterations)",
+      1, 16);
+  csv_writer_->register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
+  csv_writer_->register_data_vector(
+      "LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
+  for (ErrorType err_type : magic_enum::enum_values<ErrorType>())
+  {
+    csv_writer_->register_data_vector(
+        "Eval. Error " + std::string(magic_enum::enum_name(err_type)), 1, 16);
+    csv_writer_->register_data_vector(
+        "Total Error " + std::string(magic_enum::enum_name(err_type)), 1, 16);
+  }
+}
+
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -337,68 +406,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntAnalysisUtils::
     write_to_csv()
 {
-  // get structure discretization
-  std::shared_ptr<Core::FE::Discretization> structure_dis =
-      Global::Problem::instance()->get_dis("structure");
-
-  // check whether we are using a single processor! (no implementation for multiple processors
-  // yet, and also not really required)
-  int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
-  FOUR_C_ASSERT_ALWAYS(my_rank == 0,
-      "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
-      "output "
-      "for multiple processors");
-
-  // create csv_writer and register its columns
-  Core::IO::RuntimeCsvWriter csv_writer{
-      my_rank, *Global::Problem::instance()->output_control_file(), "timint_output"};
-  csv_writer.register_data_vector("Eval. steps (LNL)", 1, 16);
-  csv_writer.register_data_vector("Eval. iterations (LNL)", 1, 16);
-  csv_writer.register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
-  csv_writer.register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
-  csv_writer.register_data_vector("Eval. iterations (repredictorization)", 1, 16);
-  csv_writer.register_data_vector("Eval. line searches (LNL)", 1, 16);
-  csv_writer.register_data_vector("Eval. iterations (line search)", 1, 16);
-  csv_writer.register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
-  csv_writer.register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
-  csv_writer.register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);
-  csv_writer.register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
-  csv_writer.register_data_vector("Eval. time (LNL)", 1, 16);
-  csv_writer.register_data_vector("Eval. time (predictor adaptation)", 1, 16);
-  csv_writer.register_data_vector("Eval. time (repredictorization)", 1, 16);
-  csv_writer.register_data_vector("Eval. time (line search)", 1, 16);
-  csv_writer.register_data_vector("Total steps (LNL)", 1, 16);
-  csv_writer.register_data_vector("Total iterations (LNL)", 1, 16);
-  csv_writer.register_data_vector("Total repredictorizations (LNL)", 1, 16);
-  csv_writer.register_data_vector("Total iterations (predictor adaptation)", 1, 16);
-  csv_writer.register_data_vector("Total iterations (repredictorization)", 1, 16);
-  csv_writer.register_data_vector("Total line searches (LNL)", 1, 16);
-  csv_writer.register_data_vector("Total iterations (line search)", 1, 16);
-  csv_writer.register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
-  csv_writer.register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
-  csv_writer.register_data_vector("Total # of first LNL iter. convergences", 1, 16);
-  csv_writer.register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
-  csv_writer.register_data_vector("Total time (LNL)", 1, 16);
-  csv_writer.register_data_vector("Total time (predictor adaptation)", 1, 16);
-  csv_writer.register_data_vector("Total time (repredictorization)", 1, 16);
-  csv_writer.register_data_vector("Total time (line search)", 1, 16);
-  csv_writer.register_data_vector(
-      "Interpolation factor of GP 0 of Ele 0 (last global iteration)", 1, 16);
-  csv_writer.register_data_vector(
-      "Interpolation factor of GP 0 of Ele 0 (maximum over all global "
-      "iterations)",
-      1, 16);
-  csv_writer.register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
-  csv_writer.register_data_vector(
-      "LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
-  for (ErrorType err_type : magic_enum::enum_values<ErrorType>())
-  {
-    csv_writer.register_data_vector(
-        "Eval. Error " + std::string(magic_enum::enum_name(err_type)), 1, 16);
-    csv_writer.register_data_vector(
-        "Total Error " + std::string(magic_enum::enum_name(err_type)), 1, 16);
-  }
-
   // output data
   std::map<std::string, std::vector<double>> output_data;
   output_data["Eval. steps (LNL)"] = {static_cast<double>(eval_num_of_LNL_steps_)};
@@ -444,7 +451,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   output_data["Total # of first LNL iter. convergences"] = {
       static_cast<double>(total_num_of_first_iter_convergences)};
 
-
   for (ErrorType err_type : magic_enum::enum_values<ErrorType>())
   {
     output_data["Eval. Error " + std::string(magic_enum::enum_name(err_type))] = {
@@ -467,7 +473,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 
 
   // write output data to csv
-  csv_writer.write_data_to_file(sim_time_, sim_timestep_, output_data);
+  csv_writer_->write_data_to_file(sim_time_, sim_timestep_, output_data);
 }
 
 /*--------------------------------------------------------------------*
