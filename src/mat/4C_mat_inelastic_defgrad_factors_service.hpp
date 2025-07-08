@@ -739,16 +739,16 @@ namespace Mat
     struct CSVOutputTrackingData
     {
       //! global element id
-      const int ele_gid_;
+      int ele_gid_;
 
       //! Gauss point index
-      const int gp_;
+      int gp_;
 
       //! time instant \f$t_{n}\f$
-      const double tn_;
+      double tn_;
 
       //! time instant \f$t_{n+1}\f$
-      const double tnp_;
+      double tnp_;
 
       //! tracker for the global iteration (if we have output every
       //! iteration) or the timestep index; increased by 1 every time
@@ -941,7 +941,7 @@ namespace Mat
       std::vector<ErrorType> all_current_error_status_;
 
       //! tracking data used to specify the settings for csv output
-      const CSVOutputTrackingData csv_output_tracking_data_;
+      CSVOutputTrackingData csv_output_tracking_data_;
 
       //! append collected data for specific microiteration
       void append_micro_iter_data(
@@ -1021,7 +1021,7 @@ namespace Mat
           const MicroIterDataCollector mi_data_collector, const unsigned micro_iter);
 
       //! tracking data used to specify the settings for csv output
-      const CSVOutputTrackingData csv_output_tracking_data_;
+      CSVOutputTrackingData csv_output_tracking_data_;
 
       //! writes data from each microiteration of a single line search (specified via tracking data)
       //! to a dedicated csv file
