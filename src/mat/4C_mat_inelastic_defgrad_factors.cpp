@@ -1748,6 +1748,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
   // sure that the inverse inelastic deformation gradient is evaluated in the first method call)
   time_step_quantities_.current_defgrad_.resize(
       1, Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero});
+
+  // general local time integration analysis: initialize csv writer
+  if (parameter()->analyze_timint()) general_local_timint_analysis_utils.init_csv_writer();
 }
 
 
