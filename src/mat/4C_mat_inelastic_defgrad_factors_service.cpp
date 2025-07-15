@@ -289,14 +289,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Eval. iterations (repredictorization)", 1, 16);
   csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
+  /*
   csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
   csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
-  csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);
-  csv_writer_->register_data_vector("Eval. time (full: preevaluate -> update)", 1, 16);
+  csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);*/
+  csv_writer_->register_data_vector("Eval. time (inelastic defgrad)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (additional cmat)", 1, 16);
   csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
@@ -304,14 +306,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Total iterations (repredictorization)", 1, 16);
   csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
+  /*
   csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
   csv_writer_->register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
-  csv_writer_->register_data_vector("Total # of first LNL iter. convergences", 1, 16);
-  csv_writer_->register_data_vector("Total time (full: preevaluate -> update)", 1, 16);
+  csv_writer_->register_data_vector("Total # of first LNL iter.
+  convergences", 1, 16); */
+  csv_writer_->register_data_vector("Total time (inelastic defgrad)", 1, 16);
   csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
   csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
   csv_writer_->register_data_vector("Total time (line search)", 1, 16);
+  csv_writer_->register_data_vector("Total time (additional cmat)", 1, 16);
   csv_writer_->register_data_vector(
       "Interpolation factor of GP 0 of Ele 0 (last global iteration)", 1, 16);
   csv_writer_->register_data_vector(
@@ -321,13 +326,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
   csv_writer_->register_data_vector(
       "LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)", 1, 16);
+  /*
   for (ErrorType err_type : magic_enum::enum_values<ErrorType>())
   {
     csv_writer_->register_data_vector(
         "Eval. Error " + std::string(magic_enum::enum_name(err_type)), 1, 16);
     csv_writer_->register_data_vector(
         "Total Error " + std::string(magic_enum::enum_name(err_type)), 1, 16);
-  }
+  }*/
 }
 
 
@@ -344,12 +350,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   eval_num_of_repredict_iters_ = 0;
   eval_num_of_line_search_ = 0;
   eval_num_of_line_search_iters_ = 0;
-  eval_teuchos_timer_.reset();
+  eval_teuchos_timer_inelastic_defgrad_.reset();
   eval_teuchos_timer_LNL_.reset();
   eval_teuchos_timer_pred_adapt_.reset();
   eval_teuchos_timer_repredict_.reset();
   eval_teuchos_timer_line_search_.reset();
-  eval_time_ = 0;
+  eval_time_inelastic_defgrad_ = 0;
   eval_time_LNL_ = 0;
   eval_time_pred_adapt_ = 0;
   eval_time_repredict_ = 0;
@@ -390,11 +396,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   total_num_of_line_search_iters_ += eval_num_of_line_search_iters_;
   total_num_of_alpha_neq_1 += eval_num_of_alpha_neq_1;
   total_num_of_alpha_neq_1_last_iter += eval_num_of_alpha_neq_1_last_iter;
-  total_time_ += eval_time_;
+  total_time_inelastic_defgrad_ += eval_time_inelastic_defgrad_;
   total_time_LNL_ += eval_time_LNL_;
   total_time_pred_adapt_ += eval_time_pred_adapt_;
   total_time_repredict_ += eval_time_repredict_;
   total_time_line_search_ += eval_time_line_search_;
+  total_time_additional_cmat_ += eval_time_additional_cmat_;
   for (const auto& [error_type, error_count] : eval_error_map_)
   {
     total_error_map_[error_type] += error_count;
@@ -428,8 +435,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
       static_cast<double>(total_num_of_line_search_iters_)};
   output_data["Eval. line searches (LNL)"] = {static_cast<double>(eval_num_of_line_search_)};
   output_data["Total line searches (LNL)"] = {static_cast<double>(total_num_of_line_search_)};
-  output_data["Eval. time (full: preevaluate -> update)"] = {static_cast<double>(eval_time_)};
-  output_data["Total time (full: preevaluate -> update)"] = {static_cast<double>(total_time_)};
+  output_data["Eval. time (inelastic defgrad)"] = {
+      static_cast<double>(eval_time_inelastic_defgrad_)};
+  output_data["Total time (inelastic defgrad)"] = {
+      static_cast<double>(total_time_inelastic_defgrad_)};
   output_data["Eval. time (LNL)"] = {static_cast<double>(eval_time_LNL_)};
   output_data["Total time (LNL)"] = {static_cast<double>(total_time_LNL_)};
   output_data["Eval. time (predictor adaptation)"] = {static_cast<double>(eval_time_pred_adapt_)};
@@ -438,6 +447,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   output_data["Total time (repredictorization)"] = {static_cast<double>(total_time_repredict_)};
   output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
   output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
+  output_data["Eval. time (additional cmat)"] = {static_cast<double>(eval_time_additional_cmat_)};
+  output_data["Total time (additional cmat)"] = {static_cast<double>(total_time_additional_cmat_)};
+  /*
   output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
       static_cast<double>(eval_num_of_alpha_neq_1)};
   output_data["Eval. # of times: alpha neq 1 (last LNL iter)"] = {
@@ -458,6 +470,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
     output_data["Total Error " + std::string(magic_enum::enum_name(err_type))] = {
         static_cast<double>(total_error_map_[err_type])};
   }
+*/
+
 
   // predictor interpolation factors
   output_data
@@ -487,7 +501,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   eval_time_LNL_ += eval_teuchos_timer_LNL_.stop();
 
   // output routine
-  eval_time_ = eval_teuchos_timer_.stop();
+  eval_time_inelastic_defgrad_ = eval_teuchos_timer_inelastic_defgrad_.stop();
   update_total();
   write_to_csv();
 }
