@@ -1780,6 +1780,19 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   time_step_tracker_.min_dt_ =
       time_step_tracker_.dt_ / std::pow(2.0, parameter()->max_halve_number());
 
+  // general local timint analysis utilities: save time step and time
+
+  if (parameter()->analyze_timint())
+  {
+    FOUR_C_ASSERT_ALWAYS(ele_gid_ == 0,
+        "We only want to use the time integration analysis for 1D simulations employing a single "
+        "element! Your current element id is {}",
+        ele_gid_);
+
+    general_local_timint_analysis_utils.sim_timestep_ = time_step_tracker_.dt_;
+    general_local_timint_analysis_utils.sim_time_ = time_step_tracker_.tnp_;
+  }
+
   // set last substep values (last converged state) as the last time step values --> required, as
   // these are used in the EvaluateAdditionalCMat method (in the case where there is no plastic
   // deformation, these would not be updated correctly otherwise)
@@ -1820,19 +1833,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   pred_adapt_utils_.pre_evaluate(gp_);
 
 
-  // general local time integration analysis: start evaluation if it has not already started
-  if (parameter()->analyze_timint() && !(general_local_timint_analysis_utils.pre_eval_called_))
+  // general local time integration analysis:
+  if (parameter()->analyze_timint() &&
+      !general_local_timint_analysis_utils.is_reset_current_timestep_)
   {
-    FOUR_C_ASSERT_ALWAYS(ele_gid_ == 0,
-        "We only want to use the time integration analysis for 1D simulations employing a single "
-        "element! Your current element id is {}",
-        ele_gid_);
-
-    general_local_timint_analysis_utils.pre_eval_called_ = true;
     general_local_timint_analysis_utils.reset();
-    general_local_timint_analysis_utils.eval_teuchos_timer_.start(true);
-    ++general_local_timint_analysis_utils.sim_timestep_;
-    general_local_timint_analysis_utils.sim_time_ += time_step_tracker_.dt_;
+    general_local_timint_analysis_utils.is_reset_current_timestep_ = true;
   }
 }
 
@@ -2490,6 +2496,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 1>& iCV,
     const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 6>& cmatadd)
 {
+  // general local timint analysis: start linearization evaluation
+  if (parameter()->analyze_timint())
+  {
+    general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.start(true);
+  }
+
   // reduced deformation gradient FredM, taking into account all the already computed inelastic
   // factors
   //    \f$ \boldsymbol{F_{\text{red}}} = \boldsymbol{F} \boldsymbol{F_{\text{in,other}}^{-1}} \f$
@@ -2523,6 +2535,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     if (parameter()->linearization_type() == LinearizationType::perturbation_based)
     {
       evaluate_additional_cmat_perturb_based(FredM, cmatadd, iFin_other, dSdiFinj);
+
+      // general local timint analysis: stop linearization evaluation
+      if (parameter()->analyze_timint())
+      {
+        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+      }
+
+
       return;
     }
 
@@ -2531,6 +2552,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     if (err_status != ErrorType::no_errors)
     {
       evaluate_additional_cmat_perturb_based(FredM, cmatadd, iFin_other, dSdiFinj);
+
+      // general local timint analysis: stop linearization evaluation
+      if (parameter()->analyze_timint())
+      {
+        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+      }
+
+
+
       return;
     }
 
@@ -2550,6 +2581,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     if (err_status != ErrorType::no_errors)
     {
       evaluate_additional_cmat_perturb_based(FredM, cmatadd, iFin_other, dSdiFinj);
+
+      // general local timint analysis: stop linearization evaluation
+      if (parameter()->analyze_timint())
+      {
+        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+      }
+
+
+
       return;
     }
 
@@ -2558,6 +2599,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     {
       err_status = ErrorType::singular_jacobian;
       evaluate_additional_cmat_perturb_based(FredM, cmatadd, iFin_other, dSdiFinj);
+
+      // general local timint analysis: stop linearization evaluation
+      if (parameter()->analyze_timint())
+      {
+        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+      }
+
+
+
       return;
     }
 
@@ -2615,6 +2666,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     {
       err_status = ErrorType::failed_solution_analytic_linearization;
       evaluate_additional_cmat_perturb_based(FredM, cmatadd, iFin_other, dSdiFinj);
+
+      // general local timint analysis: stop linearization evaluation
+      if (parameter()->analyze_timint())
+      {
+        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+      }
       return;
     }
 
@@ -2625,6 +2683,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
 
     // compute additional term to stiffness matrix additional_cmat
     cmatadd.multiply_nn(2.0, dSdiFinj, diFinjdCV, 1.0);
+
+
+    // general local timint analysis: stop linearization evaluation
+    if (parameter()->analyze_timint())
+    {
+      general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
+          general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+    }
   }
 }
 
@@ -2635,6 +2701,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     const Core::LinAlg::Matrix<3, 3>* defgrad, const Core::LinAlg::Matrix<3, 3>& iFin_other,
     Core::LinAlg::Matrix<3, 3>& iFinM)
 {
+  // general local time integration analysis: start evaluation
+  if (parameter()->analyze_timint())
+  {
+    general_local_timint_analysis_utils.eval_teuchos_timer_inelastic_defgrad_.start(true);
+  }
+
   // reduced deformation gradient FredM, taking into account all the already computed inelastic
   // factors
   //    \f$ \boldsymbol{F_{\text{red}}} = \boldsymbol{F} \boldsymbol{F_{\text{in,other}}^{-1}} \f$
@@ -2712,7 +2784,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       general_local_timint_analysis_utils.eval_teuchos_timer_LNL_.start(true);
     Core::LinAlg::Matrix<10, 1> sol = local_newton_loop(FredM, x_adapted, err_status);
 
-    // throw error if the Local Newton Loop cannot be evaluated with the given substepping
+    // throw error if the Local Newton Loop cannot be evaluated with the given
     // settings
     if (err_status != ErrorType::no_errors)
     {
@@ -2753,6 +2825,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
     }
   }
+
+  // general local time integration analysis: stop timer and update
+  // total values
+  if (parameter()->analyze_timint())
+  {
+    // general local time integration analysis: stop timer
+    general_local_timint_analysis_utils.eval_time_inelastic_defgrad_ +=
+        general_local_timint_analysis_utils.eval_teuchos_timer_inelastic_defgrad_.stop();
+  }
 }
 
 
@@ -2764,8 +2845,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // output
   if (!lnl_data_.is_Gauss_point_output_every_global_iter_) ++lnl_data_.globiter_or_timestep_index_;
 
-
-
   // initialize inverse material stretch tensor (of the inverse
   // inelastic defgrad) used below for updating the last values
   Core::LinAlg::Matrix<3, 3> inv_mat_stretch{Core::LinAlg::Initialization::zero};
@@ -2774,7 +2853,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // points
   std::vector<double> optimal_xi_at_all_gp{};
 
-  // loop over Gauss points: compute the optimal predictor interpolation factors for each gp
+  // loop over Gauss points: compute the optimal predictor interpolation
+  // factors for each gp if specified by user
   for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
   {
     if (parameter()->use_optimal_pred_adapt_fact())
@@ -2783,16 +2863,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     }
   }
 
-  // general local time integration analysis: get interpolation factors: from predictor
-  // adaptation and optimal (1D)
+  // general local time integration analysis: update routine
   if (parameter()->analyze_timint())
   {
     if (general_local_timint_analysis_utils.num_update_calls_ ==
         Global::Problem::instance()->get_dis("structure")->num_global_elements() - 1)
     {
-      // general local time integration analysis: stop timer
-      general_local_timint_analysis_utils.eval_time_ =
-          general_local_timint_analysis_utils.eval_teuchos_timer_.stop();
       // general local time integration analysis: set predictor interpolation factors (the one
       // obtained from the predictor adaptation and the optimal one)
       general_local_timint_analysis_utils.curr_pred_interp_factor_ =
@@ -2810,13 +2886,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
         general_local_timint_analysis_utils.optimal_pred_interp_factor_ =
             compute_optimal_pred_interp_factor(0);
       }
-      // general local time integration analysis: update_total_values
+      // general local time integration analysis: update total values
       general_local_timint_analysis_utils.update_total();
+
       // general local time integration analysis: write data to csv
       general_local_timint_analysis_utils.write_to_csv();
 
+      // reset linearization time
+      general_local_timint_analysis_utils.eval_time_additional_cmat_ = 0;
+
       // timint_analysis: reset control flow variables
-      general_local_timint_analysis_utils.pre_eval_called_ = false;
+      general_local_timint_analysis_utils.is_reset_current_timestep_ = false;
       general_local_timint_analysis_utils.num_update_calls_ = 0;
     }
     else
@@ -3562,10 +3642,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         // general local time integration analysis: increment number of searches and stop timer
         if (parameter()->analyze_timint())
         {
+          ++general_local_timint_analysis_utils.eval_num_of_line_search_;
           general_local_timint_analysis_utils.eval_time_line_search_ +=
               general_local_timint_analysis_utils.eval_teuchos_timer_line_search_.stop();
 
-          ++general_local_timint_analysis_utils.eval_num_of_line_search_;
           if (std::abs(alpha - 1.0) > 1.0e-8)
           {  // increment number of required searches
             ++general_local_timint_analysis_utils.eval_num_of_alpha_neq_1;
@@ -4082,13 +4162,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // if this is the case
     if (pred_adapt_utils_.num_of_pred_adapt_ >= 1)
     {
+      general_local_timint_analysis_utils.eval_num_of_repredict_iters_ += pred_adapt_step_counter;
       general_local_timint_analysis_utils.eval_time_repredict_ +=
           general_local_timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
-
-      general_local_timint_analysis_utils.eval_num_of_repredict_iters_ += pred_adapt_step_counter;
     }
   }
-  // append last micro iteration data for the last micro iteration which
+  // append micro iteration data for the last micro iteration which
   // was successful
   if (parameter()->use_csv_output_pred_adapt_micro_iter())
   {
@@ -4463,8 +4542,8 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
   // general local time integration analysis: write to csv
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_time_ =
-        general_local_timint_analysis_utils.eval_teuchos_timer_.stop();
+    general_local_timint_analysis_utils.eval_time_inelastic_defgrad_ =
+        general_local_timint_analysis_utils.eval_teuchos_timer_inelastic_defgrad_.stop();
     general_local_timint_analysis_utils.update_total();
     general_local_timint_analysis_utils.write_to_csv();
   }
