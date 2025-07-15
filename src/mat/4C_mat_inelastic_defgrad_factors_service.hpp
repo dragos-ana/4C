@@ -388,33 +388,35 @@ namespace Mat
       //! number of LNL steps for the current timestep evaluation (LNL)
       unsigned int eval_num_of_LNL_steps_ = 0;
 
-      //! total number of steps
+      //! total number of LNL steps over all time steps
       unsigned int total_num_of_LNL_steps_ = 0;
 
       //! number of iterations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_iters_ = 0;
 
-      //! total number of LNL iterations
+      //! total number of LNL iterations over all time steps
       unsigned int total_num_of_iters_ = 0;
 
       //! number of repredictorizations for the current timestep evaluation (LNL)
       unsigned int eval_num_of_repredict_ = 0;
 
-      //! total number of LNL repredictorizations
+      //! total number of LNL repredictorizations over all time steps
       unsigned int total_num_of_repredict_ = 0;
 
       //! number of iterations spent in the predictor adaptation for the
-      //! current timestep evaluation (LNL)
+      //! current timestep evaluation (including repredictorization)
       unsigned int eval_num_of_pred_adapt_iters_ = 0;
 
       //! total number of iterations spent in the predictor adaptation
+      //! over all time steps (including repredictorization)
       unsigned int total_num_of_pred_adapt_iters_ = 0;
 
       //! number of iterations spent in the predictor adaptation for the
       //! current timestep evaluation (LNL), in the specific case of repredictorization
       unsigned int eval_num_of_repredict_iters_ = 0;
 
-      //! total number of iterations spent in the predictor adaptation,
+      //! total number of iterations spent in the predictor adaptation
+      //! over all time steps,
       //! in the specific case of repredictorization
       unsigned int total_num_of_repredict_iters_ = 0;
 
@@ -431,7 +433,7 @@ namespace Mat
       //! (currently evaluated time step)
       unsigned int eval_num_of_alpha_neq_1 = 0;
 
-      //! total number of LNL line searches
+      //! total number of LNL line searches over all time steps
       unsigned int total_num_of_line_search_ = 0;
 
       //! line search: total number of times the step size \f$ \alpha \f$ of
@@ -446,7 +448,7 @@ namespace Mat
       //! number of iterations of the line searches for the current timestep evaluation (LNL)
       unsigned int eval_num_of_line_search_iters_ = 0;
 
-      //! total number of line search iterations
+      //! total number of line search iterations over all time steps
       unsigned int total_num_of_line_search_iters_ = 0;
 
       //! number of times the LNL convergences directly in its first
@@ -475,10 +477,10 @@ namespace Mat
       //! Local Newton residual obtained from the optimal predictor interpolation factor
       double lnl_res_optimal_pred_interp_factor_ = 0;
 
-      //! timer for the current timestep evaluation, from the start of preevaluate to the end of
-      //! update
-      Teuchos::Time eval_teuchos_timer_{
-          "InelasticDefgradTransvIsotropElastViscoplast::from_preevaluate_to_update"};
+      //! timer for the current inelastic deformation gradient evaluation in the current timestep
+      Teuchos::Time eval_teuchos_timer_inelastic_defgrad_{
+          "InelasticDefgradTransvIsotropElastViscoplast::inelastic deformation gradient "
+          "evaluation"};
 
       //! timer for the time spent in the Local Newton loop
       Teuchos::Time eval_teuchos_timer_LNL_{
@@ -498,33 +500,38 @@ namespace Mat
       Teuchos::Time eval_teuchos_timer_line_search_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
 
-      //! evaluation time for the current time step, from the start of
-      //! preevaluate to the end of update
-      double eval_time_;
+      //! timer for the current linearization evaluation (additional cmat) in the current timestep
+      Teuchos::Time eval_teuchos_timer_additional_cmat_{
+          "InelasticDefgradTransvIsotropElastViscoplast::linearization "
+          "evaluation (additional cmat)"};
 
-      //! total evaluation time, from the start of
-      //! preevaluate to the end of update
-      double total_time_;
+      //! evaluation time for the current time step to compute the
+      //! inelastic deformation gradient
+      double eval_time_inelastic_defgrad_;
+
+      //! total evaluation time for the inelastic deformation gradient
+      //! over all times
+      double total_time_inelastic_defgrad_;
 
       //! evaluation time spent in the Local Newton loop (current
       //! time step)
       double eval_time_LNL_;
 
-      //! total time spent in the Local Newton Loop
+      //! total time spent in the Local Newton Loop over all time steps
       double total_time_LNL_;
 
       //! evaluation time spent in the predictor adaptation (current
       //! time step)
       double eval_time_pred_adapt_;
 
-      //! total time spent in the predictor adaptation
+      //! total time spent in the predictor adaptation over all time steps
       double total_time_pred_adapt_;
 
       //! evaluation time spent in the predictor adaptation (current
       //! time step), in the specific case of repredictorization
       double eval_time_repredict_;
 
-      //! total time spent in the predictor adaptation, in the specific
+      //! total time spent in the predictor adaptation over all time steps, in the specific
       //! case of repredictorization
       double total_time_repredict_;
 
@@ -532,8 +539,16 @@ namespace Mat
       //! time step)
       double eval_time_line_search_;
 
-      //! total time spent in the line search
+      //! total time spent in the line search scheme over all time steps
       double total_time_line_search_;
+
+      //! evaluation time for the current time step to compute the
+      //! linearization (additional cmat)
+      double eval_time_additional_cmat_;
+
+      //! total evaluation time for the linearization (additional cmat)
+      //! over all times
+      double total_time_additional_cmat_;
 
       //! error map (how many times an error occurs) of the current timestep evaluation, from the
       //! first preevaluate of this time step to the first preevaluate of the next
@@ -572,8 +587,8 @@ namespace Mat
       //! simulation time step index
       int sim_timestep_ = 0;
 
-      //! was the pre_evaluate method of the first element called?
-      bool pre_eval_called_ = false;
+      //! reset called for current time step?
+      bool is_reset_current_timestep_ = false;
 
       //! how often was the update method called? (maximum:
       //! num_of_global_elements, if only one processor
