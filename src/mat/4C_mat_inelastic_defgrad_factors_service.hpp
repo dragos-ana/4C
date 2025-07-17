@@ -892,14 +892,13 @@ namespace Mat
               static_cast<double>(globiter_or_timestep_index_)};
           output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid_)};
           output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp_)};
-          output_data["residual_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+          output_data["residual"] = {
               static_cast<double>(all_residual_[csv_output_tracking_data.gp_][iter])};
-          output_data["iter_status_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
-              static_cast<double>(local_iteration_status_enum_to_double(
-                  all_iter_status_[csv_output_tracking_data.gp_][iter]))};
-          output_data["equiv_stress_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+          output_data["iter_status"] = {static_cast<double>(local_iteration_status_enum_to_double(
+              all_iter_status_[csv_output_tracking_data.gp_][iter]))};
+          output_data["equiv_stress"] = {
               static_cast<double>(all_equiv_stress_[csv_output_tracking_data.gp_][iter])};
-          output_data["plastic_strain_LNL_gp_" + std::to_string((csv_output_tracking_data.gp_))] = {
+          output_data["plastic_strain"] = {
               static_cast<double>(all_plastic_strain_[csv_output_tracking_data.gp_][iter])};
 
           // write output data to csv
