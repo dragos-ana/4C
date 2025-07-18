@@ -2854,9 +2854,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // factors for each gp if specified by user
   for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrd_inverse_.size(); ++gp)
   {
-    if (parameter()->use_optimal_pred_adapt_fact())
+    if (parameter()->use_optimal_pred_adapt_fact() || parameter()->analyze_timint())
     {
-      optimal_xi_at_all_gp.push_back(compute_optimal_pred_interp_factor(gp));
+      optimal_xi_at_all_gp.push_back(
+          compute_optimal_pred_interp_factor(gp, pred_adapt_utils_.optimal_xi_[gp]));
     }
   }
 
@@ -2872,17 +2873,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
           pred_adapt_utils_.current_xi_[0];
       general_local_timint_analysis_utils.curr_max_pred_interp_factor_ =
           pred_adapt_utils_.current_max_xi_[0];
-      if (parameter()->use_optimal_pred_adapt_fact())
-      {
-        general_local_timint_analysis_utils.optimal_pred_interp_factor_ =
-            optimal_xi_at_all_gp[0];  // only for the 0-th Gauss point in the time integration
-                                      // analysis
-      }
-      else
-      {
-        general_local_timint_analysis_utils.optimal_pred_interp_factor_ =
-            compute_optimal_pred_interp_factor(0);
-      }
+      general_local_timint_analysis_utils.optimal_pred_interp_factor_ =
+          optimal_xi_at_all_gp[0];  // only for the 0-th Gauss point in the time integration
+                                    // analysis
+
       // general local time integration analysis: update total values
       general_local_timint_analysis_utils.update_total();
 
@@ -2927,7 +2921,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   viscoplastic_law_->update();
 
   // call update method of the predictor interpolation factors
-  pred_adapt_utils_.update(parameter()->use_optimal_pred_adapt_fact(), optimal_xi_at_all_gp);
+  pred_adapt_utils_.update(
+      parameter()->use_optimal_pred_adapt_fact() || parameter()->analyze_timint(),
+      optimal_xi_at_all_gp);
 }
 
 
@@ -4844,7 +4840,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_interp_factor(
-    const int gp)
+    const int gp, const double newton_starting_point)
 {
   // Note on the general algorithm: we assume a 1D case where the
   // inelastic deformation gradient is a diagonal matrix (AND it should
@@ -4929,7 +4925,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   const double tol = 1.0e-8;
   // set initial value (predictor) for the optimal interpolation
   // factor
-  double optimal_interp_factor = 0.5;
+  double optimal_interp_factor = newton_starting_point;
   // declare residual and jacobian
   double residual = 1.0e10;
   double jacobian = 1.0e10;
@@ -4984,33 +4980,30 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
 
     // check if the jacobian is 0 (is the case in the neighbourhoods of
-    // the reference locations 0 and 1) - in that case, we move the optimal
-    // interpolation factor to the "right" side of the interval (the
-    // almost plastic side)
+    // the reference locations 0 and 1) - in that case, we set the interpolation factor to the mid
+    // zone 0.5
     if (std::abs(jacobian) < 1.0e-16)
     {
-      optimal_interp_factor += (1.0 - optimal_interp_factor) / 2.0;
+      optimal_interp_factor = 0.5;
       continue;
     }
 
 
     // check if the optimal interpolation factor is out of the interval
-    // posed by ref_locs: in that case, we limit it to the specific
-    // bound. Otherwise, we perform the Newton update.
+    // posed by ref_locs: in that case, we reset it to the middle of the interval. Otherwise, we
+    // perform the Newton update.
     temp = optimal_interp_factor - residual / jacobian;
-    if (temp < 0.0)
+    if (temp < 0.0 || temp > 1.0)
     {
-      optimal_interp_factor = 0.0;
-    }
-    else if (temp > 1.0)
-    {
-      optimal_interp_factor = 1.0;
+      optimal_interp_factor = 0.5;
     }
     else
     {
       optimal_interp_factor = temp;
     }
   }
+
+  /*
 
   // -------------------- Consistency Check --------------------  //
   // compute optimal predictor interpolation factor (for GP 0), get corresponding solution vector
@@ -5090,11 +5083,12 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
       "norm is {} > {} (LNL tolerance)!",
       optimal_res.norm2(), std::to_string(lnl_data_.tol_));
 
+
+
   // reinstate saved quantities
   state_quantities_ = saved_state_quantities;
   state_quantity_derivatives_ = saved_state_quantity_derivs;
-
-
+*/
 
   return optimal_interp_factor;
 }

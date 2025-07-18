@@ -1841,9 +1841,11 @@ namespace Mat
      * consistent, i.e., if it satisfies the Local Newton Loop equations.
      *
      * @param[in] gp Gauss Point
+     * @param[in] newton_starting_point Starting point for the interpolation factor \f$ \xi \f$ to
+     * be used in the Newton-Raphson method utilized herein.
      *
      */
-    double compute_optimal_pred_interp_factor(const int gp);
+    double compute_optimal_pred_interp_factor(const int gp, const double newton_starting_point);
 
     /*!
      * @brief Get an extensive error message to be displayed when the
