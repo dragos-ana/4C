@@ -346,6 +346,13 @@ namespace Mat
       {
         return use_optimal_pred_adapt_fact_;
       };
+      //! get boolean:       use steepest descent direction if the Newton
+      //! direction fails in single Local Newton iterations? (true: yes, false: no)
+      [[nodiscard]] bool use_steepest_descent_update_correction() const
+      {
+        return use_steepest_descent_update_correction_;
+      }
+
       //! get boolean: use line search to avoid negative plastic strains
       //! in the Local Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_line_search() const { return use_line_search_; };
@@ -474,6 +481,10 @@ namespace Mat
       //! of the previous LNL) to boost the performance of the predictor
       //! adaptation?
       const bool use_optimal_pred_adapt_fact_;
+
+      //! boolean: use steepest descent direction if the Newton
+      //! direction fails in single Local Newton iterations? (true: yes, false: no)
+      const double use_steepest_descent_update_correction_;
 
       //! boolean: use line search to avoid negative plastic strains in
       //! the Local Newton Loop? (true: yes, false: no)

@@ -2793,6 +2793,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "Local Newton Loop? (true: yes, false: "
                                 "no)",
                     .default_value = true}),
+            parameter<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION",
+                {.description = "boolean: use steepest descent direction in single Local Newton "
+                                "iterations if the Newton direction is not a descent direction?"
+                                "(true: yes, false: no)",
+                    .default_value = false}),
             parameter<bool>("USE_LINE_SEARCH",
                 {.description = "boolean: use line search in the Local Newton Loop to "
                                 "avoid negative plastic strains? "
