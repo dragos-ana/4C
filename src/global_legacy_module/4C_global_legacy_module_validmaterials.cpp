@@ -2798,6 +2798,17 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "avoid negative plastic strains? "
                                 "(true: yes, false: no)",
                     .default_value = true}),
+            parameter<bool>("CHECK_LINE_SEARCH_ANGLE_CONDITION",
+                {.description = "boolean: check the angle condition prior to performing the "
+                                "backtracking line search (see Andrei: Modern Numerical Nonlinear "
+                                "Optimization, Springer, p. 46-48)? Output error if condition is "
+                                "violated.",
+                    .default_value = false}),
+            parameter<double>("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE",
+                {.description = "tolerance for the angle condition prior to performing the "
+                                "backtracking line search (see Andrei: Modern Numerical Nonlinear "
+                                "Optimization, Springer, p. 46-48).",
+                    .default_value = 0.5}),
             parameter<bool>("USE_SUBSTEPPING",
                 {.description =
                         "boolean: use substepping in the Local Newton Loop? (true: yes, false: no)",
