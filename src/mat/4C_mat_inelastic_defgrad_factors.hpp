@@ -349,6 +349,18 @@ namespace Mat
       //! get boolean: use line search to avoid negative plastic strains
       //! in the Local Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_line_search() const { return use_line_search_; };
+      //! get boolean: check angle condition prior to backtracking line
+      //! search? (true: yes, false: no)
+      [[nodiscard]] bool check_line_search_angle_condition() const
+      {
+        return check_line_search_angle_condition_;
+      };
+      //! tolerance for angle condition prior to backtracking line
+      //! search? (true: yes, false: no)
+      [[nodiscard]] double line_search_angle_condition_tolerance() const
+      {
+        return line_search_angle_condition_tolerance_;
+      };
       //! get boolean: use substepping in the time integration scheme? (true: yes, false: no)
       [[nodiscard]] bool use_substepping() const { return use_substepping_; };
       //! get boolean: analyze time integration scheme and write
@@ -466,6 +478,16 @@ namespace Mat
       //! boolean: use line search to avoid negative plastic strains in
       //! the Local Newton Loop? (true: yes, false: no)
       const bool use_line_search_;
+
+      //! boolean: check angle condition prior to backtracking line
+      //! search algorithm (see Andrei: Modern Numerical Nonlinear
+      //! Optimization, Springer, p. 46-48)
+      const bool check_line_search_angle_condition_;
+
+      //! tolerance for the angle condition prior to backtracking line
+      //! search algorithm (see Andrei: Modern Numerical Nonlinear
+      //! Optimization, Springer, p. 46-48)
+      const double line_search_angle_condition_tolerance_;
 
       //! boolean: use substepping? (true: yes, false: no)
       const bool use_substepping_;

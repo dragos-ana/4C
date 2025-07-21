@@ -687,6 +687,10 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
       use_optimal_pred_adapt_fact_(matdata.parameters.get<bool>("USE_OPTIMAL_PRED_ADAPT_FACT")),
       use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
+      check_line_search_angle_condition_(
+          matdata.parameters.get<bool>("CHECK_LINE_SEARCH_ANGLE_CONDITION")),
+      line_search_angle_condition_tolerance_(
+          matdata.parameters.get<double>("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE")),
       use_substepping_(matdata.parameters.get<bool>("USE_SUBSTEPPING")),
       analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
       user_pred_interp_fact_(matdata.parameters.get<double>("USER_PRED_INTERP_FACT")),
@@ -3597,13 +3601,12 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       else if (err_action == ErrorAction::next_iteration)
         continue;
 
-      // scale residual by -1.0, in order to use it for the solution of the loop equation
-      residual.scale(-1.0);
-
-      // set temp to residual: this will be changed during the solution,
-      // and we want to keep the residual unchanged in order to provide
-      // it to the line search algorithm
+      // set temp variables to residual and jacobian: the original variables will be changed during
+      // the solution, and we want to keep them unchanged in order to provide them to the line
+      // search algorithm
       temp10x1 = residual;
+      temp10x1.scale(-1.0);
+      temp10x10 = jacMat;
 
       // solve loop equation
       dx.clear();                                      // reset
@@ -3623,13 +3626,42 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           continue;
       }
 
-      // compute line search step size
+      // backtracking line search
       if (parameter()->use_line_search())
       {
         // general local time integration analysis: start timer for line search
         if (parameter()->analyze_timint())
           general_local_timint_analysis_utils.eval_teuchos_timer_line_search_.start(true);
 
+        // check angle condition
+        if (parameter()->check_line_search_angle_condition())
+        {
+          // compute gradient of the quadratic residual $\nabla (\boldsymbol{r}^{T}\boldsymbol{r})$
+          Core::LinAlg::Matrix<10, 1> gradient_quadratic_residual{
+              Core::LinAlg::Initialization::zero};
+          gradient_quadratic_residual.multiply_tn(2.0, jacMat, residual,
+              0.0);  // minus required since we made the residual negative before
+
+          // compute scalar product between the gradient of the
+          // quadratic residual and the update direction
+          Core::LinAlg::Matrix<1, 1> scalar_product{Core::LinAlg::Initialization::zero};
+          scalar_product.multiply_tn(1.0, gradient_quadratic_residual, dx, 0.0);
+
+          // compute the tolerance of the scalar product
+          const double tol_scalar_product = -parameter()->line_search_angle_condition_tolerance() *
+                                            gradient_quadratic_residual.norm2() * dx.norm2();
+
+          // check condition
+          if (scalar_product(0) > tol_scalar_product)
+          {
+            std::cout << "WARNING: violation of line search angle condition in iter "
+                      << lnl_data_.iter_ << ": scalar_product=" << scalar_product(0)
+                      << " > tol_scalar_product=" << tol_scalar_product << std::endl;
+          }
+        }
+
+
+        // compute line search step size
         alpha = get_line_search_step(sol, curr_CM, residual, lnl_data_.tol_, dx, err_status);
 
         // general local time integration analysis: increment number of searches and stop timer
