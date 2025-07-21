@@ -686,6 +686,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       use_pred_adapt_(matdata.parameters.get<bool>("USE_PRED_ADAPT")),
       use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
       use_optimal_pred_adapt_fact_(matdata.parameters.get<bool>("USE_OPTIMAL_PRED_ADAPT_FACT")),
+      use_steepest_descent_update_correction_(
+          matdata.parameters.get<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION")),
       use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
       check_line_search_angle_condition_(
           matdata.parameters.get<bool>("CHECK_LINE_SEARCH_ANGLE_CONDITION")),
@@ -3375,6 +3377,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // time step too many times (false) or if a new substep is possible (true)
   bool new_substep_status = true;
 
+  // initialize gradient of the quadratic residual $\nabla
+  // (\boldsymbol{r}^{T}\boldsymbol{r})$
+  Core::LinAlg::Matrix<10, 1> gradient_quadratic_residual{Core::LinAlg::Initialization::zero};
+
   // declare the line search step size \f$ alpha \f$
   double alpha = 1.0;
 
@@ -3384,6 +3390,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // initialize tensor interpolation error status
   Core::LinAlg::TensorInterpolationErrorType tensor_interp_err_status =
       Core::LinAlg::TensorInterpolationErrorType::NoErrors;
+
+
 
   // substepping procedures
   while (
@@ -3629,6 +3637,32 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           continue;
       }
 
+
+      // correct Newton direction if it is not a descent direction: use
+      // steepest descent direction
+      if (parameter()->use_steepest_descent_update_correction())
+      {
+        // compute gradient of the quadratic residual $\nabla (\boldsymbol{r}^{T}\boldsymbol{r})$
+        gradient_quadratic_residual.multiply_tn(2.0, jacMat, residual,
+            0.0);  // minus required since we made the residual negative before
+
+        // compute scalar product between the gradient of the
+        // quadratic residual and the update direction
+        Core::LinAlg::Matrix<1, 1> scalar_product{Core::LinAlg::Initialization::zero};
+        scalar_product.multiply_tn(1.0, gradient_quadratic_residual, dx, 0.0);
+
+        // correct Newton direction: steepest descent direction
+        if (scalar_product(0) > 0.0)
+        {
+          // save current norm
+          const double norm_dx = dx.norm2();
+
+          // redirect the update vector with the same norm
+          dx = gradient_quadratic_residual;
+          dx.scale(-norm_dx / gradient_quadratic_residual.norm2());
+        }
+      }
+
       // backtracking line search
       if (parameter()->use_line_search())
       {
@@ -3639,11 +3673,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         // check angle condition
         if (parameter()->check_line_search_angle_condition())
         {
-          // compute gradient of the quadratic residual $\nabla (\boldsymbol{r}^{T}\boldsymbol{r})$
-          Core::LinAlg::Matrix<10, 1> gradient_quadratic_residual{
-              Core::LinAlg::Initialization::zero};
-          gradient_quadratic_residual.multiply_tn(2.0, jacMat, residual,
-              0.0);  // minus required since we made the residual negative before
+          if (!parameter()->use_steepest_descent_update_correction())
+          {
+            // compute gradient of the quadratic residual $\nabla
+            // (\boldsymbol{r}^{T}\boldsymbol{r})$
+            gradient_quadratic_residual.multiply_tn(2.0, jacMat, residual,
+                0.0);  // minus required since we made the residual negative before
+          }
 
           // compute scalar product between the gradient of the
           // quadratic residual and the update direction
