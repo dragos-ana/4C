@@ -29,6 +29,7 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_function_of_time.hpp"
 
+#include <magic_enum/magic_enum.hpp>
 #include <MueLu_KeepType.hpp>
 #include <Teuchos_ParameterList.hpp>
 #include <Teuchos_StandardParameterEntryValidators.hpp>
@@ -47,8 +48,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "magic_enum/magic_enum.hpp"
 
 
 FOUR_C_NAMESPACE_OPEN
@@ -4679,7 +4678,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
-         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
+        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrd_inverse_.size()); ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrd_inverse_[gp], temp9x1);
@@ -4694,7 +4693,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       data(gp, 0) = time_step_quantities_.current_plastic_strain_[gp];
     }
@@ -4703,7 +4702,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "plastic_strain_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -4723,7 +4722,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "equiv_stress_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -4735,7 +4734,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "iter_status_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -4747,7 +4746,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   else if (name == "residual_LNL")
   {
     for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_plastic_strain_.size());
-         ++gp)
+        ++gp)
     {
       for (unsigned int it = 0; it < lnl_data_.max_iter_; ++it)
       {
@@ -4876,6 +4875,16 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
   // defgrad
   const double ref_first_stretch = ref_U(0, 0);
 
+#ifdef DEBUGVPLAST_TIMINT
+  if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+  {
+    std::cout << "elast_U: " << elast_U << std::endl;
+    std::cout << "aplast_U: " << aplast_U << std::endl;
+    std::cout << "ref_U: " << ref_U << std::endl;
+  }
+#endif
+
+
   // check whether the reference stretch is within the interval posed
   // by the predictor interpolation bounds
   FOUR_C_ASSERT_ALWAYS(ref_first_stretch <= std::max(elast_first_stretch, aplast_first_stretch) &&
@@ -4915,6 +4924,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
     // increment iteration count
     ++iter;
 
+
+
     // check whether the maximum number of iterations was reached
     FOUR_C_ASSERT_ALWAYS(iter <= max_iter,
         "The maximum number of iterations was reached without finding an optimal interpolation "
@@ -4936,6 +4947,16 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_i
 
     // compute the residual
     residual = interp_first_stretch - ref_first_stretch;
+
+#ifdef DEBUGVPLAST_TIMINT
+    if (debug_output_ele_gp(debug_ele_gid_vec, debug_gp_vec, ele_gid_, gp_))
+    {
+      std::cout << "iter: " << iter << std::endl;
+      std::cout << "residual: " << residual << std::endl;
+    }
+#endif
+
+
 
     // check convergence
     if (std::abs(residual) < tol)

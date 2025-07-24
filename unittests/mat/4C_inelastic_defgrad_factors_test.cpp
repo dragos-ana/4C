@@ -2217,8 +2217,9 @@ namespace
         current_defgrad_ptr, iFin_other, iFinM, kin_quantities.iCV, dSdiFinj, cmatadd);
 
     cmatadd.clear();
-    isotrop_vplast_refJC_->parameter()->debug_set_linearization_type(FourC::Mat::
-            InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::perturb_based);
+    isotrop_vplast_refJC_->parameter()->debug_set_linearization_type(
+        FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::
+            perturbation_based);
     isotrop_vplast_refJC_->evaluate_additional_cmat(
         current_defgrad_ptr, iFin_other, iFinM, kin_quantities.iCV, dSdiFinj, cmatadd);
 
