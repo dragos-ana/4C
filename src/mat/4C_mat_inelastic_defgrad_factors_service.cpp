@@ -508,21 +508,23 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::LocalNewtonData()
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::LocalNewtonData(
+    const double tol)
+    : tol_(tol)
 {
-  /// set number of Gauss points to 1 temporarily, since we don't
-  /// know it at this point in time
+  // set number of Gauss points to 1 temporarily, since we don't
+  // know it at this point in time
   all_residual_.resize(1);
   all_equiv_stress_.resize(1);
   all_plastic_strain_.resize(1);
   all_iter_status_.resize(1);
 
-  /// reset the values (set initial 0-values to all arrays above)
+  // reset the values (set initial 0-values to all arrays above)
   reset_all_iteration_data(0);
 
-  /// initialize global iteration / timestep index tracker
+  // initialize global iteration / timestep index tracker
   globiter_or_timestep_index_ = 0;
-};
+}
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -561,6 +563,59 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::se
       local_iter_data_collector.equiv_stress_;
   all_plastic_strain_[csv_output_tracking_data.gp_][csv_output_tracking_data.lnl_iter_] =
       local_iter_data_collector.plastic_strain_;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::
+    write_failed_lnl_iteration_data_to_csv(const CSVOutputTrackingData csv_output_tracking_data)
+{
+  // get structure discretization
+  std::shared_ptr<Core::FE::Discretization> structure_dis =
+      Global::Problem::instance()->get_dis("structure");
+
+  // check whether we are using a single processor! (no implementation for multiple
+  // processors yet, and also not really required)
+  int my_rank = Core::Communication::my_mpi_rank(structure_dis->get_comm());
+  FOUR_C_ASSERT_ALWAYS(my_rank == 0,
+      "InelasticDefgradTransvIsotropElastViscoplast: No implementation of time integration "
+      "output "
+      "for multiple processors");
+
+  // create csv_writer and register its columns
+  Core::IO::RuntimeCsvWriter csv_writer{
+      my_rank, *Global::Problem::instance()->output_control_file(), "failed_lnl_iteration_data"};
+
+  // register data to be added
+  csv_writer.register_data_vector("previous_time", 1, 16);
+  csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+  csv_writer.register_data_vector("element_gid", 1, 16);
+  csv_writer.register_data_vector("gauss_point", 1, 16);
+  csv_writer.register_data_vector("residual", 1, 16);
+  csv_writer.register_data_vector("iter_status", 1, 16);
+  csv_writer.register_data_vector("equiv_stress", 1, 16);
+  csv_writer.register_data_vector("plastic_strain", 1, 16);
+
+  // write to csv
+  for (unsigned iter = 0; iter < max_iter_; ++iter)
+  {
+    std::map<std::string, std::vector<double>> output_data;
+    output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn_)};
+    output_data["globiter_or_timestep_index"] = {static_cast<double>(globiter_or_timestep_index_)};
+    output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid_)};
+    output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp_)};
+    output_data["residual"] = {
+        static_cast<double>(all_residual_[csv_output_tracking_data.gp_][iter])};
+    output_data["iter_status"] = {static_cast<double>(local_iteration_status_enum_to_double(
+        all_iter_status_[csv_output_tracking_data.gp_][iter]))};
+    output_data["equiv_stress"] = {
+        static_cast<double>(all_equiv_stress_[csv_output_tracking_data.gp_][iter])};
+    output_data["plastic_strain"] = {
+        static_cast<double>(all_plastic_strain_[csv_output_tracking_data.gp_][iter])};
+
+    // write output data to csv
+    csv_writer.write_data_to_file(csv_output_tracking_data.tnp_, iter, output_data);
+  }
 }
 
 
