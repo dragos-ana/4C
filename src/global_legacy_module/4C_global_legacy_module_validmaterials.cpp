@@ -2908,9 +2908,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER",
                 {.description = "output relevant data from each microiteration of the line search "
                                 "algorithm(s) to a dedicated csv file?",
-                    .default_value = false})
-
-        },
+                    .default_value = false}),
+            parameter<double>("LOCAL_NEWTON_TOL",
+                {.description = "convergence tolerance for the Local Newton-Raphson scheme",
+                    .default_value = 1.0e-8})},
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
                         "viscoplasticity laws (flow rule + hardening model)"});
