@@ -713,7 +713,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       use_csv_output_pred_adapt_micro_iter_(
           matdata.parameters.get<bool>("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER")),
       use_csv_output_line_search_micro_iter_(
-          matdata.parameters.get<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER"))
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER")),
+      local_newton_tol_(matdata.parameters.get<double>("LOCAL_NEWTON_TOL"))
 {
   // consistency checks
   if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
@@ -1714,7 +1715,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       pred_adapt_utils_(parameter()->user_pred_interp_fact(), parameter()->max_num_pred_adapt()),
       csv_output_tracking_data_{},
       csv_output_pred_adapt_micro_iter_data_{csv_output_tracking_data_},
-      csv_output_line_search_micro_iter_data_{csv_output_tracking_data_}
+      csv_output_line_search_micro_iter_data_{csv_output_tracking_data_},
+      lnl_data_(parameter()->local_newton_tol())
 {
   // set time step size to 0.0 (this is set to the correct and current value in the preevaluate
   // method)

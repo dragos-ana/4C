@@ -438,6 +438,9 @@ namespace Mat
         return use_csv_output_line_search_micro_iter_;
       }
 
+      //! get convergence tolerance for the Local Newton-Raphson scheme
+      [[nodiscard]] double local_newton_tol() { return local_newton_tol_; }
+
      private:
       //! ID of the viscoplasticity law
       const int viscoplastic_law_id_;
@@ -542,6 +545,9 @@ namespace Mat
       //! output relevant data from each microiteration of the line
       //! search algorithm(s) to a dedicated csv file
       const bool use_csv_output_line_search_micro_iter_;
+
+      //! convergence tolerance for the Local Newton-Raphson scheme
+      const double local_newton_tol_;
     };
   }  // namespace PAR
 
