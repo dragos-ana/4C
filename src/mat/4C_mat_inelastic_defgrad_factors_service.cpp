@@ -171,17 +171,31 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ConstMatTensors::
 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::
     PredictorAdaptationUtils(const double xi_user, const unsigned int max_num_pred_adapt)
     : xi_user_(xi_user),
-      xi_l_(0.0),
-      xi_u_(1.0),
+      xi_l_lambda_1_(0.0),
+      xi_l_lambda_2_(0.0),
+      xi_l_eigenvect_rot_(0.0),
+      xi_u_lambda_1_(1.0),
+      xi_u_lambda_2_(1.0),
+      xi_u_eigenvect_rot_(1.0),
       num_of_pred_adapt_(0),
       max_num_pred_adapt_(max_num_pred_adapt),
       pred_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}}
 {
-  last_xi_.resize(1, 0.0);
-  last_max_xi_.resize(1, 0.0);
-  optimal_xi_.resize(1, 0.0);
-  current_xi_.resize(1, 0.0);
-  current_max_xi_.resize(1, 0.0);
+  last_xi_lambda_1_.resize(1, 0.0);
+  last_xi_lambda_2_.resize(1, 0.0);
+  last_xi_eigenvect_rot_.resize(1, 0.0);
+  last_max_xi_lambda_1_.resize(1, 0.0);
+  last_max_xi_lambda_2_.resize(1, 0.0);
+  last_max_xi_eigenvect_rot_.resize(1, 0.0);
+  optimal_xi_lambda_1_.resize(1, 0.0);
+  optimal_xi_lambda_2_.resize(1, 0.0);
+  optimal_xi_eigenvect_rot_.resize(1, 0.0);
+  current_xi_lambda_1_.resize(1, 0.0);
+  current_xi_lambda_2_.resize(1, 0.0);
+  current_xi_eigenvect_rot_.resize(1, 0.0);
+  current_max_xi_lambda_1_.resize(1, 0.0);
+  current_max_xi_lambda_2_.resize(1, 0.0);
+  current_max_xi_eigenvect_rot_.resize(1, 0.0);
 };
 
 /*--------------------------------------------------------------------*
@@ -189,11 +203,21 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::setup(
     const int num_gp)
 {
-  last_xi_.resize(num_gp, last_xi_[0]);
-  last_max_xi_.resize(num_gp, last_max_xi_[0]);
-  optimal_xi_.resize(num_gp, optimal_xi_[0]);
-  current_xi_.resize(num_gp, current_xi_[0]);
-  current_max_xi_.resize(num_gp, current_max_xi_[0]);
+  last_xi_lambda_1_.resize(num_gp, last_xi_lambda_1_[0]);
+  last_xi_lambda_2_.resize(num_gp, last_xi_lambda_2_[0]);
+  last_xi_eigenvect_rot_.resize(num_gp, last_xi_eigenvect_rot_[0]);
+  last_max_xi_lambda_1_.resize(num_gp, last_max_xi_lambda_1_[0]);
+  last_max_xi_lambda_2_.resize(num_gp, last_max_xi_lambda_2_[0]);
+  last_max_xi_eigenvect_rot_.resize(num_gp, last_max_xi_eigenvect_rot_[0]);
+  optimal_xi_lambda_1_.resize(num_gp, optimal_xi_lambda_1_[0]);
+  optimal_xi_lambda_2_.resize(num_gp, optimal_xi_lambda_2_[0]);
+  optimal_xi_eigenvect_rot_.resize(num_gp, optimal_xi_eigenvect_rot_[0]);
+  current_xi_lambda_1_.resize(num_gp, current_xi_lambda_1_[0]);
+  current_xi_lambda_2_.resize(num_gp, current_xi_lambda_2_[0]);
+  current_xi_eigenvect_rot_.resize(num_gp, current_xi_eigenvect_rot_[0]);
+  current_max_xi_lambda_1_.resize(num_gp, current_max_xi_lambda_1_[0]);
+  current_max_xi_lambda_2_.resize(num_gp, current_max_xi_lambda_2_[0]);
+  current_max_xi_eigenvect_rot_.resize(num_gp, current_max_xi_eigenvect_rot_[0]);
 }
 
 /*--------------------------------------------------------------------*
@@ -201,8 +225,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::pre_evaluate(
     const int gp)
 {
-  xi_l_ = 0.0;
-  xi_u_ = 1.0;
+  xi_l_lambda_1_ = 0.0;
+  xi_l_lambda_2_ = 0.0;
+  xi_l_eigenvect_rot_ = 0.0;
+  xi_u_lambda_1_ = 1.0;
+  xi_u_lambda_2_ = 1.0;
+  xi_u_eigenvect_rot_ = 1.0;
   pred_.clear();
   num_of_pred_adapt_ = 0;
 }
@@ -210,11 +238,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::update(
-    const bool update_optimal_xi, const std::vector<double> optimal_xi_at_all_gp)
+    const bool update_optimal_xi, const std::vector<double> optimal_xi_lambda_1_at_all_gp,
+    const std::vector<double> optimal_xi_lambda_2_at_all_gp,
+    const std::vector<double> optimal_xi_eigenvect_rot_at_all_gp)
 {
-  last_xi_ = current_xi_;
-  last_max_xi_ = current_max_xi_;
-  if (update_optimal_xi) optimal_xi_ = optimal_xi_at_all_gp;
+  last_xi_lambda_1_ = current_xi_lambda_1_;
+  last_xi_lambda_2_ = current_xi_lambda_2_;
+  last_xi_eigenvect_rot_ = current_xi_eigenvect_rot_;
+  last_max_xi_lambda_1_ = current_max_xi_lambda_1_;
+  last_max_xi_lambda_2_ = current_max_xi_lambda_2_;
+  last_max_xi_eigenvect_rot_ = current_max_xi_eigenvect_rot_;
+  if (update_optimal_xi)
+  {
+    optimal_xi_lambda_1_ = optimal_xi_lambda_1_at_all_gp;
+    optimal_xi_lambda_2_ = optimal_xi_lambda_2_at_all_gp;
+    optimal_xi_eigenvect_rot_ = optimal_xi_eigenvect_rot_at_all_gp;
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -222,9 +261,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::pack(
     Core::Communication::PackBuffer& data) const
 {
-  Core::Communication::add_to_pack(data, last_xi_);
-  Core::Communication::add_to_pack(data, last_max_xi_);
-  Core::Communication::add_to_pack(data, optimal_xi_);
+  Core::Communication::add_to_pack(data, last_xi_lambda_1_);
+  Core::Communication::add_to_pack(data, last_xi_lambda_2_);
+  Core::Communication::add_to_pack(data, last_xi_eigenvect_rot_);
+  Core::Communication::add_to_pack(data, last_max_xi_lambda_1_);
+  Core::Communication::add_to_pack(data, last_max_xi_lambda_2_);
+  Core::Communication::add_to_pack(data, last_max_xi_eigenvect_rot_);
+  Core::Communication::add_to_pack(data, optimal_xi_lambda_1_);
+  Core::Communication::add_to_pack(data, optimal_xi_lambda_2_);
+  Core::Communication::add_to_pack(data, optimal_xi_eigenvect_rot_);
 }
 
 /*--------------------------------------------------------------------*
@@ -232,11 +277,21 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::unpack(
     Core::Communication::UnpackBuffer& buffer)
 {
-  Core::Communication::extract_from_pack(buffer, last_xi_);
-  Core::Communication::extract_from_pack(buffer, last_max_xi_);
-  Core::Communication::extract_from_pack(buffer, optimal_xi_);
-  current_xi_ = last_xi_;
-  current_max_xi_ = last_max_xi_;
+  Core::Communication::extract_from_pack(buffer, last_xi_lambda_1_);
+  Core::Communication::extract_from_pack(buffer, last_xi_lambda_2_);
+  Core::Communication::extract_from_pack(buffer, last_xi_eigenvect_rot_);
+  Core::Communication::extract_from_pack(buffer, last_max_xi_lambda_1_);
+  Core::Communication::extract_from_pack(buffer, last_max_xi_lambda_2_);
+  Core::Communication::extract_from_pack(buffer, last_max_xi_eigenvect_rot_);
+  Core::Communication::extract_from_pack(buffer, optimal_xi_lambda_1_);
+  Core::Communication::extract_from_pack(buffer, optimal_xi_lambda_2_);
+  Core::Communication::extract_from_pack(buffer, optimal_xi_eigenvect_rot_);
+  current_xi_lambda_1_ = last_xi_lambda_1_;
+  current_xi_lambda_2_ = last_xi_lambda_2_;
+  current_xi_eigenvect_rot_ = last_xi_eigenvect_rot_;
+  current_max_xi_lambda_1_ = last_max_xi_lambda_1_;
+  current_max_xi_lambda_2_ = last_max_xi_lambda_2_;
+  current_max_xi_eigenvect_rot_ = last_max_xi_eigenvect_rot_;
 }
 
 /*--------------------------------------------------------------------*
@@ -244,9 +299,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils::
     update_current_max_xi(const int gp)
 {
-  if (current_xi_[gp] > current_max_xi_[gp])
+  if (current_xi_lambda_1_[gp] > current_max_xi_lambda_1_[gp])
   {
-    current_max_xi_[gp] = current_xi_[gp];
+    current_max_xi_lambda_1_[gp] = current_xi_lambda_1_[gp];
+  }
+  if (current_xi_lambda_2_[gp] > current_max_xi_lambda_2_[gp])
+  {
+    current_max_xi_lambda_2_[gp] = current_xi_lambda_2_[gp];
+  }
+  if (current_xi_eigenvect_rot_[gp] > current_max_xi_eigenvect_rot_[gp])
+  {
+    current_max_xi_eigenvect_rot_[gp] = current_xi_eigenvect_rot_[gp];
   }
 }
 
