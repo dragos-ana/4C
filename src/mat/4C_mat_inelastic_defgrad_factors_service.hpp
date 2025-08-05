@@ -273,39 +273,136 @@ namespace Mat
       //! interpolation factor set by the user
       const double xi_user_;
 
-      //! interpolation factor \f$ \xi \f$ (saved for all GP) for the
+      //! interpolation factor \f$ \xi_{\lambda_1} \f$ for the
+      //! eigenvalue \f$\lambda_1\f$ (saved for all GP) for the
       //! current evaluation (current time step, current global iteration)
-      std::vector<double> current_xi_;
+      std::vector<double> current_xi_lambda_1_;
 
-      //! maximum interpolation factor \f$ \xi_{\mathrm{max}} \f$ (saved for all GP) for the
+      //! interpolation factor \f$ \xi_{\lambda_2} \f$ for the
+      //! eigenvalue \f$\lambda_2\f$ (saved for all GP) for the
+      //! current evaluation (current time step, current global iteration)
+      std::vector<double> current_xi_lambda_2_;
+
+      //! interpolation factor \f$ \xi_{\boldsymbol{Q}} \f$ for the
+      //! rotation vector associated with the eigenvector (rotation) matrix \f$\boldsymbol{Q}\f$
+      //! (saved for all GP) for the current evaluation (current time step, current global
+      //! iteration)
+      std::vector<double> current_xi_eigenvect_rot_;
+
+      //! maximum interpolation factor \f$ \xi_{\lambda_1, \mathrm{max}}
+      //! \f$ for the eigenvalue \f$\ lambda_1 \f$ (saved for all GP)
       //! current evaluation (maximum over current time step)
-      std::vector<double> current_max_xi_;
+      std::vector<double> current_max_xi_lambda_1_;
 
-      //! interpolation factor \f$ \xi_n \f$ (saved for all GP)
+      //! maximum interpolation factor \f$ \xi_{\lambda_2, \mathrm{max}}
+      //! \f$ for the eigenvalue \f$ \lambda_2 \f$ (saved for all GP)
+      //! current evaluation (maximum over current time step)
+      std::vector<double> current_max_xi_lambda_2_;
+
+      //! maximum interpolation factor \f$ \xi_{\boldsymbol{Q}, \mathrm{max}}
+      //! \f$ for the rotation vector associatedwith the eigenvector
+      //! (rotation) matrix \f$ \boldsymbol{Q} \f$ (saved for all GP)
+      //! current evaluation (maximum over current time step)
+      std::vector<double> current_max_xi_eigenvect_rot_;
+
+      //! interpolation factor \f$ \xi_{\lambda_1,n} \f$ for the
+      //! eigenvalue \f$ \lambda_1 \f$ (saved for all GP)
       //! evaluated during the last global iteration of the previous
       //! time step (previous time step, last global iteration)
-      std::vector<double> last_xi_;
+      std::vector<double> last_xi_lambda_1_;
 
-      //! maximum interpolation factor \f$ \xi_{n,\mathrm{max}} \f$
+      //! interpolation factor \f$ \xi_{\lambda_2,n} \f$ for the
+      //! eigenvalue \f$ \lambda_1 \f$ (saved for all GP)
+      //! evaluated during the last global iteration of the previous
+      //! time step (previous time step, last global iteration)
+      std::vector<double> last_xi_lambda_2_;
+
+      //! interpolation factor \f$ \xi_{\boldsymbol{Q},n} \f$ for the
+      //! rotation vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$
+      //! (saved for all GP) evaluated during the last global iteration of the previous time step
+      //! (previous time step, last global iteration)
+      std::vector<double> last_xi_eigenvect_rot_;
+
+      //! maximum interpolation factor \f$
+      //! \xi_{\lambda_1,n,\mathrm{max}} \f$ for the eigenvalue \f$ \lambda_1 \f$
       //! (saved for all GP) evaluated during the last time step
       //! (maximum over previous time step)
-      std::vector<double> last_max_xi_;
+      std::vector<double> last_max_xi_lambda_1_;
 
-      //! optimal interpolation factor \f$ \xi_{n, \mathrm{optimal}} \f$
+      //! maximum interpolation factor \f$
+      //! \xi_{\lambda_2,n,\mathrm{max}} \f$ for the eigenvalue \f$ \lambda_2 \f$
+      //! (saved for all GP) evaluated during the last time step
+      //! (maximum over previous time step)
+      std::vector<double> last_max_xi_lambda_2_;
+
+      //! maximum interpolation factor \f$
+      //! \xi_{\boldsymbol{Q},n,\mathrm{max}} \f$ for the rotation
+      //! vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$
+      //! (saved for all GP) evaluated during the last time step
+      //! (maximum over previous time step)
+      std::vector<double> last_max_xi_eigenvect_rot_;
+
+
+      //! optimal interpolation factor \f$ \xi_{\lambda_1, n,
+      //! \mathrm{optimal}} \f$ for the eigenvalue \f$ \lambda_1 \f$
       //! (saved for all GP) from the previous time step (determined
       //! such that it leads to the previous LNL solution at the
       //! considered GP)
-      std::vector<double> optimal_xi_;
+      std::vector<double> optimal_xi_lambda_1_;
 
-      //! lower interpolation factor (\f$ \xi_{\text{l}} \f$):
+      //! optimal interpolation factor \f$ \xi_{\lambda_2, n,
+      //! \mathrm{optimal}} \f$ for the eigenvalue \f$ \lambda_2 \f$
+      //! (saved for all GP) from the previous time step (determined
+      //! such that it leads to the previous LNL solution at the
+      //! considered GP)
+      std::vector<double> optimal_xi_lambda_2_;
+
+      //! optimal interpolation factor \f$ \xi_{\boldsymbol{Q}, n,
+      //! \mathrm{optimal}} \f$ for the rotation associated with the
+      //! eigenvector rotation matrix \f$ \boldsymbol{Q} \f$
+      //! (saved for all GP) from the previous time step (determined
+      //! such that it leads to the previous LNL solution at the
+      //! considered GP)
+      std::vector<double> optimal_xi_eigenvect_rot_;
+
+
+      //! lower interpolation factor (\f$ \xi_{\lambda_1,\mathrm{l}}
+      //! \f$) for the eigenvalue \f$ \lambda_1 \f$:
       //! effectively, this is the lower bound for which the predictor
       //! leads to a numerically evaluable state
-      double xi_l_;
+      double xi_l_lambda_1_;
 
-      //! upper interpolation factor (\f$ \xi_{\text{u}} \f$):
+      //! lower interpolation factor (\f$ \xi_{\lambda_2,\mathrm{l}}
+      //! \f$) for the eigenvalue \f$ \lambda_2 \f$:
+      //! effectively, this is the lower bound for which the predictor
+      //! leads to a numerically evaluable state
+      double xi_l_lambda_2_;
+
+      //! lower interpolation factor (\f$ \xi_{\boldsymbol{Q},\mathrm{l}}
+      //! \f$) for the rotation vector associated with the eigenvector
+      //! (rotation) matrix \f$ \boldsymbol{Q} \f$:
+      //! effectively, this is the lower bound for which the predictor
+      //! leads to a numerically evaluable state
+      double xi_l_eigenvect_rot_;
+
+      //! upper interpolation factor (\f$ \xi_{\lambda_1, \mathrm{u}}
+      //! \f$) for the eigenvalue \f$ \lambda_1 \f$:
       //! effectively, this is the upper bound for which the predictor
       //! leads to plastic strain rate == 0.0
-      double xi_u_;
+      double xi_u_lambda_1_;
+
+      //! upper interpolation factor (\f$ \xi_{\lambda_2, \mathrm{u}}
+      //! \f$) for the eigenvalue \f$ \lambda_2 \f$:
+      //! effectively, this is the upper bound for which the predictor
+      //! leads to plastic strain rate == 0.0
+      double xi_u_lambda_2_;
+
+      //! upper interpolation factor (\f$ \xi_{\boldsymbol{Q}, \mathrm{u}}
+      //! \f$) for the rotation vector associated with the eigenvector
+      //! (rotation) matrix \f$ \boldsymbol{Q} \f$:
+      //! effectively, this is the upper bound for which the predictor
+      //! leads to plastic strain rate == 0.0
+      double xi_u_eigenvect_rot_;
 
       //! current number of predictor adaptations
       unsigned int num_of_pred_adapt_;
@@ -338,10 +435,21 @@ namespace Mat
        *
        * @param[in] compute_and_update_optimal_xi should the optimal
        * interpolation factors be updated?
-       * @param[in] optimal_xi_at_all_gp values of the optimal
-       * interpolation factors at all Gauss points
+       * @param[in] optimal_xi_lambda_1_at_all_gp values of the optimal
+       * interpolation factors at all Gauss points (for the eigenvalue
+       * \f$ \lambda_1 \f$)
+       * @param[in] optimal_xi_lambda_2_at_all_gp values of the optimal
+       * interpolation factors at all Gauss points (for the eigenvalue
+       * \f$ \lambda_2 \f$)
+       * @param[in] optimal_xi_eigenvect_rot_at_all_gp values of the optimal
+       * interpolation factors at all Gauss points (for the rotation
+       * vector associated with the eigenvalue (rotation) matrix
+       * \f$ \boldsymbol{Q} \f$)
        */
-      void update(const bool update_optimal_xi, const std::vector<double> optimal_xi_at_all_gp);
+      void update(const bool update_optimal_xi,
+          const std::vector<double> optimal_xi_lambda_1_at_all_gp,
+          const std::vector<double> optimal_xi_lambda_2_at_all_gp,
+          const std::vector<double> optimal_xi_eigenvect_rot_at_all_gp);
 
       //! pack method
       void pack(Core::Communication::PackBuffer& data) const;
