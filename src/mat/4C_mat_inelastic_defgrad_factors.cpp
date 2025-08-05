@@ -500,6 +500,53 @@ namespace
     }
     return true;
   }
+
+  /// extract all components of the plastic deformation gradient that
+  /// are relevant for the predictor adaptation
+  void extract_plastic_defgrad_components(
+      const Core::LinAlg::Matrix<3, 3>& plastic_defgrad_elast_pred, double& lambda_1_elast_pred,
+      double& lambda_2_elast_pred, Core::LinAlg::Matrix<3, 1>& eigenvect_rot_vect_elast_pred,
+      Core::LinAlg::Matrix<3, 3> rot_matrix_elast_pred,
+      const Core::LinAlg::Matrix<3, 3>& plastic_defgrad_plast_pred, double& lambda_1_plast_pred,
+      double& lambda_2_plast_pred, Core::LinAlg::Matrix<3, 1>& eigenvect_rot_vect_plast_pred,
+      Core::LinAlg::Matrix<3, 3> rot_matrix_plast_pred)
+  {
+    // define stretch, rotation, eigenvalue matrices, and spectral pairs
+    // (used for polar decomposition)
+    Core::LinAlg::Matrix<3, 3> material_stretch_matrix_elast_pred{
+        Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> eigenval_matrix_elast_pred{Core::LinAlg::Initialization::zero};
+    std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred;
+    Core::LinAlg::Matrix<3, 3> material_stretch_matrix_plast_pred{
+        Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> eigenval_matrix_plast_pred{Core::LinAlg::Initialization::zero};
+    std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_plast_pred;
+
+    // polar decomposition
+    matrix_3x3_polar_decomposition(plastic_defgrad_elast_pred, rot_matrix_elast_pred,
+        material_stretch_matrix_elast_pred, eigenval_matrix_elast_pred, spectral_pairs_elast_pred);
+    matrix_3x3_polar_decomposition(plastic_defgrad_plast_pred, rot_matrix_plast_pred,
+        material_stretch_matrix_plast_pred, eigenval_matrix_plast_pred, spectral_pairs_plast_pred);
+
+    // collect all spectral pairs (elastic and plastic predictors)
+    std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>> all_spectral_pairs{
+        spectral_pairs_elast_pred, spectral_pairs_plast_pred};
+
+    // set reference locations for interpolation
+    Core::LinAlg::Matrix<1, 1> ref_loc_elast;
+    ref_loc_elast(0, 0) = 0.0;
+    Core::LinAlg::Matrix<1, 1> ref_loc_plast;
+    ref_loc_plast(0, 0) = 1.0;
+    std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs{ref_loc_elast, ref_loc_plast};
+
+    // elastic part is set as base matrix in any case
+    Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, ref_locs, 0);
+
+    // order eigenpairs with respect to the reference
+    Core::LinAlg::order_eigenpairs_wrt_reference(
+        spectral_pairs_elast_pred, spectral_pairs_plast_pred);
+  }
+
 }  // namespace
 
 
@@ -1824,16 +1871,24 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     // when specified so
     if (parameter()->use_last_pred_adapt_fact())
     {
-      pred_adapt_utils_.current_xi_[gp_] = pred_adapt_utils_.last_xi_[gp_];
+      pred_adapt_utils_.current_xi_lambda_1_[gp_] = pred_adapt_utils_.last_xi_lambda_1_[gp_];
+      pred_adapt_utils_.current_xi_lambda_2_[gp_] = pred_adapt_utils_.last_xi_lambda_2_[gp_];
+      pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] =
+          pred_adapt_utils_.last_xi_eigenvect_rot_[gp_];
     }
     else if (parameter()->use_optimal_pred_adapt_fact())
     {
-      pred_adapt_utils_.current_xi_[gp_] = pred_adapt_utils_.optimal_xi_[gp_];
+      pred_adapt_utils_.current_xi_lambda_1_[gp_] = pred_adapt_utils_.optimal_xi_lambda_1_[gp_];
+      pred_adapt_utils_.current_xi_lambda_2_[gp_] = pred_adapt_utils_.optimal_xi_lambda_2_[gp_];
+      pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] =
+          pred_adapt_utils_.optimal_xi_eigenvect_rot_[gp_];
     }
     // otherwise set by default to 0.0 (=elastic predictor)
     else
     {
-      pred_adapt_utils_.current_xi_[gp_] = 0.0;
+      pred_adapt_utils_.current_xi_lambda_1_[gp_] = 0.0;
+      pred_adapt_utils_.current_xi_lambda_2_[gp_] = 0.0;
+      pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] = 0.0;
     }
   }
 
