@@ -14,6 +14,7 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_io_runtime_csv_writer.hpp"
+#include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_four_tensor_generators.hpp"
@@ -22,6 +23,7 @@
 
 #include <magic_enum/magic_enum.hpp>
 
+#include <array>
 #include <map>
 #include <optional>
 #include <ostream>
@@ -270,8 +272,47 @@ namespace Mat
     //! class containing utilities for predictor interpolation
     struct PredictorAdaptationUtils
     {
-      //! interpolation factor set by the user
-      const double xi_user_;
+      //! first eigenvalue \f$ \lambda_1 \f$ of the inverse plastic deformation
+      //! gradient inside the elastic predictor (saved for all Gauss points), utilized as reference
+      //! point for interpolation
+      std::vector<double> lambda_1_elast_pred_;
+
+      //! first eigenvalue \f$ \lambda_1 \f$ of the inverse plastic deformation
+      //! gradient inside the plastic predictor (saved for all Gauss points), utilized as reference
+      //! point for interpolation
+      std::vector<double> lambda_1_plast_pred_;
+
+      //! second eigenvalue \f$ \lambda_2 \f$ of the inverse plastic deformation
+      //! gradient inside the elastic predictor (saved for all Gauss points), utilized as reference
+      //! point for interpolation
+      std::vector<double> lambda_2_elast_pred_;
+
+      //! second eigenvalue \f$ \lambda_2 \f$ of the inverse plastic deformation
+      //! gradient inside the plastic predictor (saved for all Gauss points), utilized as reference
+      //! point for interpolation
+      std::vector<double> lambda_2_plast_pred_;
+
+      //! rotation vector associated with the eigenvector (rotation)
+      //! matrix \f$ \boldsymbol{Q} \f$ for the inverse plastic deformation
+      //! gradient inside the elastic predictor (saved for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 1>> eigenvect_rot_vect_elast_pred_;
+
+      //! rotation vector associated with the eigenvector (rotation)
+      //! matrix \f$ \boldsymbol{Q} \f$ for the inverse plastic deformation
+      //! gradient inside the plastic predictor (saved for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 1>> eigenvect_rot_vect_plast_pred_;
+
+      //! rotation matrix \f$ \boldsymbol{R} \f$ for the inverse plastic deformation
+      //! gradient inside the elastic predictor AND the plastic
+      //! predictor (saved for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> rot_matrix_;
+
+      //! spectral pairs of the elastic predictor, already accounting
+      //! for multiple eigenvalues
+      std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred_;
+
+      //! interval scanning parameter set by the user \f$ k_{\mathrm{scan}} \f$
+      const double k_scan_;
 
       //! interpolation factor \f$ \xi_{\lambda_1} \f$ for the
       //! eigenvalue \f$\lambda_1\f$ (saved for all GP) for the
@@ -283,11 +324,11 @@ namespace Mat
       //! current evaluation (current time step, current global iteration)
       std::vector<double> current_xi_lambda_2_;
 
-      //! interpolation factor \f$ \xi_{\boldsymbol{Q}} \f$ for the
+      //! interpolation factors \f$ \xi_{\boldsymbol{Q}} \f$ for the
       //! rotation vector associated with the eigenvector (rotation) matrix \f$\boldsymbol{Q}\f$
       //! (saved for all GP) for the current evaluation (current time step, current global
       //! iteration)
-      std::vector<double> current_xi_eigenvect_rot_;
+      std::vector<std::array<double, 3>> current_xi_eigenvect_rot_;
 
       //! maximum interpolation factor \f$ \xi_{\lambda_1, \mathrm{max}}
       //! \f$ for the eigenvalue \f$\ lambda_1 \f$ (saved for all GP)
@@ -299,11 +340,11 @@ namespace Mat
       //! current evaluation (maximum over current time step)
       std::vector<double> current_max_xi_lambda_2_;
 
-      //! maximum interpolation factor \f$ \xi_{\boldsymbol{Q}, \mathrm{max}}
+      //! maximum interpolation factors \f$ \xi_{\boldsymbol{Q}, \mathrm{max}}
       //! \f$ for the rotation vector associatedwith the eigenvector
       //! (rotation) matrix \f$ \boldsymbol{Q} \f$ (saved for all GP)
       //! current evaluation (maximum over current time step)
-      std::vector<double> current_max_xi_eigenvect_rot_;
+      std::vector<std::array<double, 3>> current_max_xi_eigenvect_rot_;
 
       //! interpolation factor \f$ \xi_{\lambda_1,n} \f$ for the
       //! eigenvalue \f$ \lambda_1 \f$ (saved for all GP)
@@ -317,11 +358,11 @@ namespace Mat
       //! time step (previous time step, last global iteration)
       std::vector<double> last_xi_lambda_2_;
 
-      //! interpolation factor \f$ \xi_{\boldsymbol{Q},n} \f$ for the
+      //! interpolation factors \f$ \xi_{\boldsymbol{Q},n} \f$ for the
       //! rotation vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$
       //! (saved for all GP) evaluated during the last global iteration of the previous time step
       //! (previous time step, last global iteration)
-      std::vector<double> last_xi_eigenvect_rot_;
+      std::vector<std::array<double, 3>> last_xi_eigenvect_rot_;
 
       //! maximum interpolation factor \f$
       //! \xi_{\lambda_1,n,\mathrm{max}} \f$ for the eigenvalue \f$ \lambda_1 \f$
@@ -335,12 +376,12 @@ namespace Mat
       //! (maximum over previous time step)
       std::vector<double> last_max_xi_lambda_2_;
 
-      //! maximum interpolation factor \f$
+      //! maximum interpolation factors \f$
       //! \xi_{\boldsymbol{Q},n,\mathrm{max}} \f$ for the rotation
       //! vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$
       //! (saved for all GP) evaluated during the last time step
       //! (maximum over previous time step)
-      std::vector<double> last_max_xi_eigenvect_rot_;
+      std::vector<std::array<double, 3>> last_max_xi_eigenvect_rot_;
 
 
       //! optimal interpolation factor \f$ \xi_{\lambda_1, n,
@@ -357,13 +398,13 @@ namespace Mat
       //! considered GP)
       std::vector<double> optimal_xi_lambda_2_;
 
-      //! optimal interpolation factor \f$ \xi_{\boldsymbol{Q}, n,
+      //! optimal interpolation factors \f$ \xi_{\boldsymbol{Q}, n,
       //! \mathrm{optimal}} \f$ for the rotation associated with the
       //! eigenvector rotation matrix \f$ \boldsymbol{Q} \f$
       //! (saved for all GP) from the previous time step (determined
       //! such that it leads to the previous LNL solution at the
       //! considered GP)
-      std::vector<double> optimal_xi_eigenvect_rot_;
+      std::vector<std::array<double, 3>> optimal_xi_eigenvect_rot_;
 
 
       //! lower interpolation factor (\f$ \xi_{\lambda_1,\mathrm{l}}
@@ -378,12 +419,12 @@ namespace Mat
       //! leads to a numerically evaluable state
       double xi_l_lambda_2_;
 
-      //! lower interpolation factor (\f$ \xi_{\boldsymbol{Q},\mathrm{l}}
+      //! lower interpolation factors (\f$ \xi_{\boldsymbol{Q},\mathrm{l}}
       //! \f$) for the rotation vector associated with the eigenvector
       //! (rotation) matrix \f$ \boldsymbol{Q} \f$:
       //! effectively, this is the lower bound for which the predictor
       //! leads to a numerically evaluable state
-      double xi_l_eigenvect_rot_;
+      std::array<double, 3> xi_l_eigenvect_rot_;
 
       //! upper interpolation factor (\f$ \xi_{\lambda_1, \mathrm{u}}
       //! \f$) for the eigenvalue \f$ \lambda_1 \f$:
@@ -397,17 +438,18 @@ namespace Mat
       //! leads to plastic strain rate == 0.0
       double xi_u_lambda_2_;
 
-      //! upper interpolation factor (\f$ \xi_{\boldsymbol{Q}, \mathrm{u}}
+      //! upper interpolation factors (\f$ \xi_{\boldsymbol{Q}, \mathrm{u}}
       //! \f$) for the rotation vector associated with the eigenvector
       //! (rotation) matrix \f$ \boldsymbol{Q} \f$:
       //! effectively, this is the upper bound for which the predictor
       //! leads to plastic strain rate == 0.0
-      double xi_u_eigenvect_rot_;
+      std::array<double, 3> xi_u_eigenvect_rot_;
 
       //! current number of predictor adaptations
       unsigned int num_of_pred_adapt_;
 
-      //! maximum allowed number of predictor adaptations / repredictorizations
+      //! maximum number of allowed
+      //! repredictorizations (including the initial predictor adaptation) before throwing error
       const unsigned int max_num_pred_adapt_;
 
       // maximum allowed number number of predictor adaptation iterations
@@ -417,15 +459,32 @@ namespace Mat
       //! gradient (components 0-8) and the plastic strain (component 9)
       Core::LinAlg::Matrix<10, 1> pred_;
 
-      //! constructor
-      PredictorAdaptationUtils(const double xi_user, const unsigned int max_num_pred_adapt);
+      /*!
+       * @brief Constructor!
+       *
+       * @param[in] k_scan Interval scanning parameter \f$ k_{\mathrm{scan}} \f$
+       * @param[in] max_num_pred_adapt Maximum number of allowed
+       * repredictorizations (including the initial predictor adaptation) before throwing error
+       */
+      PredictorAdaptationUtils(const double k_scan, const unsigned int max_num_pred_adapt);
 
       //! setup method: set the correct number of Gauss Points to track the internal variables of
       //! the class
       void setup(const int num_gp);
 
-      //! preevaluate method: reset the non-const variables of the class at specific GP
-      void pre_evaluate(const int gp);
+      /*!
+       * @brief Preevaluation method, performing reset tasks and setting the reference values for
+       *  interpolation
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] inv_plastic_defgrad_elast_pred inverse plastic deformation
+       * gradient inside the elastic predictor
+       * @param[in] inv_plastic_defgrad_plast_pred inverse plastic deformation
+       * gradient inside the plastic predictor
+       */
+      void pre_evaluate(const int gp,
+          const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
+          const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred);
 
       /*!
        * @brief update method: update the internal variables of the predictor
@@ -433,23 +492,8 @@ namespace Mat
        * material. We have to specify whether we want to compute and
        * update the optimal xi value.
        *
-       * @param[in] compute_and_update_optimal_xi should the optimal
-       * interpolation factors be updated?
-       * @param[in] optimal_xi_lambda_1_at_all_gp values of the optimal
-       * interpolation factors at all Gauss points (for the eigenvalue
-       * \f$ \lambda_1 \f$)
-       * @param[in] optimal_xi_lambda_2_at_all_gp values of the optimal
-       * interpolation factors at all Gauss points (for the eigenvalue
-       * \f$ \lambda_2 \f$)
-       * @param[in] optimal_xi_eigenvect_rot_at_all_gp values of the optimal
-       * interpolation factors at all Gauss points (for the rotation
-       * vector associated with the eigenvalue (rotation) matrix
-       * \f$ \boldsymbol{Q} \f$)
        */
-      void update(const bool update_optimal_xi,
-          const std::vector<double> optimal_xi_lambda_1_at_all_gp,
-          const std::vector<double> optimal_xi_lambda_2_at_all_gp,
-          const std::vector<double> optimal_xi_eigenvect_rot_at_all_gp);
+      void update();
 
       //! pack method
       void pack(Core::Communication::PackBuffer& data) const;
@@ -460,6 +504,63 @@ namespace Mat
       //! update the maximum interpolation factor in the current time
       //! step evaluation for the given Gauss point
       void update_current_max_xi(const int gp);
+
+      /*!
+       * @brief extract all components of the inverse plastic deformation gradient that
+       * are relevant for the predictor adaptation
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] inv_plastic_defgrad_elast_pred inverse plastic deformation
+       * gradient inside the elastic predictor
+       * @param[in] inv_plastic_defgrad_plast_pred inverse plastic deformation
+       * gradient inside the plastic predictor
+       *
+       */
+      void extract_inv_plastic_defgrad_components(const int gp,
+          const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
+          const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred);
+
+      /*!
+       * @brief interpolate inverse_plastic deformation gradient between the
+       * elastic and the plastic predictor, given the
+       * current several interpolation factors
+       * @note Linear interpolation is employed for each eigenvalue, and
+       * for the eigenvector rotation vector
+       *
+       * @param[in] gp Gauss point index
+       *
+       */
+      Core::LinAlg::Matrix<3, 3> interpolate_inv_plastic_defgrad(const int gp);
+
+      /*!
+       * @brief Adapt interpolation parameter and interpolation interval
+       * based on evaluation error
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] eval_err_type type of evaluation error necessitating
+       * an adaptation of the parameter and the interval
+       *
+       */
+      void adapt_interpolation_interval(const int gp, const ErrorType eval_err_type);
+
+      /*!
+       * @brief Adapt interpolation parameter based on the current
+       * parameter bounds
+       *
+       * @param[in] gp Gauss point index
+       *
+       */
+      void adapt_interpolation_parameter(const int gp);
+
+      //! verify whether we are at the elastic predictor based on the
+      //! current interpolation factors
+      bool verify_interp_factors_elast_pred(const int gp);
+
+      //! compute optimal interpolation factors, given an inverse
+      //! plastic deformation gradient as a solution of the Local
+      //! Newton Loop (reference)
+      void compute_optimal_interp_factors(
+          const int gp, const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_reference);
     };
 
     //! struct with local substepping utilities
@@ -567,20 +668,85 @@ namespace Mat
       //! iteration (due to a good predictor!)
       unsigned int total_num_of_first_iter_convergences = 0;
 
-      //! predictor interpolation factor obtained from the predictor
-      //! adaptation routine (for set GP, current
-      //! time step, last global iteration)
-      double curr_pred_interp_factor_ = 0;
+      //! predictor interpolation factor for eigenvalue \f$ \lambda_1 \f$ obtained from the
+      //! predictor adaptation routine (for set GP, current time step, last global iteration)
+      double curr_pred_interp_factor_lambda_1_ = 0;
 
-      //! predictor interpolation factor obtained from the predictor
+      //! predictor interpolation factor for eigenvalue \f$ \lambda_2 \f$ obtained from the
+      //! predictor adaptation routine (for set GP, current time step, last global iteration)
+      double curr_pred_interp_factor_lambda_2_ = 0;
+
+      //! predictor interpolation factor for rotation vector (component
+      //! 0) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained from
+      //! the predictor adaptation routine (for set GP, current time step, last global iteration)
+      double curr_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
+
+      //! predictor interpolation factor for rotation vector (component
+      //! 1) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained from
+      //! the predictor adaptation routine (for set GP, current time step, last global iteration)
+      double curr_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
+
+      //! predictor interpolation factor for rotation vector (component
+      //! 2) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained from
+      //! the predictor adaptation routine (for set GP, current time step, last global iteration)
+      double curr_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
+
+      //! predictor interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the predictor
       //! adaptation routine (for set GP, current
       //! time step, maximum over all global iterations)
-      double curr_max_pred_interp_factor_ = 0;
+      double curr_max_pred_interp_factor_lambda_1_ = 0;
 
-      //! optimal predictor interpolation factor obtained from the time
-      //! step solution (for GP 0 of element 0 after the current
-      //! time step)
-      double optimal_pred_interp_factor_ = 0;
+      //! predictor interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the predictor
+      //! adaptation routine (for set GP, current
+      //! time step, maximum over all global iterations)
+      double curr_max_pred_interp_factor_lambda_2_ = 0;
+
+      //! predictor interpolation factor (rotation vector associated
+      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+      //! component 0) obtained from the predictor
+      //! adaptation routine (for set GP, current
+      //! time step, maximum over all global iterations)
+      double curr_max_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
+
+      //! predictor interpolation factor (rotation vector associated
+      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+      //! component 1) obtained from the predictor
+      //! adaptation routine (for set GP, current
+      //! time step, maximum over all global iterations)
+      double curr_max_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
+
+      //! predictor interpolation factor (rotation vector associated
+      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+      //! component 2) obtained from the predictor
+      //! adaptation routine (for set GP, current
+      //! time step, maximum over all global iterations)
+      double curr_max_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
+
+      //! optimal predictor interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
+      //! time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_pred_interp_factor_lambda_1_ = 0;
+
+      //! optimal predictor interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
+      //! time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_pred_interp_factor_lambda_2_ = 0;
+
+      //! optimal predictor interpolation factor (rotation vector associated
+      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+      //! component 0) obtained from the
+      //! time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
+
+      //! optimal predictor interpolation factor (rotation vector associated
+      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+      //! component 1) obtained from the
+      //! time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
+
+      //! optimal predictor interpolation factor (rotation vector associated
+      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+      //! component 2) obtained from the
+      //! time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
 
       //! Local Newton residual obtained from the optimal predictor interpolation factor
       double lnl_res_optimal_pred_interp_factor_ = 0;
@@ -988,8 +1154,15 @@ namespace Mat
       //! predictor adaptation -> used to assign the values at the specific microiterations
       struct MicroIterDataCollector
       {
-        //! current interpolation factor \f$ \xi \f$
-        double current_xi_ = -1;
+        //! current interpolation factor \f$ \xi_{\lambda_1} \f$ for the
+        //! eigenvalue \f$ \lambda_1 \f$
+        double current_xi_lambda_1_ = -1;
+        //! current interpolation factor \f$ \xi_{\lambda_2} \f$ for the
+        //! eigenvalue \f$ \lambda_2 \f$
+        double current_xi_lambda_2_ = -1;
+        //! current interpolation factor \f$ \xi_{\boldsymbol{Q}} \f$ for the
+        //! rotation vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$
+        std::array<double, 3> current_xi_eigenvect_rot_{1.0, 1.0, 1.0};
         //! current equivalent stress
         double current_equiv_stress_ = -1;
         //! current plastic strain
@@ -1003,9 +1176,20 @@ namespace Mat
       //! adaptation)
       std::vector<unsigned int> all_microiter_;
 
-      //! current interpolation factors \f$ \xi \f$ of all
+      //! current interpolation factors \f$ \xi_{\lambda_1} \f$ for
+      //! eigenvalue \f$ \lambda_1 \f$ of all
       //! microiterations
-      std::vector<double> all_current_xi_;
+      std::vector<double> all_current_xi_lambda_1_;
+
+      //! current interpolation factors \f$ \xi_{\lambda_2} \f$ for
+      //! eigenvalue \f$ \lambda_2 \f$ of all
+      //! microiterations
+      std::vector<double> all_current_xi_lambda_2_;
+
+      //! current interpolation factors \f$ \xi_{\boldsymbol{Q}} \f$ for
+      //! the rotation vector associated with the eigenvalue (rotation) matrix \f$ \boldsymbol{Q}
+      //! \f$ of all microiterations
+      std::vector<std::array<double, 3>> all_current_xi_eigenvect_rot_;
 
       //! current equivalent stresses of all microiterations (associated
       //! with the current interpolation factors)

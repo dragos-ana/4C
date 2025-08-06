@@ -25,6 +25,7 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.fwd.hpp"
 
+#include <Teuchos_Array.hpp>
 #include <Teuchos_ParameterList.hpp>
 
 #include <array>
@@ -1471,9 +1472,12 @@ namespace Mat
      * repeatable pre-evaluation tasks.
      * This also means that we call this pre_evaluate method within
      * evaluate_inverse_inelastic_defgrad, and only if we are not in the
-     * redundant call (see quick-fix PR #131 at https://github.com/4C-multiphysics/4C/pull/131).
+     * redundant call (see quick-fix PR #131 at
+     * https://github.com/4C-multiphysics/4C/pull/131).
+     *
+     * @param[in] defgrad Deformation gradient \f$ \boldsymbol{F} \f$
      */
-    void prepare_non_repeat_tasks();
+    void prepare_non_repeat_tasks(const Core::LinAlg::Matrix<3, 3>& defgrad);
 
     void update() override;
 
@@ -1540,8 +1544,11 @@ namespace Mat
     void debug_set_last_quantities(const int gp,
         const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
         const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
-        const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi,
-        const double last_max_xi, const double optimal_xi);
+        const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi_lambda_1,
+        const double last_xi_lambda_2, const std::array<double, 3> last_xi_eigenvect_rot,
+        const double last_max_xi_lambda_1, const double last_max_xi_lambda_2,
+        const std::array<double, 3> last_max_xi_eigenvect_rot, const double optimal_xi_lambda_1,
+        const double optimal_xi_lambda_2, const std::array<double, 3> optimal_xi_eigenvect_rot);
 
     /*!
      * @brief Get the utilized viscoplastic law object.
@@ -1877,14 +1884,18 @@ namespace Mat
      * where the optimal predictor interpolation factor can really be determined
      * in a consistent manner. Inside the function, we also check
      * whether the determined optimal predictor interpolation factor is
-     * consistent, i.e., if it satisfies the Local Newton Loop equations.
+     * consistent, i.e., if it satisfies the Local Newton Loop
+     * equations.
+     * @note legacy method, only suited for 1D simulations
      *
      * @param[in] gp Gauss Point
      * @param[in] newton_starting_point Starting point for the interpolation factor \f$ \xi \f$ to
      * be used in the Newton-Raphson method utilized herein.
      *
      */
-    double compute_optimal_pred_interp_factor(const int gp, const double newton_starting_point);
+    double compute_optimal_pred_interp_factor_legacy(
+        const int gp, const double newton_starting_point);
+
 
     /*!
      * @brief Get an extensive error message to be displayed when the
