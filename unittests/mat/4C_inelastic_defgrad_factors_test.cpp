@@ -501,11 +501,11 @@ namespace
       param_list_transv_isotrop_vplast_refJC.set<double>("delta time", 1.0e-6);
       // call pre_evaluate
       transv_isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
-      transv_isotrop_vplast_refJC_->prepare_non_repeat_tasks();
+      transv_isotrop_vplast_refJC_->prepare_non_repeat_tasks(FM_);
       isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
-      isotrop_vplast_refJC_->prepare_non_repeat_tasks();
+      isotrop_vplast_refJC_->prepare_non_repeat_tasks(FM_);
       isotrop_vplast_Anand_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, 0, 0);
-      isotrop_vplast_Anand_->prepare_non_repeat_tasks();
+      isotrop_vplast_Anand_->prepare_non_repeat_tasks(FM_);
     }
 
     void set_up_state_quantities_solution()
@@ -1327,7 +1327,7 @@ namespace
       param_list_debug_vplast.set<double>("delta time", 5.0e-3);
       // call pre_evaluate
       debug_vplast_->pre_evaluate(param_list_debug_vplast, 0, 0);
-      debug_vplast_->prepare_non_repeat_tasks();
+      debug_vplast_->prepare_non_repeat_tasks(FM_);
     }
 
     // deformation gradient
