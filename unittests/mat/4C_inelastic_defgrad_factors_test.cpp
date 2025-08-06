@@ -514,11 +514,11 @@ namespace
           .ref_coords = nullptr};
       transv_isotrop_vplast_refJC_->pre_evaluate(
           param_list_transv_isotrop_vplast_refJC, context, 0, 0);
-      transv_isotrop_vplast_refJC_->prepare_non_repeat_tasks();
+      transv_isotrop_vplast_refJC_->prepare_non_repeat_tasks(FM_);
       isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, context, 0, 0);
-      isotrop_vplast_refJC_->prepare_non_repeat_tasks();
+      isotrop_vplast_refJC_->prepare_non_repeat_tasks(FM_);
       isotrop_vplast_Anand_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, context, 0, 0);
-      isotrop_vplast_Anand_->prepare_non_repeat_tasks();
+      isotrop_vplast_Anand_->prepare_non_repeat_tasks(FM_);
     }
 
     void set_up_state_quantities_solution()
@@ -1344,6 +1344,7 @@ namespace
       Teuchos::ParameterList param_list_debug_vplast{};
 
       // call pre_evaluate
+<<<<<<< HEAD
       double total_time = 0.2;
       double time_step_size = 5e-3;
       Mat::EvaluationContext context{.total_time = &total_time,
@@ -1354,6 +1355,10 @@ namespace
 
       debug_vplast_->pre_evaluate(param_list_debug_vplast, context, 0, 0);
       debug_vplast_->prepare_non_repeat_tasks();
+=======
+      debug_vplast_->pre_evaluate(param_list_debug_vplast, 0, 0);
+      debug_vplast_->prepare_non_repeat_tasks(FM_);
+>>>>>>> 916e1373b9 (Temp finished rework)
     }
 
     // deformation gradient
@@ -1986,6 +1991,7 @@ namespace
         computed_state_quantity_derivatives_isotrop.curr_dlpdepsp_, 1.0e-6);
   }
 
+<<<<<<< HEAD
   TEST_F(InelasticDefgradFactorsTest, DummyViscoplastTimIntLinearizTest)
   {
     set_up_dummy_viscoplast_material();
@@ -2260,5 +2266,7 @@ namespace
     // if we have reached this point, it is a success -> the test is passed
   }
 
+=======
+>>>>>>> 916e1373b9 (Temp finished rework)
 
 }  // namespace
