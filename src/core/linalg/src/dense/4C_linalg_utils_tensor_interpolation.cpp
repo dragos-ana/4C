@@ -16,6 +16,8 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_fad.hpp"
 
+#include <iomanip>
+
 FOUR_C_NAMESPACE_OPEN
 
 namespace
@@ -766,7 +768,7 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
     // check for multiple eigenvalues: loop through the next eigenpairs of the considered tensor
     for (int j = i + 1; j < 3; ++j)
     {
-      if (std::abs(eigenpairs[j].first - eigenpairs[tensor_ind].first) < 1.0e-8)
+      if (std::abs(eigenpairs[j].first - eigenpairs[tensor_ind].first) < 1.0e-15)
       {
         // multiple eigenvalue found
         // now we check whether the absolute value of the scalar product is larger than the
@@ -887,7 +889,7 @@ void Core::LinAlg::align_eigenpairs_of_base_matrix(
 
     // if the current eigenvalue corresponds to the last one
     if (std::abs(spectral_pairs[base_ind][i].first - spectral_pairs[base_ind][i - 1].first) <
-        1.0e-8)
+        1.0e-15)
     {
       // increment multiplicity
       multp += 1;

@@ -292,15 +292,20 @@ namespace Mat
       //! point for interpolation
       std::vector<double> lambda_2_plast_pred_;
 
-      //! rotation vector associated with the eigenvector (rotation)
+      //! relative rotation vector associated with the eigenvector (rotation)
       //! matrix \f$ \boldsymbol{Q} \f$ for the inverse plastic deformation
-      //! gradient inside the elastic predictor (saved for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 1>> eigenvect_rot_vect_elast_pred_;
+      //! gradient inside the plastic predictor (saved for all Gauss
+      //! points); relative with respect to the eigenvector matrix
+      //! inside the elastic predictor
+      std::vector<Core::LinAlg::Matrix<3, 1>> rel_eigenvect_rot_vect_plast_pred_;
 
-      //! rotation vector associated with the eigenvector (rotation)
+
+      //! eigenvector (rotation)
       //! matrix \f$ \boldsymbol{Q} \f$ for the inverse plastic deformation
-      //! gradient inside the plastic predictor (saved for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 1>> eigenvect_rot_vect_plast_pred_;
+      //! gradient inside the elastic predictor (saved for all Gauss
+      //! points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> eigenvect_rot_matrix_elast_pred_;
+
 
       //! rotation matrix \f$ \boldsymbol{R} \f$ for the inverse plastic deformation
       //! gradient inside the elastic predictor AND the plastic
@@ -309,7 +314,8 @@ namespace Mat
 
       //! spectral pairs of the elastic predictor, already accounting
       //! for multiple eigenvalues
-      std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred_;
+      std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>>
+          spectral_pairs_elast_pred_;
 
       //! interval scanning parameter set by the user \f$ k_{\mathrm{scan}} \f$
       const double k_scan_;
@@ -1290,6 +1296,17 @@ namespace Mat
       //! to a dedicated csv file
       void write_line_search_micro_iter_data_to_csv();
     };
+
+    // DEBUG: only show output for the defined debug_gps
+    extern std::array<const int, 1> DEBUG_GPS;
+    extern bool debug_this_gp(const int gp);
+
+
+
+// DEBUG
+#define DEBUG_LOG(msg)                                                                        \
+  std::cout << "[DEBUG] " << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") " << (msg) \
+            << std::endl;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
