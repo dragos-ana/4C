@@ -1297,16 +1297,8 @@ namespace Mat
       void write_line_search_micro_iter_data_to_csv();
     };
 
-    // DEBUG: only show output for the defined debug_gps
-    extern std::array<const int, 1> DEBUG_GPS;
-    extern bool debug_this_gp(const int gp);
-
-
-
-// DEBUG
-#define DEBUG_LOG(msg)                                                                        \
-  std::cout << "[DEBUG] " << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") " << (msg) \
-            << std::endl;
+    // display / log evaluation warnings
+    // #define DISPLAY_WARNINGS ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
