@@ -52,6 +52,12 @@ namespace
       InputVerifyOptimalInterpolationFactors input_verify_optimal_interpolation_factors,
       std::string id_for_val)
   {
+    // logging: set precision
+    std::cout << std::setprecision(16);
+
+    // set numerical tolerance for equality of numbers
+    const double numerical_tol{1.0e-8};
+
     double optimal_xi_for_val = 0.0;
 
     const double delta_val_reference_elast =
@@ -60,28 +66,73 @@ namespace
     const double delta_val_plast_elast =
         input_verify_optimal_interpolation_factors.plast_pred_val_ -
         input_verify_optimal_interpolation_factors.elast_pred_val_;
-    if (std::abs(delta_val_plast_elast) > 1.0e-8)
+    if (std::abs(delta_val_plast_elast) > numerical_tol)
     {
       optimal_xi_for_val = delta_val_reference_elast / delta_val_plast_elast;
-      FOUR_C_ASSERT_ALWAYS(optimal_xi_for_val >= 0.0 && optimal_xi_for_val <= 1.0,
-          "Optimal interpolation factor: {} {} for gp {} does not lie between 0 ({}) and 1 "
-          "({})",
-          id_for_val, input_verify_optimal_interpolation_factors.reference_val_,
-          input_verify_optimal_interpolation_factors.gp_,
-          input_verify_optimal_interpolation_factors.elast_pred_val_,
-          input_verify_optimal_interpolation_factors.plast_pred_val_);
+
+      // project back to bounding box [0, 1]
+      if (optimal_xi_for_val > 1.0)
+      {
+        // warning
+        std::cout << "Optimal interpolation factor for " << id_for_val << ", gp "
+                  << input_verify_optimal_interpolation_factors.gp_ << ": "
+                  << input_verify_optimal_interpolation_factors.reference_val_
+                  << " leads to optimal interpolation factor " << optimal_xi_for_val
+                  << " for the bounds "
+                  << input_verify_optimal_interpolation_factors.elast_pred_val_
+                  << "(elastic predictor, 0) and "
+                  << input_verify_optimal_interpolation_factors.plast_pred_val_
+                  << "(plastic predictor, 1)" << std::endl;
+
+        // set back to the higher bound
+        optimal_xi_for_val = 1.0;
+
+        // log management strategy
+        std::cout << "Setting value back to higher bound (plastic predictor, 1)" << std::endl;
+      }
+      else if (optimal_xi_for_val < 0.0)
+      {
+        // warning
+        std::cout << "Optimal interpolation factor for " << id_for_val << ", gp "
+                  << input_verify_optimal_interpolation_factors.gp_ << ": "
+                  << input_verify_optimal_interpolation_factors.reference_val_
+                  << " leads to optimal interpolation factor " << optimal_xi_for_val
+                  << " for the bounds "
+                  << input_verify_optimal_interpolation_factors.elast_pred_val_
+                  << "(elastic predictor, 0) and "
+                  << input_verify_optimal_interpolation_factors.plast_pred_val_
+                  << "(plastic predictor, 1)" << std::endl;
+
+        // set back to the lower bound
+        optimal_xi_for_val = 0.0;
+
+        // log management strategy
+        std::cout << "Setting value back to lower bound (elastic predictor, 0)" << std::endl;
+      }
     }
     else
     {
-      if (std::abs(delta_val_reference_elast) > 1.0e-8)
-        FOUR_C_ASSERT_ALWAYS(std::abs(delta_val_reference_elast) <= 1.0e-8,
-            "Optimal interpolation factor: {} {} for gp {} -> delta from plast ({}) to elast "
-            "({}) is 0, but reference ({}) is not !",
-            id_for_val, input_verify_optimal_interpolation_factors.reference_val_,
-            input_verify_optimal_interpolation_factors.gp_,
-            input_verify_optimal_interpolation_factors.plast_pred_val_,
-            input_verify_optimal_interpolation_factors.elast_pred_val_,
-            input_verify_optimal_interpolation_factors.reference_val_);
+      // we leave the value at the lower bound (even if the reference
+      // value does not equal the common value at the bounds)
+
+      if (std::abs(delta_val_reference_elast) > numerical_tol)
+      {
+        // warning
+        std::cout << " Value for " << id_for_val << ", gp "
+                  << input_verify_optimal_interpolation_factors.gp_ << ": "
+                  << input_verify_optimal_interpolation_factors.reference_val_
+                  << " does not equal the value of the bounds "
+                  << input_verify_optimal_interpolation_factors.elast_pred_val_
+                  << "(elastic predictor, 0) and "
+                  << input_verify_optimal_interpolation_factors.plast_pred_val_
+                  << "(plastic predictor, 1)" << std::endl;
+
+
+        // log management strategy
+        std::cout
+            << "Setting optimal interpolation factor as the lower bound (elastic predictor, 0)"
+            << std::endl;
+      }
     }
 
     return optimal_xi_for_val;
