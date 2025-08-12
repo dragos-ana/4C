@@ -15,9 +15,94 @@
 
 #include <algorithm>
 #include <array>
+#include <iomanip>
+#include <string>
+#include <utility>
 
 
 FOUR_C_NAMESPACE_OPEN
+
+namespace
+{
+  // DEBUG
+  void debug_print_spectral_pair(
+      const std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>& spectral_pairs,
+      std::string id)
+  {
+    std::cout << "spectral pairs of " << id << ": " << std::endl;
+    for (auto sp : spectral_pairs)
+    {
+      std::cout << "eigval:" << sp.first << "; eigvect: " << sp.second(0) << ", " << sp.second(1)
+                << ", " << sp.second(2) << std::endl;
+    }
+  }
+
+  // input for verifying optimal interpolation factors
+  struct InputVerifyOptimalInterpolationFactors
+  {
+    const int gp_;
+    const double reference_val_;
+    const double elast_pred_val_;
+    const double plast_pred_val_;
+  };
+
+
+  // determine and verify optimal interpolation factors
+  double determine_optimal_interpolation_factors(
+      InputVerifyOptimalInterpolationFactors input_verify_optimal_interpolation_factors,
+      std::string id_for_val)
+  {
+    double optimal_xi_for_val = 0.0;
+
+    const double delta_val_reference_elast =
+        input_verify_optimal_interpolation_factors.reference_val_ -
+        input_verify_optimal_interpolation_factors.elast_pred_val_;
+    const double delta_val_plast_elast =
+        input_verify_optimal_interpolation_factors.plast_pred_val_ -
+        input_verify_optimal_interpolation_factors.elast_pred_val_;
+    if (std::abs(delta_val_plast_elast) > 1.0e-8)
+    {
+      optimal_xi_for_val = delta_val_reference_elast / delta_val_plast_elast;
+      FOUR_C_ASSERT_ALWAYS(optimal_xi_for_val >= 0.0 && optimal_xi_for_val <= 1.0,
+          "Optimal interpolation factor: {} {} for gp {} does not lie between 0 ({}) and 1 "
+          "({})",
+          id_for_val, input_verify_optimal_interpolation_factors.reference_val_,
+          input_verify_optimal_interpolation_factors.gp_,
+          input_verify_optimal_interpolation_factors.elast_pred_val_,
+          input_verify_optimal_interpolation_factors.plast_pred_val_);
+    }
+    else
+    {
+      if (std::abs(delta_val_reference_elast) > 1.0e-8)
+        FOUR_C_ASSERT_ALWAYS(std::abs(delta_val_reference_elast) <= 1.0e-8,
+            "Optimal interpolation factor: {} {} for gp {} -> delta from plast ({}) to elast "
+            "({}) is 0, but reference ({}) is not !",
+            id_for_val, input_verify_optimal_interpolation_factors.reference_val_,
+            input_verify_optimal_interpolation_factors.gp_,
+            input_verify_optimal_interpolation_factors.plast_pred_val_,
+            input_verify_optimal_interpolation_factors.elast_pred_val_,
+            input_verify_optimal_interpolation_factors.reference_val_);
+    }
+
+    return optimal_xi_for_val;
+  }
+
+
+}  // namespace
+
+
+std::array<const int, 1> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::DEBUG_GPS{0};
+bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::debug_this_gp(const int gp)
+{
+  for (int debug_gp : DEBUG_GPS)
+  {
+    if (debug_gp == gp)
+    {
+      return true;
+    }
+  }
+  return false;
+}
 
 
 
@@ -190,10 +275,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptationUtils
   lambda_1_plast_pred_.resize(1, 0.0);
   lambda_2_elast_pred_.resize(1, 0.0);
   lambda_2_plast_pred_.resize(1, 0.0);
-  eigenvect_rot_vect_elast_pred_.resize(
+  rel_eigenvect_rot_vect_plast_pred_.resize(
       1, Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero});
-  eigenvect_rot_vect_plast_pred_.resize(
-      1, Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero});
+  eigenvect_rot_matrix_elast_pred_.resize(
+      1, Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero});
+  std::pair<double, Core::LinAlg::Matrix<3, 1>> temp_spectral_pair{
+      0.0, Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero}};
+  spectral_pairs_elast_pred_.resize(
+      1, std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>{
+             temp_spectral_pair, temp_spectral_pair, temp_spectral_pair});
   rot_matrix_.resize(1, Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero});
   last_xi_lambda_1_.resize(1, 0.0);
   last_xi_lambda_2_.resize(1, 0.0);
@@ -221,8 +311,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   lambda_1_plast_pred_.resize(num_gp, lambda_1_plast_pred_[0]);
   lambda_2_elast_pred_.resize(num_gp, lambda_2_elast_pred_[0]);
   lambda_2_plast_pred_.resize(num_gp, lambda_2_plast_pred_[0]);
-  eigenvect_rot_vect_elast_pred_.resize(num_gp, eigenvect_rot_vect_elast_pred_[0]);
-  eigenvect_rot_vect_plast_pred_.resize(num_gp, eigenvect_rot_vect_plast_pred_[0]);
+  rel_eigenvect_rot_vect_plast_pred_.resize(num_gp, rel_eigenvect_rot_vect_plast_pred_[0]);
+  eigenvect_rot_matrix_elast_pred_.resize(num_gp, eigenvect_rot_matrix_elast_pred_[0]);
+  spectral_pairs_elast_pred_.resize(num_gp, spectral_pairs_elast_pred_[0]);
   rot_matrix_.resize(num_gp, rot_matrix_[0]);
   last_xi_lambda_1_.resize(num_gp, last_xi_lambda_1_[0]);
   last_xi_lambda_2_.resize(num_gp, last_xi_lambda_2_[0]);
@@ -280,8 +371,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   Core::Communication::add_to_pack(data, lambda_1_plast_pred_);
   Core::Communication::add_to_pack(data, lambda_2_elast_pred_);
   Core::Communication::add_to_pack(data, lambda_2_plast_pred_);
-  Core::Communication::add_to_pack(data, eigenvect_rot_vect_elast_pred_);
-  Core::Communication::add_to_pack(data, eigenvect_rot_vect_plast_pred_);
+  Core::Communication::add_to_pack(data, rel_eigenvect_rot_vect_plast_pred_);
+  Core::Communication::add_to_pack(data, eigenvect_rot_matrix_elast_pred_);
+  Core::Communication::add_to_pack(data, spectral_pairs_elast_pred_);
   Core::Communication::add_to_pack(data, rot_matrix_);
   Core::Communication::add_to_pack(data, last_xi_lambda_1_);
   Core::Communication::add_to_pack(data, last_xi_lambda_2_);
@@ -303,8 +395,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   Core::Communication::extract_from_pack(buffer, lambda_1_plast_pred_);
   Core::Communication::extract_from_pack(buffer, lambda_2_elast_pred_);
   Core::Communication::extract_from_pack(buffer, lambda_2_plast_pred_);
-  Core::Communication::extract_from_pack(buffer, eigenvect_rot_vect_elast_pred_);
-  Core::Communication::extract_from_pack(buffer, eigenvect_rot_vect_plast_pred_);
+  Core::Communication::extract_from_pack(buffer, rel_eigenvect_rot_vect_plast_pred_);
+  Core::Communication::extract_from_pack(buffer, eigenvect_rot_matrix_elast_pred_);
+  Core::Communication::extract_from_pack(buffer, spectral_pairs_elast_pred_);
   Core::Communication::extract_from_pack(buffer, rot_matrix_);
   Core::Communication::extract_from_pack(buffer, last_xi_lambda_1_);
   Core::Communication::extract_from_pack(buffer, last_xi_lambda_2_);
@@ -360,7 +453,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 
   // polar decomposition
   matrix_3x3_polar_decomposition(inv_plastic_defgrad_elast_pred, rot_matrix_[gp],
-      material_stretch_matrix_elast_pred, eigenval_matrix_elast_pred, spectral_pairs_elast_pred_);
+      material_stretch_matrix_elast_pred, eigenval_matrix_elast_pred,
+      spectral_pairs_elast_pred_[gp]);
   Core::LinAlg::Matrix<3, 3> rot_matrix_plast_pred{Core::LinAlg::Initialization::zero};
   matrix_3x3_polar_decomposition(inv_plastic_defgrad_plast_pred, rot_matrix_plast_pred,
       material_stretch_matrix_plast_pred, eigenval_matrix_plast_pred, spectral_pairs_plast_pred);
@@ -381,7 +475,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 
   // collect all spectral pairs (elastic and plastic predictors)
   std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>> all_spectral_pairs{
-      spectral_pairs_elast_pred_, spectral_pairs_plast_pred};
+      spectral_pairs_elast_pred_[gp], spectral_pairs_plast_pred};
 
   // set reference locations for interpolation
   Core::LinAlg::Matrix<1, 1> ref_loc_elast;
@@ -390,27 +484,27 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   ref_loc_plast(0, 0) = 1.0;
   std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs{ref_loc_elast, ref_loc_plast};
 
+
   // elastic part is set as base matrix in any case
   Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, ref_locs, 0);
 
+
+
   // order eigenpairs with respect to the reference
   Core::LinAlg::order_eigenpairs_wrt_reference(
-      spectral_pairs_elast_pred_, spectral_pairs_plast_pred);
+      spectral_pairs_elast_pred_[gp], spectral_pairs_plast_pred);
 
   // build  eigenvector matrices and get the associated rotation
   // vectors
-  Core::LinAlg::Matrix<3, 3> eigenvect_matrix_elast{Core::LinAlg::Initialization::zero};
-  eigenvect_matrix_elast(0, 0) = spectral_pairs_elast_pred_[0].second(0);
-  eigenvect_matrix_elast(0, 1) = spectral_pairs_elast_pred_[0].second(1);
-  eigenvect_matrix_elast(0, 2) = spectral_pairs_elast_pred_[0].second(2);
-  eigenvect_matrix_elast(1, 0) = spectral_pairs_elast_pred_[1].second(0);
-  eigenvect_matrix_elast(1, 1) = spectral_pairs_elast_pred_[1].second(1);
-  eigenvect_matrix_elast(1, 2) = spectral_pairs_elast_pred_[1].second(2);
-  eigenvect_matrix_elast(2, 0) = spectral_pairs_elast_pred_[2].second(0);
-  eigenvect_matrix_elast(2, 1) = spectral_pairs_elast_pred_[2].second(1);
-  eigenvect_matrix_elast(2, 2) = spectral_pairs_elast_pred_[2].second(2);
-  eigenvect_rot_vect_elast_pred_[gp] =
-      Core::LinAlg::calc_rot_vect_from_rot_matrix(eigenval_matrix_elast_pred);
+  eigenvect_rot_matrix_elast_pred_[gp](0, 0) = spectral_pairs_elast_pred_[gp][0].second(0);
+  eigenvect_rot_matrix_elast_pred_[gp](0, 1) = spectral_pairs_elast_pred_[gp][0].second(1);
+  eigenvect_rot_matrix_elast_pred_[gp](0, 2) = spectral_pairs_elast_pred_[gp][0].second(2);
+  eigenvect_rot_matrix_elast_pred_[gp](1, 0) = spectral_pairs_elast_pred_[gp][1].second(0);
+  eigenvect_rot_matrix_elast_pred_[gp](1, 1) = spectral_pairs_elast_pred_[gp][1].second(1);
+  eigenvect_rot_matrix_elast_pred_[gp](1, 2) = spectral_pairs_elast_pred_[gp][1].second(2);
+  eigenvect_rot_matrix_elast_pred_[gp](2, 0) = spectral_pairs_elast_pred_[gp][2].second(0);
+  eigenvect_rot_matrix_elast_pred_[gp](2, 1) = spectral_pairs_elast_pred_[gp][2].second(1);
+  eigenvect_rot_matrix_elast_pred_[gp](2, 2) = spectral_pairs_elast_pred_[gp][2].second(2);
 
   Core::LinAlg::Matrix<3, 3> eigenvect_matrix_plast{Core::LinAlg::Initialization::zero};
   eigenvect_matrix_plast(0, 0) = spectral_pairs_plast_pred[0].second(0);
@@ -422,14 +516,62 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   eigenvect_matrix_plast(2, 0) = spectral_pairs_plast_pred[2].second(0);
   eigenvect_matrix_plast(2, 1) = spectral_pairs_plast_pred[2].second(1);
   eigenvect_matrix_plast(2, 2) = spectral_pairs_plast_pred[2].second(2);
-  eigenvect_rot_vect_plast_pred_[gp] =
-      Core::LinAlg::calc_rot_vect_from_rot_matrix(eigenval_matrix_plast_pred);
+  Core::LinAlg::Matrix<3, 3> rel_eigenvect_matrix_plast{Core::LinAlg::Initialization::zero};
+  rel_eigenvect_matrix_plast.multiply_tn(
+      1.0, eigenvect_rot_matrix_elast_pred_[gp], eigenvect_matrix_plast, 0.0);
+  rel_eigenvect_rot_vect_plast_pred_[gp] =
+      Core::LinAlg::calc_rot_vect_from_rot_matrix(rel_eigenvect_matrix_plast);
 
   // set first two eigenvalues for the predictors
-  lambda_1_elast_pred_[gp] = spectral_pairs_elast_pred_[0].first;
-  lambda_2_elast_pred_[gp] = spectral_pairs_elast_pred_[1].first;
+  lambda_1_elast_pred_[gp] = spectral_pairs_elast_pred_[gp][0].first;
+  lambda_2_elast_pred_[gp] = spectral_pairs_elast_pred_[gp][1].first;
   lambda_1_plast_pred_[gp] = spectral_pairs_plast_pred[0].first;
   lambda_2_plast_pred_[gp] = spectral_pairs_plast_pred[1].first;
+
+
+  // DEBUG
+  if (debug_this_gp(gp))
+  {
+    DEBUG_LOG(
+        "START: Extraction of inverse plastic defgrad components for gp " + std::to_string(gp));
+    std::cout << "inv_plastic_defgrad_elast_pred: " << std::endl;
+    inv_plastic_defgrad_elast_pred.print(std::cout);
+    std::cout << "inv_plastic_defgrad_plast_pred: " << std::endl;
+    inv_plastic_defgrad_plast_pred.print(std::cout);
+    std::cout << "rot_matrix: " << std::endl;
+    rot_matrix_[gp].print(std::cout);
+    std::cout << "eigenvect_matrix_elast_pred: " << std::endl;
+    eigenvect_rot_matrix_elast_pred_[gp].print(std::cout);
+    std::cout << "eigenvect_matrix_plast_pred: " << std::endl;
+    eigenvect_matrix_plast.print(std::cout);
+    std::cout << "rel_eigenvect_matrix_plast_pred: " << std::endl;
+    rel_eigenvect_matrix_plast.print(std::cout);
+    std::cout << "rel_eigenvect_matrix_plast_pred (computed again): " << std::endl;
+    Core::LinAlg::Matrix<3, 3> rel_eigenvect_matrix_plast_computed_again{
+        Core::LinAlg::Initialization::zero};
+    rel_eigenvect_matrix_plast_computed_again.multiply_tn(
+        1.0, eigenvect_rot_matrix_elast_pred_[gp], eigenvect_matrix_plast, 0.0);
+    rel_eigenvect_matrix_plast_computed_again.print(std::cout);
+    std::cout << "rel_eigenvect_vect_plast_pred: " << std::endl;
+    rel_eigenvect_rot_vect_plast_pred_[gp].print(std::cout);
+    std::cout << "eigenval_matrix_elast_pred: " << std::endl;
+    eigenval_matrix_elast_pred.print(std::cout);
+    std::cout << "eigenval_matrix_plast_pred: " << std::endl;
+    eigenval_matrix_plast_pred.print(std::cout);
+    Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> L{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> LQ{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> QTLQ{Core::LinAlg::Initialization::zero};
+    L(0, 0) = lambda_1_plast_pred_[gp];
+    L(1, 1) = lambda_2_plast_pred_[gp];
+    L(2, 2) = 1.0 / L(0, 0) / L(1, 1);
+    LQ.multiply_nn(1.0, L, eigenvect_matrix_plast, 0.0);
+    QTLQ.multiply_tn(1.0, eigenvect_matrix_plast, LQ, 0.0);
+    temp.multiply_nn(1.0, rot_matrix_plast_pred, QTLQ, 0.0);
+    std::cout << "back to plast pred: " << std::endl;
+    temp.print(std::cout);
+    DEBUG_LOG("END: Extraction of inverse plastic defgrad components for gp " + std::to_string(gp));
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -438,17 +580,24 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
     PredictorAdaptationUtils::interpolate_inv_plastic_defgrad(const int gp)
 {
   // interpolate rotation vector through linear interpolation (eigenvector rotation)
-  Core::LinAlg::Matrix<3, 1> eigenvect_rot_vect{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 1> rel_eigenvect_rot_vect{Core::LinAlg::Initialization::zero};
   for (unsigned int i = 0; i < 3; ++i)
   {
-    eigenvect_rot_vect(i) =
-        (1 - current_xi_eigenvect_rot_[gp][i]) * eigenvect_rot_vect_elast_pred_[gp](i) +
-        current_xi_eigenvect_rot_[gp][i] * eigenvect_rot_vect_plast_pred_[gp](i);
+    rel_eigenvect_rot_vect(i) =
+        current_xi_eigenvect_rot_[gp][i] * rel_eigenvect_rot_vect_plast_pred_[gp](i);
   }
-  // get eigenvector (rotation) matrix associated with the rotation
-  // vector
-  Core::LinAlg::Matrix<3, 3> eigenvect_rot_matrix =
-      Core::LinAlg::calc_rot_matrix_from_rot_vect(eigenvect_rot_vect);
+  // get relative eigenvector (rotation) matrix associated with the rotation
+  // vector (relative with respect to the eigenvector matrix within the
+  // elastic predictor)
+  Core::LinAlg::Matrix<3, 3> rel_eigenvect_rot_matrix =
+      Core::LinAlg::calc_rot_matrix_from_rot_vect(rel_eigenvect_rot_vect);
+
+  // compute eigenvector (rotation) matrix from the relative rotation
+  // vector and the reference, i.e., the eigenvector (rotation) matrix
+  // within the elastic predictor
+  Core::LinAlg::Matrix<3, 3> eigenvect_rot_matrix{Core::LinAlg::Initialization::zero};
+  eigenvect_rot_matrix.multiply_nn(
+      1.0, eigenvect_rot_matrix_elast_pred_[gp], rel_eigenvect_rot_matrix, 0.0);
 
   // calculate eigenvalue matrix assuming plastic incompressibility (det
   // = 1)
@@ -507,7 +656,7 @@ void Mat::PredictorAdaptationUtils::adapt_interpolation_interval(
     // adapt the lower bounds of the interpolation factors
     xi_l_lambda_1_ = min_current_xi;
     xi_l_lambda_2_ = min_current_xi;
-    xi_u_eigenvect_rot_ = {min_current_xi, min_current_xi, min_current_xi};
+    xi_l_eigenvect_rot_ = {min_current_xi, min_current_xi, min_current_xi};
   }
 }
 
@@ -571,28 +720,48 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
     rot_matrix_reference.print(std::cout);
   }
 
+  // DEBUG
+  if (debug_this_gp(gp))
+  {
+    DEBUG_LOG("START: Computation of optimal interpolation factors for gp " + std::to_string(gp));
+    std::cout << "inverse plastic deformation gradient (solution): " << std::endl;
+    inv_plastic_defgrad_reference.print(std::cout);
+    debug_print_spectral_pair(spectral_pairs_reference, "reference (before ordering)");
+  }
+
   // collect all spectral pairs (elastic and plastic predictors)
   std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>> all_spectral_pairs{
-      spectral_pairs_elast_pred_, spectral_pairs_reference};
+      spectral_pairs_elast_pred_[gp], spectral_pairs_reference};
+
 
   // set reference locations for interpolation
   Core::LinAlg::Matrix<1, 1> ref_loc_elast;
   ref_loc_elast(0, 0) = 0.0;
   Core::LinAlg::Matrix<1, 1> ref_loc_reference;
-  ref_loc_reference(0, 0) = 0.5;
+  ref_loc_reference(0, 0) = 1.0;
   std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs{ref_loc_elast, ref_loc_reference};
 
+  /*
+    // elastic part is set as base matrix in any case
+    Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, ref_locs, 0);
+  */
 
-  // elastic part is set as base matrix in any case
-  Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, ref_locs, 0);
 
   // order eigenpairs with respect to the reference
   Core::LinAlg::order_eigenpairs_wrt_reference(
-      spectral_pairs_elast_pred_, spectral_pairs_reference);
+      spectral_pairs_elast_pred_[gp], spectral_pairs_reference);
 
 
-  // build  eigenvector matrices and get the associated rotation
-  // vectors
+
+  // DEBUG
+  if (debug_this_gp(gp))
+  {
+    debug_print_spectral_pair(spectral_pairs_elast_pred_[gp], "elast");
+    debug_print_spectral_pair(spectral_pairs_reference, "reference (after ordering)");
+  }
+
+  // build the eigenvector matrices and get the associated relative rotation
+  // vector
   Core::LinAlg::Matrix<3, 3> eigenvect_matrix_reference{Core::LinAlg::Initialization::zero};
   eigenvect_matrix_reference(0, 0) = spectral_pairs_reference[0].second(0);
   eigenvect_matrix_reference(0, 1) = spectral_pairs_reference[0].second(1);
@@ -603,142 +772,104 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   eigenvect_matrix_reference(2, 0) = spectral_pairs_reference[2].second(0);
   eigenvect_matrix_reference(2, 1) = spectral_pairs_reference[2].second(1);
   eigenvect_matrix_reference(2, 2) = spectral_pairs_reference[2].second(2);
-  Core::LinAlg::Matrix<3, 1> eigenvect_rot_vect_reference{Core::LinAlg::Initialization::zero};
-  eigenvect_rot_vect_reference =
-      Core::LinAlg::calc_rot_vect_from_rot_matrix(eigenval_matrix_reference);
+
+
+  // DEBUG
+  if (debug_this_gp(gp))
+  {
+    std::cout << "eigenvect_matrix_reference: " << std::endl;
+    eigenvect_matrix_reference.print(std::cout);
+    Core::LinAlg::Matrix<3, 3> eigenval_matrix_reference{Core::LinAlg::Initialization::zero};
+    for (int i = 0; i < 3; ++i)
+    {
+      eigenval_matrix_reference(i, i) = spectral_pairs_reference[i].first;
+    }
+    std::cout << "eigenval_matrix_reference: " << std::endl;
+    eigenval_matrix_reference.print(std::cout);
+    std::cout << "inverse plastic deformation gradient (solution, reconstructed): " << std::endl;
+    Core::LinAlg::Matrix<3, 3> LQ{Core::LinAlg::Initialization::zero};
+    LQ.multiply_nn(1.0, eigenval_matrix_reference, eigenvect_matrix_reference, 0.0);
+    Core::LinAlg::Matrix<3, 3> QTLQ{Core::LinAlg::Initialization::zero};
+    QTLQ.multiply_tn(1.0, eigenvect_matrix_reference, LQ, 0.0);
+    Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
+    temp.multiply_nn(1.0, rot_matrix_reference, QTLQ, 0.0);
+    temp.print(std::cout);
+  }
+
+  // compute the relative rotation matrix for the reference matrix
+  Core::LinAlg::Matrix<3, 3> rel_eigenvect_matrix_reference{Core::LinAlg::Initialization::zero};
+  rel_eigenvect_matrix_reference.multiply_tn(
+      1.0, eigenvect_rot_matrix_elast_pred_[gp], eigenvect_matrix_reference, 0.0);
+  // compute the associated relative rotation vector for the reference matrix
+  Core::LinAlg::Matrix<3, 1> rel_eigenvect_rot_vect_reference =
+      Core::LinAlg::calc_rot_vect_from_rot_matrix(rel_eigenvect_matrix_reference);
 
   // set first two eigenvalues
   double lambda_1_reference, lambda_2_reference;
   lambda_1_reference = spectral_pairs_reference[0].first;
   lambda_2_reference = spectral_pairs_reference[1].first;
 
+  // DEBUG
+  if (debug_this_gp(gp))
+  {
+    std::cout << "Interpolation values (elastic | reference | plastic)" << std::endl;
+    std::cout << "rel_eigenvector_rot: " << "[" << 0 << ", " << 0 << ", " << 0 << "] | " << "["
+              << std::to_string(rel_eigenvect_rot_vect_reference(0)) << ", "
+              << std::to_string(rel_eigenvect_rot_vect_reference(1)) << ", "
+              << std::to_string(rel_eigenvect_rot_vect_reference(2)) << "] | " << "["
+              << std::to_string(rel_eigenvect_rot_vect_plast_pred_[gp](0)) << ", "
+              << std::to_string(rel_eigenvect_rot_vect_plast_pred_[gp](1)) << ", "
+              << std::to_string(rel_eigenvect_rot_vect_plast_pred_[gp](2)) << "]" << std::endl;
+    std::cout << "lambda_1: " << lambda_1_elast_pred_[gp] << " | " << lambda_1_reference << " | "
+              << lambda_1_plast_pred_[gp] << std::endl;
+    std::cout << "lambda_2: " << lambda_2_elast_pred_[gp] << " | " << lambda_2_reference << " | "
+              << lambda_2_plast_pred_[gp] << std::endl;
+    std::cout << "lambda_3: " << 1.0 / lambda_1_elast_pred_[gp] / lambda_2_elast_pred_[gp] << " | "
+              << spectral_pairs_reference[2].first << " | "
+              << 1.0 / lambda_1_plast_pred_[gp] / lambda_2_plast_pred_[gp] << std::endl;
+    std::cout << "rot_matrix: " << std::endl;
+    rot_matrix_[gp].print(std::cout);
+    rot_matrix_reference.print(std::cout);
+    rot_matrix_[gp].print(std::cout);
+  }
+
+
 
   // determine the optimal interpolation factors
-  const double delta_lambda_1_reference_elast = lambda_1_reference - lambda_1_elast_pred_[gp];
-  const double delta_lambda_1_plast_elast = lambda_1_plast_pred_[gp] - lambda_1_elast_pred_[gp];
-  optimal_xi_lambda_1_[gp] = 0.0;
-  if (std::abs(delta_lambda_1_plast_elast) > 1.0e-8)
+  optimal_xi_lambda_1_[gp] =
+      determine_optimal_interpolation_factors(InputVerifyOptimalInterpolationFactors{.gp_ = gp,
+                                                  .reference_val_ = lambda_1_reference,
+                                                  .elast_pred_val_ = lambda_1_elast_pred_[gp],
+                                                  .plast_pred_val_ = lambda_1_plast_pred_[gp]},
+          "lambda 1");
+  optimal_xi_lambda_2_[gp] =
+      determine_optimal_interpolation_factors(InputVerifyOptimalInterpolationFactors{.gp_ = gp,
+                                                  .reference_val_ = lambda_2_reference,
+                                                  .elast_pred_val_ = lambda_2_elast_pred_[gp],
+                                                  .plast_pred_val_ = lambda_2_plast_pred_[gp]},
+          "lambda 2");
+  for (unsigned int i = 0; i < 3; ++i)
   {
-    optimal_xi_lambda_1_[gp] = delta_lambda_1_reference_elast / delta_lambda_1_plast_elast;
-    FOUR_C_ASSERT_ALWAYS(optimal_xi_lambda_1_[gp] >= 0.0 && optimal_xi_lambda_1_[gp] <= 1.0,
-        "Optimal interpolation factor: lambda 1 {} for gp {} does not lie between 0 ({}) and 1 "
-        "({})",
-        lambda_1_reference, gp, lambda_1_elast_pred_[gp], lambda_1_plast_pred_[gp]);
-  }
-  else
-  {
-    if (std::abs(delta_lambda_1_reference_elast) > 1.0e-8)
-      FOUR_C_ASSERT_ALWAYS(std::abs(delta_lambda_1_reference_elast) <= 1.0e-8,
-          "Optimal interpolation factor: lambda 1 {} for gp {} -> delta from plast ({}) to elast "
-          "({}) is 0, but reference ({}) is not !",
-          lambda_1_reference, gp, lambda_1_plast_pred_[gp], lambda_1_elast_pred_[gp],
-          lambda_1_reference);
-  }
-
-  const double delta_lambda_2_reference_elast = lambda_2_reference - lambda_2_elast_pred_[gp];
-  const double delta_lambda_2_plast_elast = lambda_2_plast_pred_[gp] - lambda_2_elast_pred_[gp];
-  optimal_xi_lambda_2_[gp] = 0.0;
-  if (std::abs(delta_lambda_2_plast_elast) > 1.0e-8)
-  {
-    optimal_xi_lambda_2_[gp] = delta_lambda_2_reference_elast / delta_lambda_2_plast_elast;
-    FOUR_C_ASSERT_ALWAYS(optimal_xi_lambda_2_[gp] >= 0.0 && optimal_xi_lambda_2_[gp] <= 1.0,
-        "Optimal interpolation factor: lambda 2 {} for gp {} does not lie between 0 ({}) and 1 "
-        "({})",
-        lambda_2_reference, gp, lambda_2_elast_pred_[gp], lambda_2_plast_pred_[gp]);
-  }
-  else
-  {
-    if (std::abs(delta_lambda_2_reference_elast) > 1.0e-8)
-      FOUR_C_ASSERT_ALWAYS(std::abs(delta_lambda_2_reference_elast) <= 1.0e-8,
-          "Optimal interpolation factor: lambda 2 {} for gp {} -> delta from plast ({}) to elast "
-          "({}) is 0, but reference ({}) is not !",
-          lambda_2_reference, gp, lambda_2_plast_pred_[gp], lambda_2_elast_pred_[gp],
-          lambda_2_reference);
+    optimal_xi_eigenvect_rot_[gp][i] = determine_optimal_interpolation_factors(
+        InputVerifyOptimalInterpolationFactors{.gp_ = gp,
+            .reference_val_ = rel_eigenvect_rot_vect_reference(i),
+            .elast_pred_val_ = 0.0,
+            .plast_pred_val_ = rel_eigenvect_rot_vect_plast_pred_[gp](i)},
+        "eigenvector rotation vector, component " + std::to_string(i));
   }
 
 
-  const double delta_eigenvect_rot_comp_0_reference_elast =
-      eigenvect_rot_vect_reference(0) - eigenvect_rot_vect_elast_pred_[gp](0);
-  const double delta_eigenvect_rot_comp_0_plast_elast =
-      eigenvect_rot_vect_plast_pred_[gp](0) - eigenvect_rot_vect_elast_pred_[gp](0);
-  optimal_xi_eigenvect_rot_[gp][0] = 0.0;
-  if (std::abs(delta_eigenvect_rot_comp_0_plast_elast) > 1.0e-8)
+  // DEBUG
+  if (debug_this_gp(gp))
   {
-    optimal_xi_eigenvect_rot_[gp][0] =
-        delta_eigenvect_rot_comp_0_reference_elast / delta_eigenvect_rot_comp_0_plast_elast;
-    FOUR_C_ASSERT_ALWAYS(
-        optimal_xi_eigenvect_rot_[gp][0] >= 0.0 && optimal_xi_eigenvect_rot_[gp][0] <= 1.0,
-        "Optimal interpolation factor: eigenvector rotation vector, component 0: {} for gp {} does "
-        "not lie between 0 ({}) and 1 "
-        "({})",
-        eigenvect_rot_vect_reference(0), gp, eigenvect_rot_vect_elast_pred_[gp](0),
-        eigenvect_rot_vect_plast_pred_[gp](0));
-  }
-  else
-  {
-    if (std::abs(delta_eigenvect_rot_comp_0_reference_elast) > 1.0e-8)
-      FOUR_C_ASSERT_ALWAYS(std::abs(delta_lambda_2_reference_elast) <= 1.0e-8,
-          "Optimal interpolation factor: eigenvector rotation vector, component 0: {} for gp {} "
-          "-> delta from plast ({}) to elast "
-          "({}) is 0, but reference ({}) is not !",
-          eigenvect_rot_vect_reference(0), gp, eigenvect_rot_vect_elast_pred_[gp](0),
-          eigenvect_rot_vect_plast_pred_[gp](0), eigenvect_rot_vect_reference(0));
-  }
-
-  const double delta_eigenvect_rot_comp_1_reference_elast =
-      eigenvect_rot_vect_reference(1) - eigenvect_rot_vect_elast_pred_[gp](1);
-  const double delta_eigenvect_rot_comp_1_plast_elast =
-      eigenvect_rot_vect_plast_pred_[gp](1) - eigenvect_rot_vect_elast_pred_[gp](1);
-  optimal_xi_eigenvect_rot_[gp][1] = 0.0;
-  if (std::abs(delta_eigenvect_rot_comp_1_plast_elast) > 1.0e-8)
-  {
-    optimal_xi_eigenvect_rot_[gp][1] =
-        delta_eigenvect_rot_comp_1_reference_elast / delta_eigenvect_rot_comp_1_plast_elast;
-    FOUR_C_ASSERT_ALWAYS(
-        optimal_xi_eigenvect_rot_[gp][1] >= 0.0 && optimal_xi_eigenvect_rot_[gp][1] <= 1.0,
-        "Optimal interpolation factor: eigenvector rotation vector, component 1: {} for gp {} does "
-        "not lie between 0 ({}) and 1 "
-        "({})",
-        eigenvect_rot_vect_reference(1), gp, eigenvect_rot_vect_elast_pred_[gp](1),
-        eigenvect_rot_vect_plast_pred_[gp](1));
-  }
-  else
-  {
-    if (std::abs(delta_eigenvect_rot_comp_1_reference_elast) > 1.0e-8)
-      FOUR_C_ASSERT_ALWAYS(std::abs(delta_lambda_2_reference_elast) <= 1.0e-8,
-          "Optimal interpolation factor: eigenvector rotation vector, component 1: {} for gp {} "
-          "-> delta from plast ({}) to elast "
-          "({}) is 0, but reference ({}) is not !",
-          eigenvect_rot_vect_reference(1), gp, eigenvect_rot_vect_elast_pred_[gp](1),
-          eigenvect_rot_vect_plast_pred_[gp](1), eigenvect_rot_vect_reference(1));
-  }
-
-  const double delta_eigenvect_rot_comp_2_reference_elast =
-      eigenvect_rot_vect_reference(2) - eigenvect_rot_vect_elast_pred_[gp](2);
-  const double delta_eigenvect_rot_comp_2_plast_elast =
-      eigenvect_rot_vect_plast_pred_[gp](2) - eigenvect_rot_vect_elast_pred_[gp](2);
-  optimal_xi_eigenvect_rot_[gp][2] = 0.0;
-  if (std::abs(delta_eigenvect_rot_comp_2_plast_elast) > 1.0e-8)
-  {
-    optimal_xi_eigenvect_rot_[gp][2] =
-        delta_eigenvect_rot_comp_2_reference_elast / delta_eigenvect_rot_comp_2_plast_elast;
-    FOUR_C_ASSERT_ALWAYS(
-        optimal_xi_eigenvect_rot_[gp][2] >= 0.0 && optimal_xi_eigenvect_rot_[gp][2] <= 1.0,
-        "Optimal interpolation factor: eigenvector rotation vector, component 2: {} for gp {} does "
-        "not lie between 0 ({}) and 1 "
-        "({})",
-        eigenvect_rot_vect_reference(2), gp, eigenvect_rot_vect_elast_pred_[gp](2),
-        eigenvect_rot_vect_plast_pred_[gp](2));
-  }
-  else
-  {
-    if (std::abs(delta_eigenvect_rot_comp_2_reference_elast) > 1.0e-8)
-      FOUR_C_ASSERT_ALWAYS(std::abs(delta_lambda_2_reference_elast) <= 1.0e-8,
-          "Optimal interpolation factor: eigenvector rotation vector, component 2: {} for gp {} "
-          "-> delta from plast ({}) to elast "
-          "({}) is 0, but reference ({}) is not !",
-          eigenvect_rot_vect_reference(2), gp, eigenvect_rot_vect_elast_pred_[gp](2),
-          eigenvect_rot_vect_plast_pred_[gp](2), eigenvect_rot_vect_reference(2));
+    std::cout << "optimal_xi_lambda_1 for gp " << gp << ": " << optimal_xi_lambda_1_[gp]
+              << std::endl;
+    std::cout << "optimal_xi_lambda_2 for gp " << gp << ": " << optimal_xi_lambda_2_[gp]
+              << std::endl;
+    std::cout << "optimal_xi_eigenvect_rot for gp " << gp << ": "
+              << optimal_xi_eigenvect_rot_[gp][0] << ", " << optimal_xi_eigenvect_rot_[gp][1]
+              << ", " << optimal_xi_eigenvect_rot_[gp][2] << std::endl;
+    DEBUG_LOG("END: Computation of optimal interpolation factors for gp " + std::to_string(gp));
   }
 }
 
