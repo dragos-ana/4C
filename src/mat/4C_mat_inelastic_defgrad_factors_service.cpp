@@ -749,6 +749,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
     compute_optimal_interp_factors(
         const int gp, const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_reference)
 {
+  // set numerical tolerance (equivalent to numerical zero)
+  const double numerical_tol{1.0e-12};
+
+
   // define reference matrix components
   Core::LinAlg::Matrix<3, 3> rot_matrix_reference{Core::LinAlg::Initialization::zero};
   Core::LinAlg::Matrix<3, 3> material_stretch_matrix_reference{Core::LinAlg::Initialization::zero};
@@ -762,7 +766,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   // decompositions match?
   Core::LinAlg::Matrix<3, 3> diff_rot_matrices{Core::LinAlg::Initialization::zero};
   diff_rot_matrices.update(1.0, rot_matrix_[gp], -1.0, rot_matrix_reference, 0.0);
-  if (diff_rot_matrices.norm2() > 1.0e-8)
+  if (diff_rot_matrices.norm2() > numerical_tol)
   {
 #ifdef DISPLAY_WARNINGS
     std::cout
