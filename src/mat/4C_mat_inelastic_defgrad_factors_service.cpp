@@ -142,7 +142,7 @@ namespace
 }  // namespace
 
 
-std::array<const int, 1> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::DEBUG_GPS{0};
+std::array<const int, 1> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::DEBUG_GPS{5};
 bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::debug_this_gp(const int gp)
 {
   for (int debug_gp : DEBUG_GPS)
@@ -538,7 +538,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 
   // elastic part is set as base matrix in any case
   Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, ref_locs, 0);
-
 
 
   // order eigenpairs with respect to the reference
