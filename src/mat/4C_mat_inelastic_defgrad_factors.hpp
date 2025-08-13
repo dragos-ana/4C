@@ -334,6 +334,12 @@ namespace Mat
       //! get boolean: use predictor adaptation before and in the Local
       //! Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_pred_adapt() const { return use_pred_adapt_; };
+      //! get boolean: check consistency of the matrices and their
+      //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
+      [[nodiscard]] bool check_consistency_pred_adapt() const
+      {
+        return check_consistency_pred_adapt_;
+      };
       //! get boolean: use the predictor interpolation factor from the predictor adaptation
       //! performed in the previous step at each GP to boost the
       //! performance of the predictor adaptation? (true: yes, false: no)
@@ -485,6 +491,11 @@ namespace Mat
       //! of the previous LNL) to boost the performance of the predictor
       //! adaptation?
       const bool use_optimal_pred_adapt_fact_;
+
+      //! boolean: check consistency of the matrices and their
+      //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
+      const bool check_consistency_pred_adapt_;
+
 
       //! boolean: use steepest descent direction if the Newton
       //! direction fails in single Local Newton iterations? (true: yes, false: no)
