@@ -2770,6 +2770,13 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "Local Newton Loop? (true: yes, false: "
                                 "no)",
                     .default_value = true}),
+            parameter<bool>("CHECK_CONSISTENCY_PRED_ADAPT",
+                {.description =
+                        "boolean: check the consistency of the matrices determined in the "
+                        "predictor adaptation algorithm, i.e., whether the extracted components "
+                        "recover the input matrices, and if the product of the elastic and plastic "
+                        "deformation gradients leads to the given deformation gradient",
+                    .default_value = true}),
             parameter<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION",
                 {.description = "boolean: use steepest descent direction in single Local Newton "
                                 "iterations if the Newton direction is not a descent direction?"
