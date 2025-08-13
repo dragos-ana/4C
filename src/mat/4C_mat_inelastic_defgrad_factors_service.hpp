@@ -166,15 +166,15 @@ namespace Mat
       std::vector<Core::LinAlg::Matrix<3, 3>> last_rightCG_;
 
       //! inverse plastic deformation gradient at the last time step (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_;
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_inverse_;
 
-      //! material stretch of the inverse plastic deformation gradient
+      //! spatial stretch of the plastic deformation gradient
       //! at the last time step (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_matstretch_;
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_spatial_stretch_;
 
       //! rotation of the inverse plastic deformation gradient
       //! at the last time step (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrd_inverse_rot_;
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_inverse_rot_;
 
       //! (equivalent) plastic strain at the last time step (for all Gauss points)
       std::vector<double> last_plastic_strain_;
@@ -194,7 +194,7 @@ namespace Mat
 
 
       //! current inverse plastic deformation gradient (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> current_plastic_defgrd_inverse_;
+      std::vector<Core::LinAlg::Matrix<3, 3>> current_plastic_defgrad_inverse_;
 
       //! current plastic strain (for all Gauss points)
       std::vector<double> current_plastic_strain_;
@@ -204,7 +204,7 @@ namespace Mat
 
       //! inverse plastic deformation gradient at the last computed time instant (after the last
       //! converged substep)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_substep_plastic_defgrd_inverse_;
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_substep_plastic_defgrad_inverse_;
       //! plastic strain at the last computed time instant (after the last converged substep)
       std::vector<double> last_substep_plastic_strain_;
     };
@@ -1298,7 +1298,7 @@ namespace Mat
     };
 
     // display / log evaluation warnings
-    // #define DISPLAY_WARNINGS ;
+#define DISPLAY_WARNINGS ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
