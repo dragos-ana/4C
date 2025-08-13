@@ -646,17 +646,18 @@ namespace
               << 0.0 << "- " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](2) << "\n"
               << std::endl;
   }
+*/
 
-
-  // DEBUG
-  Core::LinAlg::Matrix<3, 3> debug_precondition_matrix(
-      const Core::LinAlg::Matrix<3, 3>& input_matrix)
+  // precondition matrix for spectral-polar decomposition: set entries
+  // smaller than a set numerical tolerance to 0
+  Core::LinAlg::Matrix<3, 3> precondition_matrix(const Core::LinAlg::Matrix<3, 3>& input_matrix)
   {
+    // DEBUG
+    std::cout << "precondition called" << std::endl;
+
+
     // numerical tolerance for a number to be set as 0.0
     const double num_tolerance = 1.0e-14;
-
-    std::cout << "preconditioning called" << std::endl;
-
     Core::LinAlg::Matrix<3, 3> output_matrix{input_matrix};
     for (int i = 0; i < 3; ++i)
     {
@@ -668,8 +669,6 @@ namespace
 
     return output_matrix;
   }
-
-              */
 
 }  // namespace
 
@@ -859,6 +858,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
       use_optimal_pred_adapt_fact_(matdata.parameters.get<bool>("USE_OPTIMAL_PRED_ADAPT_FACT")),
       check_consistency_pred_adapt_(matdata.parameters.get<bool>("CHECK_CONSISTENCY_PRED_ADAPT")),
+      precondition_matrices_pred_adapt_(
+          matdata.parameters.get<bool>("PRECONDITION_MATRICES_PRED_ADAPT")),
       use_steepest_descent_update_correction_(
           matdata.parameters.get<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION")),
       use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
@@ -2034,8 +2035,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
           time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
           time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_],
           time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_]);
-  /*Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad_plastic_pred =
-      debug_precondition_matrix(inv_plastic_defgrad_plastic_pred_temp);*/
+  /*  Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad_plastic_pred =
+        debug_precondition_matrix(inv_plastic_defgrad_plastic_pred_temp); */
 
 
 
@@ -2099,9 +2100,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
 
 
   // preevaluate predictor adaptation factors
-  pred_adapt_utils_.pre_evaluate(gp_, time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
-      inv_plastic_defgrad_plastic_pred);
-
+  if (parameter()->precondition_matrices_pred_adapt())
+  {
+    pred_adapt_utils_.pre_evaluate(gp_,
+        precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_]),
+        precondition_matrix(inv_plastic_defgrad_plastic_pred));
+  }
+  else
+  {
+    pred_adapt_utils_.pre_evaluate(gp_, time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
+        inv_plastic_defgrad_plastic_pred);
+  }
 
   // consistency check: can we recover the inverse plastic deformation
   // gradient within the plastic predictor from its extract spectral-polar decomposed
@@ -3097,6 +3106,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   }
   else  // predictor does not suffice
   {
+    // DEBUG
+    std::cout << "PLASTIC FLOW " << std::endl;
+
+
+
     // perform time integration via the Local Newton-Raphson Loop (LNL), using the elastic
     // predictor
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
@@ -3211,8 +3225,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   {
     if (parameter()->use_optimal_pred_adapt_fact() || parameter()->analyze_timint())
     {
-      pred_adapt_utils_.compute_optimal_interp_factors(
-          gp, time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
+      if (parameter()->precondition_matrices_pred_adapt())
+      {
+        pred_adapt_utils_.compute_optimal_interp_factors(
+            gp, precondition_matrix(time_step_quantities_.current_plastic_defgrad_inverse_[gp]));
+      }
+      else
+      {
+        pred_adapt_utils_.compute_optimal_interp_factors(
+            gp, time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
+      }
     }
   }
 

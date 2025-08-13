@@ -340,6 +340,13 @@ namespace Mat
       {
         return check_consistency_pred_adapt_;
       };
+      //! get boolean: precondition matrices for the predictor adaptation
+      //! algorithm, i.e., set components smaller than a set numerical
+      //! tolerance to 0? (true: yes, false: no)
+      [[nodiscard]] bool precondition_matrices_pred_adapt() const
+      {
+        return precondition_matrices_pred_adapt_;
+      };
       //! get boolean: use the predictor interpolation factor from the predictor adaptation
       //! performed in the previous step at each GP to boost the
       //! performance of the predictor adaptation? (true: yes, false: no)
@@ -495,6 +502,11 @@ namespace Mat
       //! boolean: check consistency of the matrices and their
       //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
       const bool check_consistency_pred_adapt_;
+
+      //! boolean: precondition matrices for the predictor adaptation
+      //! algorithm, i.e., set components smaller than a set numerical
+      //! tolerance to 0? (true: yes, false: no)
+      const bool precondition_matrices_pred_adapt_;
 
 
       //! boolean: use steepest descent direction if the Newton
