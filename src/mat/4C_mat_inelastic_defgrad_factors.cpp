@@ -468,10 +468,6 @@ namespace
     Core::LinAlg::Matrix<3, 3> Knp{Core::LinAlg::Initialization::zero};
     Knp.multiply_nn(1.0, U_Fenp_elast_pred, last_FinM_spatstretch, 0.0);
 
-    // DEBUG
-    std::cout << "Knp: " << std::endl;
-    Knp.print(std::cout);
-
     // compute the material stretch matrix $
     // \boldsymbol{U}_{\boldsymbol{K}_{n+1}} $ and its isochoric
     // component $\boldsymbol{U}_{\mathrm{iso}} = \left[ \det
@@ -574,22 +570,12 @@ namespace
     eigenval_matrix(2, 2) = lambda_3;
 
 
-    // DEBUG
-    std::cout << "RECOVERY: eigenval_matrix: " << std::endl;
-    eigenval_matrix.print(std::cout);
-
     // construct eigenvector matrix
     Core::LinAlg::Matrix<3, 3> rel_eigenvect_rot_matrix =
         Core::LinAlg::calc_rot_matrix_from_rot_vect(rel_eigenvect_rot_vect);
     Core::LinAlg::Matrix<3, 3> eigenvect_rot_matrix{Core::LinAlg::Initialization::zero};
     eigenvect_rot_matrix.multiply_nn(
         1.0, reference_eigenvect_rot_matrix, rel_eigenvect_rot_matrix, 0.0);
-
-
-    // DEBUG
-    std::cout << "RECOVERY: eigenvect_rot_matrix: " << std::endl;
-    eigenvect_rot_matrix.print(std::cout);
-
 
 
     // construct output matrix
@@ -599,63 +585,15 @@ namespace
     QTLQ.multiply_tn(1.0, eigenvect_rot_matrix, LQ, 0.0);
     output.multiply_nn(1.0, rot_matrix, QTLQ, 0.0);
 
-    // DEBUG
-    std::cout << "RECOVERY: rot_matrix: " << std::endl;
-    rot_matrix.print(std::cout);
-
-
-    // DEBUG
-    std::cout << "RECOVERY: output: " << std::endl;
-    output.print(std::cout);
-
-
 
     return output;
   }
 
 
-  // DEBUG
-  /*
-  void debug_predictor_state(const int gp, const Core::LinAlg::Matrix<10, 1>& pred,
-      const PredictorAdaptationUtils& pred_adapt_utils)
-  {
-    std::cout << "predictor: " << std::endl;
-    pred.print(std::cout);
-    std::cout << "factors: " << std::endl;
-    std::cout << pred_adapt_utils.current_xi_lambda_1_[gp] << ", "
-              << pred_adapt_utils.current_xi_lambda_2_[gp] << ", "
-              << pred_adapt_utils.current_xi_eigenvect_rot_[gp][0] << ", "
-              << pred_adapt_utils.current_xi_eigenvect_rot_[gp][1] << ", "
-              << pred_adapt_utils.current_xi_eigenvect_rot_[gp][1] << std::endl;
-    std::cout << "bounds: " << std::endl;
-    std::cout << pred_adapt_utils.xi_l_lambda_1_ << "- " << pred_adapt_utils.xi_u_lambda_1_ << "\n"
-              << pred_adapt_utils.xi_l_lambda_2_ << "- " << pred_adapt_utils.xi_u_lambda_2_ << "\n"
-              << pred_adapt_utils.xi_l_eigenvect_rot_[0] << "- "
-              << pred_adapt_utils.xi_u_eigenvect_rot_[0] << "\n"
-              << pred_adapt_utils.xi_l_eigenvect_rot_[1] << "- "
-              << pred_adapt_utils.xi_u_eigenvect_rot_[1] << "\n"
-              << pred_adapt_utils.xi_l_eigenvect_rot_[2] << "- "
-              << pred_adapt_utils.xi_u_eigenvect_rot_[2] << std::endl;
-    std::cout << "values: " << std::endl;
-    std::cout << pred_adapt_utils.lambda_1_elast_pred_[gp] << "- "
-              << pred_adapt_utils.lambda_1_plast_pred_[gp] << "\n"
-              << pred_adapt_utils.lambda_2_elast_pred_[gp] << "- "
-              << pred_adapt_utils.lambda_2_plast_pred_[gp] << "\n"
-              << 0.0 << "- " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](0) << "\n"
-              << 0.0 << "- " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](1) << "\n"
-              << 0.0 << "- " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](2) << "\n"
-              << std::endl;
-  }
-*/
-
   // precondition matrix for spectral-polar decomposition: set entries
   // smaller than a set numerical tolerance to 0
   Core::LinAlg::Matrix<3, 3> precondition_matrix(const Core::LinAlg::Matrix<3, 3>& input_matrix)
   {
-    // DEBUG
-    std::cout << "precondition called" << std::endl;
-
-
     // numerical tolerance for a number to be set as 0.0
     const double num_tolerance = 1.0e-14;
     Core::LinAlg::Matrix<3, 3> output_matrix{input_matrix};
@@ -2077,23 +2015,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
 
 
 
-      // DEBUG
-      std::cout << "defgrad: " << std::endl;
-      defgrad.print(std::cout);
-      std::cout << "inv_plastic_defgrad_plast_pred: " << std::endl;
-      inv_plastic_defgrad_plastic_pred.print(std::cout);
-      std::cout << "elast_defgrad_plast_pred: " << std::endl;
-      elastic_defgrad_plastic_pred.print(std::cout);
-      std::cout << "last_inv_plast_defgrad: " << std::endl;
-      time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
-      std::cout << "last_plast_defgrad_spatial_stretch: " << std::endl;
-      time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_].print(std::cout);
-      std::cout << "last_plast_defgrad" << std::endl;
-      Core::LinAlg::Matrix<3, 3> last_plast_defgrad{Core::LinAlg::Initialization::zero};
-      last_plast_defgrad.invert(time_step_quantities_.last_plastic_defgrad_inverse_[gp_]);
-      last_plast_defgrad.print(std::cout);
-
-
       FOUR_C_THROW("Failed consistency check for predictor adaptation");
     }
   }
@@ -2167,16 +2088,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     general_local_timint_analysis_utils.reset();
     general_local_timint_analysis_utils.is_reset_current_timestep_ = true;
   }
-
-
-  // DEBUG
-  std::cout << "### GP = " << gp_ << std::endl;
-  std::cout << "deformation gradient (saved): " << std::endl;
-  time_step_quantities_.current_defgrad_[gp_].print(std::cout);
-  std::cout << "inverse plastic deformation gradient (plastic deformation gradient): " << std::endl;
-  inv_plastic_defgrad_plastic_pred.print(std::cout);
-  std::cout << "defgrad used for its determination: " << std::endl;
-  defgrad.print(std::cout);
 }
 
 
@@ -3067,10 +2978,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     return;
   }
 
-  // DEBUG
-  std::cout << "before calling prepare_non_repeat_tasks: defgrad: " << std::endl;
-  defgrad->print(std::cout);
-
   // perform non-repeatable pre-evaluation tasks (non-repeatable: not
   // called in the redundant evaluate call, which is already handled
   // above!)
@@ -3106,11 +3013,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   }
   else  // predictor does not suffice
   {
-    // DEBUG
-    std::cout << "PLASTIC FLOW " << std::endl;
-
-
-
     // perform time integration via the Local Newton-Raphson Loop (LNL), using the elastic
     // predictor
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
@@ -3127,20 +3029,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       // increment the number of performed predictor adaptations
       ++pred_adapt_utils_.num_of_pred_adapt_;
     }
-
-
-    // DEBUG
-    std::cout << "Initial adaptation of the predictor for GP " << gp_ << std::endl;
-    std::cout << "x: " << std::endl;
-    x.print(std::cout);
-    std::cout << "x_adapted: " << std::endl;
-    x_adapted.print(std::cout);
-    std::cout << "rel_eigenvect_rot_vect: " << std::endl;
-    std::cout << pred_adapt_utils_.rel_eigenvect_rot_vect_plast_pred_[gp_](0) << ", "
-              << pred_adapt_utils_.rel_eigenvect_rot_vect_plast_pred_[gp_](1) << ", "
-              << pred_adapt_utils_.rel_eigenvect_rot_vect_plast_pred_[gp_](2) << std::endl;
-    std::cout << "eigenvect_matrix_elast_pred: " << std::endl;
-    pred_adapt_utils_.eigenvect_rot_matrix_elast_pred_[gp_].print(std::cout);
 
 
     // get solution via time integration (Local Newton Loop LNL)
@@ -3209,6 +3097,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // output
   if (!lnl_data_.is_Gauss_point_output_every_global_iter_) ++lnl_data_.globiter_or_timestep_index_;
 
+  // initialize error status for subsequent computations
+  ErrorType err_status{InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors};
 
 
   // initialize inverse material stretch tensor (of the inverse
@@ -3225,15 +3115,39 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   {
     if (parameter()->use_optimal_pred_adapt_fact() || parameter()->analyze_timint())
     {
-      if (parameter()->precondition_matrices_pred_adapt())
+      // ----------------------------------------------- //
+      // first check whether there is plastic flow at all: only then, we
+      // calculate the optimal interpolation factors
+      // ----------------------------------------------- //
+
+      // compute state quantities
+      StateQuantities current_state_quantities =
+          evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
+              time_step_quantities_.current_plastic_defgrad_inverse_[gp],
+              time_step_quantities_.current_plastic_strain_[gp], err_status, time_step_tracker_.dt_,
+              StateQuantityEvalType::PlasticStrainRateOnly);
+
+      // verify whether plastic flow occurs: in that case compute the
+      // optimal interpolation factors with/without preconditioning;
+      // else: set all optimal values to 0.0 = elastic predictor
+      if (std::abs(current_state_quantities.curr_equiv_plastic_strain_rate_) > 0.0)
       {
-        pred_adapt_utils_.compute_optimal_interp_factors(
-            gp, precondition_matrix(time_step_quantities_.current_plastic_defgrad_inverse_[gp]));
+        if (parameter()->precondition_matrices_pred_adapt())
+        {
+          pred_adapt_utils_.compute_optimal_interp_factors(
+              gp, precondition_matrix(time_step_quantities_.current_plastic_defgrad_inverse_[gp]));
+        }
+        else
+        {
+          pred_adapt_utils_.compute_optimal_interp_factors(
+              gp, time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
+        }
       }
       else
       {
-        pred_adapt_utils_.compute_optimal_interp_factors(
-            gp, time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
+        pred_adapt_utils_.optimal_xi_lambda_1_[gp] = 0.0;
+        pred_adapt_utils_.optimal_xi_lambda_2_[gp] = 0.0;
+        pred_adapt_utils_.optimal_xi_eigenvect_rot_[gp] = std::array<double, 3>{0.0, 0.0, 0.0};
       }
     }
   }
