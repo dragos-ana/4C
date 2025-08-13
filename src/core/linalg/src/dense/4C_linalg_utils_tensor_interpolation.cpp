@@ -743,6 +743,22 @@ Core::LinAlg::SecondOrderTensorInterpolator<1>::get_interpolation_gradient(
       ref_matrices, converted_ref_locs, converted_interp_loc, err_type, perturbation_factor);
 }
 
+
+/*!
+ * @brief Order the eigenpairs of a given matrix w.r.t. the eigenpairs of a reference
+ * matrix to yield minimal rotations between corresponding eigenvectors (eigenvalues assumed
+ * to already be sorted from highest to lowest in the eigenpairs)
+ *
+ * @note This ordering procedure is relevant in case of multiple eigenvalues, for which the
+ * eigenpairs have to be ordered properly w.r.t. reference eigenpairs
+ * For further information, refer to:
+ *    -# Satheesh et al., Structure-Preserving Invariant Interpolation Schemes for
+ * Invertible Second-Order Tensors, Int J Number Methods Eng. 2024, 125, 10.1002/nme.7373,
+ * Section 5.1
+ *
+ * @param[in]  ref_eigenpairs  eigenpairs of the reference matrix
+ * @param[in|out]  eigenpairs  eigenpairs to be sorted w.r.t. reference matrix
+ */
 void Core::LinAlg::order_eigenpairs_wrt_reference(
     const std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>& ref_eigenpairs,
     std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>& eigenpairs)
@@ -756,7 +772,7 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
   Core::LinAlg::Matrix<1, 1> next_scalar_prod;
   for (int i = 0; i < 2; ++i)
   {
-    // set the tensor_ind to the current index, before verifying for multiple eigenvalues
+    // set the tensor index to the current index, before verifying for multiple eigenvalues
     tensor_ind = i;
 
     // determine the current scalar product of the tensor eigenvector and the reference
@@ -819,6 +835,27 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
                             eigenpairs[0].second(1) * eigenpairs[1].second(0);
 }
 
+
+
+/*!
+ * @brief Align the eigenpairs of the base matrix (nearest to the interpolation point) in case
+ *  of multiple eigenvalues
+ *
+ *  The eigenpairs of the base matrix are reordered in case of multiple eigenvalues to yield
+ *  minimal rotations w.r.t. the eigenpairs of the other matrices.
+ *  Theoretically, some matrices will be favored in this reordering process, since there are
+ *  max. 6 possible ways to reorder the eigenvectors of the base matrix (for a triple
+ * eigenvalue). The following criteria determine the reordering result (priority: 1-> highest):
+ *  1. Distance of the location point (the matrix whose location lies nearest to the base
+ * matrix is favored)
+ *  2. Highest eigenvalue (the matrix with the overall highest eigenvalue is favored in the
+ * reordering process)
+ *
+ * @param[in|out]  spectral_pairs  all spectral pairs (eigenvalue, eigenvector) of all
+ *                                 available matrices used for interpolation
+ * @param[in]  ref_locs  locations \f$ \boldsymbol{x}_j \f$ of the reference matrices
+ * @param[in]  base_ind  index of the base matrix within spectral_pairs
+ */
 template <unsigned int loc_dim>
 void Core::LinAlg::align_eigenpairs_of_base_matrix(
     std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>>& spectral_pairs,
