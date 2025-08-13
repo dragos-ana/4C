@@ -2777,6 +2777,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "recover the input matrices, and if the product of the elastic and plastic "
                         "deformation gradients leads to the given deformation gradient",
                     .default_value = true}),
+            parameter<bool>("PRECONDITION_MATRICES_PRED_ADAPT",
+                {.description = "boolean: precondition the matrices for predictor adaptation, "
+                                "i.e., set components smaller than a set numerical tolerance to 0?",
+                    .default_value = true}),
             parameter<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION",
                 {.description = "boolean: use steepest descent direction in single Local Newton "
                                 "iterations if the Newton direction is not a descent direction?"
