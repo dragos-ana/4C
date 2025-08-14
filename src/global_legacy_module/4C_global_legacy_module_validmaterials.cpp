@@ -2897,9 +2897,26 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description = "output relevant data from each microiteration of the line search "
                                 "algorithm(s) to a dedicated csv file?",
                     .default_value = false}),
-            parameter<double>("LOCAL_NEWTON_TOL",
-                {.description = "convergence tolerance for the Local Newton-Raphson scheme",
-                    .default_value = 1.0e-8})},
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck>(
+                "LOCAL_NEWTON_CONV_CHECK",
+                {.description = "convergence check/checks used for the Local Newton-Raphson scheme",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        LocalNewtonConvCheck::ResidualAndIncrement}),
+            parameter<double>("LOCAL_NEWTON_RES_TOL",
+                {.description = "convergence tolerance for the Local "
+                                "Newton-Raphson scheme (absolute residual value)",
+                    .default_value = 1.0e-8}),
+            parameter<double>("LOCAL_NEWTON_INCR_TOL",
+                {.description = "convergence tolerance for the Local Newton-Raphson scheme (for "
+                                "solution increment)",
+                    .default_value = 1.0e-8}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont>(
+                "LOCAL_NEWTON_DIVER_CONT",
+                {.description = "strategy to deal with divergence in the Local Newton Loop",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        LocalNewtonDiverCont::Stop})
+
+        },
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
                         "viscoplasticity laws (flow rule + hardening model)"});
