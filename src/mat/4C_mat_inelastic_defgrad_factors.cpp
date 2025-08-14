@@ -859,7 +859,12 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<bool>("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER")),
       use_csv_output_line_search_micro_iter_(
           matdata.parameters.get<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER")),
-      local_newton_tol_(matdata.parameters.get<double>("LOCAL_NEWTON_TOL"))
+      local_newton_res_tol_(matdata.parameters.get<double>("LOCAL_NEWTON_RES_TOL")),
+      local_newton_incr_tol_(matdata.parameters.get<double>("LOCAL_NEWTON_INCR_TOL")),
+      local_newton_conv_check_(
+          matdata.parameters.get<LocalNewtonConvCheck>("LOCAL_NEWTON_CONV_CHECK")),
+      local_newton_diver_cont_(
+          matdata.parameters.get<LocalNewtonDiverCont>("LOCAL_NEWTON_DIVER_CONT"))
 {
   // consistency checks
   if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
@@ -1864,7 +1869,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       csv_output_tracking_data_{},
       csv_output_pred_adapt_micro_iter_data_{csv_output_tracking_data_},
       csv_output_line_search_micro_iter_data_{csv_output_tracking_data_},
-      lnl_data_(parameter()->local_newton_tol())
+      lnl_data_(parameter()->local_newton_res_tol(), parameter()->local_newton_incr_tol(),
+          parameter()->local_newton_conv_check(), parameter()->local_newton_diver_cont())
 {
   // set time step size to 0.0 (this is set to the correct and current value in the preevaluate
   // method)
@@ -2054,15 +2060,27 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
 
 
   // DEBUG
-  std::cout << std::setprecision(16);
-  std::cout << "------ Preevaluation of GP " << gp_ << std::endl;
-  std::cout << "defgrad: " << std::endl;
-  defgrad.print(std::cout);
-  std::cout << "inv_plastic_defgrad_elastic_pred: " << std::endl;
-  time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
-  std::cout << "inv_plastic_defgrad_plastic_pred: " << std::endl;
-  inv_plastic_defgrad_plastic_pred.print(std::cout);
-
+  {
+    std::cout << std::setprecision(16);
+    std::cout << "------ Preevaluation of GP " << gp_ << std::endl;
+    std::cout << "defgrad: " << std::endl;
+    defgrad.print(std::cout);
+    std::cout << "inv_plastic_defgrad_elastic_pred: " << std::endl;
+    time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
+    std::cout << "inv_plastic_defgrad_plastic_pred: " << std::endl;
+    inv_plastic_defgrad_plastic_pred.print(std::cout);
+    std::cout << "previous rotation: " << std::endl;
+    time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_].print(std::cout);
+    std::cout << "previous material stretch: " << std::endl;
+    time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_].print(std::cout);
+    std::cout << "...their product: " << std::endl;
+    Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
+    temp.multiply_nn(1.0, time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_],
+        time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_], 0.0);
+    temp.print(std::cout);
+    std::cout << "... vs the stored last inverse plastic defgrad: " << std::endl;
+    time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
+  }
 
 
   // preevaluate predictor adaptation factors
@@ -3275,15 +3293,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     }
   }
 
-  // determine plastic deformation gradient from its inverse
+  // determine plastic deformation gradient from its inverse (at each
+  // GP separately, in the subsequent loop)
   Core::LinAlg::Matrix<3, 3> current_plastic_defgrad{Core::LinAlg::Initialization::zero};
-  current_plastic_defgrad.invert(time_step_quantities_.current_plastic_defgrad_inverse_[gp_]);
+
 
   // loop over Gauss points:  update of the material stretch and the rotation of
   // the inverse inelastic defgrad (last_ values are updated, but we
   // use the current_ values since they were not updated yet)
   for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrad_inverse_.size(); ++gp)
   {
+    current_plastic_defgrad.invert(time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
+
     time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp] =
         Core::LinAlg::matrix_3x3_spatial_stretch(current_plastic_defgrad);
     time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp].multiply_nn(1.0,
@@ -3752,8 +3773,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // (\boldsymbol{r}^{T}\boldsymbol{r})$
   Core::LinAlg::Matrix<10, 1> gradient_quadratic_residual{Core::LinAlg::Initialization::zero};
 
-  // declare the line search step size \f$ alpha \f$
+  // declare the line search step size \f$ \alpha \f$
   double alpha = 1.0;
+
+  // relative solution increment \f$ \alpha \frac{ \left| \Delta \boldsymbol{s}^{(l)}
+  // \right| }{ \boldsymbol{s}^{l+1}}  \f$ (initially zero, because we have set the full increment
+  // dx above to 0)
+  double rel_sol_incr_norm{0.0};
 
   // initialize error management action
   ErrorAction err_action{ErrorAction::continue_iteration};
@@ -3762,7 +3788,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   Core::LinAlg::TensorInterpolationErrorType tensor_interp_err_status =
       Core::LinAlg::TensorInterpolationErrorType::NoErrors;
 
-
+  // initialize boolean for convergence check
+  bool converged{false};
 
   // substepping procedures
   while (
@@ -3907,16 +3934,33 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // 2-norm of the residual
       residualNorm2 = residual.norm2();
 
+      // 2-norm of the solution increment
+      rel_sol_incr_norm = alpha * dx.norm2() / sol.norm2();
 
       // DEBUG
       {
         std::cout << "residual: " << residualNorm2 << std::endl;
+        std::cout << "rel_sol_incr_norm: " << rel_sol_incr_norm << std::endl;
       }
 
-
-
       // check convergence
-      if (residualNorm2 < lnl_data_.tol_)
+      switch (lnl_data_.conv_check_)
+      {
+        case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::ResidualOnly:
+          converged = (residualNorm2 < lnl_data_.res_tol_);
+          break;
+        case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::IncrementOnly:
+          converged = (rel_sol_incr_norm < lnl_data_.incr_tol_);
+          break;
+        case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+            ResidualAndIncrement:
+          converged =
+              (residualNorm2 < lnl_data_.res_tol_ && rel_sol_incr_norm < lnl_data_.incr_tol_);
+          break;
+        default:
+          FOUR_C_THROW("You should not be here (convergence checking of the Local Newton Loop)");
+      }
+      if (converged)
       {
         // this means the current substep has converged: we need to update values of the
         // last_substep_ quantities, the time parameter, the substep count and to
@@ -3960,35 +4004,133 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // proceed with a smaller time step in the substepping scheme!
       if (lnl_data_.iter_ > lnl_data_.max_iter_)
       {
-        // substepping procedure
-        if (parameter()->use_substepping())
+        switch (lnl_data_.diver_cont_)
         {
-          new_substep_status = prepare_new_substep(sol, curr_CM);
-          // if the halving number was exceeded --> return with error
-          if (!new_substep_status)
+          case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
+              Stop:
           {
+            // substepping procedure
+            if (parameter()->use_substepping())
+            {
+              new_substep_status = prepare_new_substep(sol, curr_CM);
+              // if the halving number was exceeded --> return with error
+              if (!new_substep_status)
+              {
+                err_status = ErrorType::no_convergence_local_newton;
+                return sol;  // return with error
+              }
+              continue;
+            }
+
+
+            // write the data of the failed LNL to csv
+            if (parameter()->use_csv_output_failed_local_newton_iter())
+              lnl_data_.write_failed_lnl_iteration_data_to_csv(
+                  CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                      .gp_ = gp_,
+                      .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                      .tnp_ = time_step_tracker_.tnp_,
+                      .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                      .lnl_iter_ = lnl_data_.iter_ - 1});
+
+
+            // if no substepping is applied: then we have nor converged,
+            // return with error
             err_status = ErrorType::no_convergence_local_newton;
-            return sol;  // return with error
+            return sol;
+
+            break;
           }
-          continue;
+          case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
+              Continue:
+          case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
+              ContinueWithSafeGuard:
+          {
+            // write the data of the failed LNL to csv
+            if (parameter()->use_csv_output_failed_local_newton_iter())
+              lnl_data_.write_failed_lnl_iteration_data_to_csv(
+                  CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+                      .gp_ = gp_,
+                      .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+                      .tnp_ = time_step_tracker_.tnp_,
+                      .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                      .lnl_iter_ = lnl_data_.iter_ - 1});
+
+
+            // throw warning
+            std::cout << "WARNING: The Local Newton Loop for ele_gid = " << ele_gid_
+                      << ", gp = " << gp_ << " did not reach convergence after "
+                      << lnl_data_.max_iter_ << " iterations: residualNorm2 = " << residualNorm2
+                      << ", increment = " << rel_sol_incr_norm << std::endl;
+
+            // safeguard check: is the current solution within the
+            // bounds posed by the
+            // maximum exceedance?
+            if (lnl_data_.diver_cont_ == InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                             LocalNewtonDiverCont::ContinueWithSafeGuard)
+            {
+              switch (lnl_data_.conv_check_)
+              {
+                case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    LocalNewtonConvCheck::ResidualOnly:
+                {
+                  FOUR_C_ASSERT_ALWAYS(
+                      residualNorm2 < (lnl_data_.res_tol_ * lnl_data_.max_exceedance_fact_res_tol_),
+                      "Residual {} exceeds the residual tolerance {} by more than the set "
+                      "exceedance tolerance factor {}!",
+                      residualNorm2, lnl_data_.res_tol_, lnl_data_.max_exceedance_fact_res_tol_);
+
+                  break;
+                }
+                case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    LocalNewtonConvCheck::IncrementOnly:
+                {
+                  FOUR_C_ASSERT_ALWAYS(
+                      rel_sol_incr_norm <
+                          (lnl_data_.incr_tol_ + lnl_data_.max_exceedance_fact_incr_tol_),
+                      "Relative increment {} exceeds the increment tolerance {} by more than the "
+                      "set "
+                      "exceedance tolerance factor {}!",
+                      rel_sol_incr_norm, lnl_data_.incr_tol_,
+                      lnl_data_.max_exceedance_fact_incr_tol_);
+
+                  break;
+                }
+                case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    LocalNewtonConvCheck::ResidualAndIncrement:
+                {
+                  FOUR_C_ASSERT_ALWAYS(
+                      (residualNorm2 <
+                          (lnl_data_.res_tol_ + lnl_data_.max_exceedance_fact_res_tol_)) &&
+                          (rel_sol_incr_norm <
+                              (lnl_data_.incr_tol_ + lnl_data_.max_exceedance_fact_incr_tol_)),
+                      "Residual {} and relative increment {} exceeds the tolerance {} and {} by "
+                      "more than the "
+                      "set "
+                      "exceedance tolerance factors {} and {}!",
+                      residualNorm2, rel_sol_incr_norm, lnl_data_.res_tol_, lnl_data_.incr_tol_,
+                      lnl_data_.max_exceedance_fact_res_tol_,
+                      lnl_data_.max_exceedance_fact_incr_tol_);
+                  break;
+                }
+                default:
+                  FOUR_C_THROW(
+                      "You should not be here (safeguard checking for divergence management in the "
+                      "Local Newton Loop)");
+              }
+            }
+
+            // we set the error status to no errors (to continue with
+            // the simulation even though no convergence was reached)
+            err_status = ErrorType::no_errors;
+            return sol;
+
+            break;
+          }
+          default:
+            FOUR_C_THROW(
+                "You should not be here (divergence management strategy for Local Newton Loop)");
         }
-
-
-        // write the data of the failed LNL to csv
-        if (parameter()->use_csv_output_failed_local_newton_iter())
-          lnl_data_.write_failed_lnl_iteration_data_to_csv(
-              CSVOutputTrackingData{.ele_gid_ = ele_gid_,
-                  .gp_ = gp_,
-                  .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
-                  .tnp_ = time_step_tracker_.tnp_,
-                  .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
-                  .lnl_iter_ = lnl_data_.iter_ - 1});
-
-
-        // if no substepping is applied: then we have nor converged,
-        // return with error
-        err_status = ErrorType::no_convergence_local_newton;
-        return sol;
       }
 
       // compute Jacobian
@@ -4093,7 +4235,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
 
         // compute line search step size
-        alpha = get_line_search_step(sol, curr_CM, residual, lnl_data_.tol_, dx, err_status);
+        alpha = get_line_search_step(sol, curr_CM, residual, dx, err_status);
 
         // general local time integration analysis: increment number of searches and stop timer
         if (parameter()->analyze_timint())
@@ -4621,8 +4763,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
  *--------------------------------------------------------------------*/
 double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
     const Core::LinAlg::Matrix<10, 1>& curr_sol, const Core::LinAlg::Matrix<3, 3>& CM,
-    const Core::LinAlg::Matrix<10, 1>& curr_res, const double tolLNL,
-    const Core::LinAlg::Matrix<10, 1>& incr, ErrorType& err_status)
+    const Core::LinAlg::Matrix<10, 1>& curr_res, const Core::LinAlg::Matrix<10, 1>& incr,
+    ErrorType& err_status)
 {
   if (parameter()->use_csv_output_line_search_micro_iter())
   {
@@ -4711,14 +4853,21 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
   // minimization function \f$ f_{\mathrm{next}} = \| \boldsymbol{r}_{\mathrm{next}} \|^2 \f$
   double next_f{1.0e8};
 
-  // compute squared increment, used afterwards to check the
+  // compute squared increment (and 2-norm), used afterwards to check the
   // backtracking condition
-  double incr_squared = incr.norm2();
-  incr_squared *= incr_squared;
+  double incr_norm = incr.norm2();
+  double incr_squared = incr_norm * incr_norm;
+
+  // compute relative increment norm, i.e.,  \f$ \frac{\Delta
+  // \boldsymbol{s}^{l}}{ \boldsymbol{s}^{l} } \f$
+  double rel_incr_norm{incr_norm / next_sol.norm2()};
 
   // counter for the times we have decreased the line search parameter
   // in the backtracking algorithm
   unsigned int dec_times = 0;
+
+  // initialize boolean for convergence check
+  bool converged{false};
 
   // backtracking algorithm: decrease line search parameter until the
   // backtracking condition is met
@@ -4815,8 +4964,28 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
           dec_times - 1);
     }
 
+    // update relative increment norm
+    rel_incr_norm = alpha * incr_norm / next_sol.norm2();
+
+    // first check for LNL convergence
+    switch (lnl_data_.conv_check_)
+    {
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::ResidualOnly:
+        converged = (next_res_norm < lnl_data_.res_tol_);
+        break;
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::IncrementOnly:
+        converged = (rel_incr_norm < lnl_data_.incr_tol_);
+        break;
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+          ResidualAndIncrement:
+        converged = (next_res_norm < lnl_data_.res_tol_ && rel_incr_norm < lnl_data_.incr_tol_);
+        break;
+      default:
+        FOUR_C_THROW("You should not be here (convergence checking of the Local Newton Loop)");
+    }
+
     // check backtracking condition / LNL convergence
-    if ((next_f < curr_f - 2.0 * rho * alpha * incr_squared) || (next_res_norm < tolLNL))
+    if ((next_f < curr_f - 2.0 * rho * alpha * incr_squared) || converged)
     {
       // general local time integration analysis: set number of required iterations
       general_local_timint_analysis_utils.eval_num_of_line_search_iters_ += dec_times;

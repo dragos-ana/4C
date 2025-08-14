@@ -453,7 +453,24 @@ namespace Mat
       }
 
       //! get convergence tolerance for the Local Newton-Raphson scheme
-      [[nodiscard]] double local_newton_tol() { return local_newton_tol_; }
+      //! (absolute residual value)
+      [[nodiscard]] double local_newton_res_tol() { return local_newton_res_tol_; }
+
+      //! get convergence tolerance for the Local Newton-Raphson scheme
+      //! (2-norm of solution increment)
+      [[nodiscard]] double local_newton_incr_tol() { return local_newton_incr_tol_; }
+
+      //! get convergence check strategy for the Local Newton-Raphson scheme
+      [[nodiscard]] LocalNewtonConvCheck local_newton_conv_check()
+      {
+        return local_newton_conv_check_;
+      }
+
+      //! strategy in case of divergence of the Local Newton-Raphson scheme
+      [[nodiscard]] LocalNewtonDiverCont local_newton_diver_cont()
+      {
+        return local_newton_diver_cont_;
+      }
 
      private:
       //! ID of the viscoplasticity law
@@ -571,7 +588,18 @@ namespace Mat
       const bool use_csv_output_line_search_micro_iter_;
 
       //! convergence tolerance for the Local Newton-Raphson scheme
-      const double local_newton_tol_;
+      //! (absolute residual value)
+      const double local_newton_res_tol_;
+
+      //! convergence tolerance for the Local Newton-Raphson scheme
+      //! (2-norm of solution increment)
+      const double local_newton_incr_tol_;
+
+      //! convergence check strategy for the Local Newton-Raphson scheme
+      const LocalNewtonConvCheck local_newton_conv_check_;
+
+      //! strategy in case of divergence of the Local Newton-Raphson scheme
+      const LocalNewtonDiverCont local_newton_diver_cont_;
     };
   }  // namespace PAR
 
@@ -1833,8 +1861,6 @@ namespace Mat
      * @param[in] CM right Cauchy_Green deformation tensor \f$ \boldsymbol{C} \f$ in matrix form
      * @param[in] curr_res residual of the current iteration of the
      * Local Newton Loop \f$ \boldsymbol{r}_{\boldsymbol{s}_i} \f$
-     * @param[in] tolLNL tolerance used for determining the solution in
-     * the Local Newton Loop
      * @param[in] incr increment \f$ \Delta \boldsymbol{s}_{i+1} \f$ for
      * the update of the solution vector
      * @param[out] err_status error status
@@ -1843,7 +1869,7 @@ namespace Mat
      */
     double get_line_search_step(const Core::LinAlg::Matrix<10, 1>& curr_sol,
         const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<10, 1>& curr_res,
-        const double tolLNL, const Core::LinAlg::Matrix<10, 1>& incr, ErrorType& err_status);
+        const Core::LinAlg::Matrix<10, 1>& incr, ErrorType& err_status);
 
 
     /*!
