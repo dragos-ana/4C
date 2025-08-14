@@ -498,6 +498,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   Core::LinAlg::Matrix<3, 3> eigenval_matrix_plast_pred{Core::LinAlg::Initialization::zero};
   std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_plast_pred;
 
+  // DEBUG
+
   // polar decomposition
   matrix_3x3_polar_decomposition(inv_plastic_defgrad_elast_pred, rot_matrix_[gp],
       material_stretch_matrix_elast_pred, eigenval_matrix_elast_pred,
@@ -517,7 +519,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
     rot_matrix_[gp].print(std::cout);
     std::cout << "Plastic: " << std::endl;
     rot_matrix_plast_pred.print(std::cout);
-    FOUR_C_THROW("");
+    FOUR_C_THROW(
+        "Difference between rotation matrices of elastic and plastic predictor is {}, which is "
+        "larger than theset tolerance {}",
+        diff_rot_matrices.norm2(), 1.0e-8);
   }
 
   // collect all spectral pairs (elastic and plastic predictors) and use
@@ -1204,8 +1209,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::LocalNewtonData(
-    const double tol)
-    : tol_(tol)
+    const double res_tol, const double incr_tol, const LocalNewtonConvCheck conv_check,
+    const LocalNewtonDiverCont diver_cont)
+    : res_tol_(res_tol), incr_tol_(incr_tol), conv_check_(conv_check), diver_cont_(diver_cont)
 {
   // set number of Gauss points to 1 temporarily, since we don't
   // know it at this point in time
