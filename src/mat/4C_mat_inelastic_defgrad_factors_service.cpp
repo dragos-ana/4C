@@ -137,6 +137,16 @@ namespace
     return optimal_xi_for_val;
   }
 
+  // DEBUG: show spectral pairs
+  void debug_show_spectral_pair(
+      std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs)
+  {
+    for (auto sp : spectral_pairs)
+    {
+      std::cout << "eigenval: " << sp.first << "; eigenvect: " << sp.second(0) << ", "
+                << sp.second(1) << ", " << sp.second(2) << std::endl;
+    }
+  }
 
 
 }  // namespace
@@ -524,11 +534,42 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   std::vector<Core::LinAlg::Matrix<1, 1>> ref_locs{ref_loc_elast, ref_loc_plast};
 
 
+  // DEBUG
+  std::cout << "inv_plastic_defgrad_elast_pred: " << std::endl;
+  inv_plastic_defgrad_elast_pred.print(std::cout);
+  std::cout << "inv_plastic_defgrad_plast_pred: " << std::endl;
+  inv_plastic_defgrad_plast_pred.print(std::cout);
+
+  // DEBUG
+  std::cout << "spectral pairs (before alignment): " << std::endl;
+  std::cout << "elastic: " << std::endl;
+  debug_show_spectral_pair(all_spectral_pairs[0]);
+  std::cout << "plastic: " << std::endl;
+  debug_show_spectral_pair(all_spectral_pairs[1]);
+
   // elastic part is set as base matrix in any case
   Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, ref_locs, 0);
 
+
+  // DEBUG
+  std::cout << "spectral pairs (after alignment of reference): " << std::endl;
+  std::cout << "elastic: " << std::endl;
+  debug_show_spectral_pair(all_spectral_pairs[0]);
+  std::cout << "plastic: " << std::endl;
+  debug_show_spectral_pair(all_spectral_pairs[1]);
+
+
   // order eigenpairs with respect to the reference
   Core::LinAlg::order_eigenpairs_wrt_reference(all_spectral_pairs[0], all_spectral_pairs[1]);
+
+
+  // DEBUG
+  std::cout << "spectral pairs (after ordering): " << std::endl;
+  std::cout << "elastic: " << std::endl;
+  debug_show_spectral_pair(all_spectral_pairs[0]);
+  std::cout << "plastic: " << std::endl;
+  debug_show_spectral_pair(all_spectral_pairs[1]);
+
 
   // write back all spectral pairs into the arrays for the elastic and
   // plastic predictors
@@ -564,6 +605,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
       1.0, eigenvect_rot_matrix_elast_pred_[gp], eigenvect_matrix_plast, 0.0);
   rel_eigenvect_rot_vect_plast_pred_[gp] =
       Core::LinAlg::calc_rot_vect_from_rot_matrix(rel_eigenvect_matrix_plast);
+
+
+  // DEBUG
+  std::cout << "eigenvect_matrix_elast_pred_:" << std::endl;
+  eigenvect_rot_matrix_elast_pred_[gp].print(std::cout);
+  std::cout << "eigenvect_matrix_elast_pred_:" << std::endl;
+  eigenvect_matrix_plast.print(std::cout);
+  std::cout << "rel_eigenvect_matrix_plast:" << std::endl;
+  rel_eigenvect_matrix_plast.print(std::cout);
+  std::cout << "rel_eigenvect_rot_vect_plast:" << std::endl;
+  rel_eigenvect_rot_vect_plast_pred_[gp].print(std::cout);
 
 
 
