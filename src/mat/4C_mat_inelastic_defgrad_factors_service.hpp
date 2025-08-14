@@ -1056,6 +1056,30 @@ namespace Mat
     };
 
 
+    // enum: strategy in dealing with divergence of the Local Newton Loop
+    enum class LocalNewtonConvCheck
+    {
+      ResidualOnly,   ///< only verify convergence based on the absolute value of the Local Newton
+                      ///< residual
+      IncrementOnly,  ///< only verify convergence based on the 2-norm of the Local Newton
+                      ///< solution increment
+      ResidualAndIncrement,  ///< verify convergence based on both the Local Newton residual and the
+                             ///< solution increment
+    };
+
+
+
+    // enum: strategy in dealing with divergence of the Local Newton Loop
+    enum class LocalNewtonDiverCont
+    {
+      Stop,      ///< stop the simulation entirely
+      Continue,  ///<  continue the simulation, and display warning in regards to the current state
+                 ///< within the Local Newton Loop
+      ContinueWithSafeGuard  ///< continue the simulation only if the convergence tolerances are not
+                             ///< exceeded excessively
+    };
+
+
     //! struct containing settings and iteration data from the Local Newton-Raphson
     //! Loop (time integration of the viscoplasticity equations)
     //! (used for Gauss-Point output). In contrast to
@@ -1068,17 +1092,48 @@ namespace Mat
       /*!
        *   @brief Constructor
        *
-       * @param[in] tol tolerance for the Local Newton-Raphson scheme
+       * @param[in] res_tol tolerance for the Local Newton-Raphson
+       * scheme (absolute residual value)
+       * @param[in] incr_tol tolerance for the Local Newton-Raphson
+       * scheme (2-norm of solution increment)
+       * @param[in] conv_check convergence check strategy for the Local
+       * Newton Loop
+       * @param[in] diver_cont strategy for dealing with divergence of the Local
+       * Newton Loop
        *
        */
       //! constructor of Local Newton data, based on the
-      LocalNewtonData(const double tol);
+      LocalNewtonData(const double res_tol, const double incr_tol,
+          const LocalNewtonConvCheck conv_check, const LocalNewtonDiverCont diver_cont);
 
-      //! convergence tolerance of the Local Newton Loop
-      const double tol_;
+      //! convergence tolerance of the Local Newton Loop (absolute
+      //! residual value)
+      const double res_tol_;
+
+      //! convergence tolerance of the Local Newton Loop (2-norm of the
+      //! solution increment)
+      const double incr_tol_;
+
+      //! convergence check strategy of the Local Newton Loop
+      const LocalNewtonConvCheck conv_check_;
+
+      //! strategy for dealing with divergence of the Local Newton Loop
+      const LocalNewtonDiverCont diver_cont_;
 
       //! maximum number of Local Newton Loop iterations
       static constexpr unsigned max_iter_ = 200;
+
+      //! maximum exceedance factor of the residual tolerance (to be used when
+      //! using the divergence management strategy for continuation with
+      //! safeguard)
+      static constexpr double max_exceedance_fact_res_tol_ = 1.0e2;
+
+      //! maximum exceedance of the solution increment tolerance (to be used when
+      //! using the divergence management strategy for continuation with
+      //! safeguard)
+      static constexpr double max_exceedance_fact_incr_tol_ = 1.0e2;
+
+
 
       //! current LNL iteration
       unsigned int iter_;
