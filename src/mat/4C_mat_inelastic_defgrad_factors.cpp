@@ -53,7 +53,6 @@
 #include <utility>
 #include <vector>
 
-
 FOUR_C_NAMESPACE_OPEN
 
 using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
@@ -607,6 +606,40 @@ namespace
 
     return output_matrix;
   }
+
+  // DEBUG
+  void debug_predictor_state(const int gp, const Core::LinAlg::Matrix<10, 1>& pred,
+      const PredictorAdaptationUtils& pred_adapt_utils)
+  {
+    std::cout << "predictor: " << std::endl;
+    pred.print(std::cout);
+    std::cout << "factors: " << std::endl;
+    std::cout << pred_adapt_utils.current_xi_lambda_1_[gp] << ", "
+              << pred_adapt_utils.current_xi_lambda_2_[gp] << ", "
+              << pred_adapt_utils.current_xi_eigenvect_rot_[gp][0] << ", "
+              << pred_adapt_utils.current_xi_eigenvect_rot_[gp][1] << ", "
+              << pred_adapt_utils.current_xi_eigenvect_rot_[gp][1] << std::endl;
+    std::cout << "bounds: " << std::endl;
+    std::cout << pred_adapt_utils.xi_l_lambda_1_ << " - " << pred_adapt_utils.xi_u_lambda_1_ << "\n"
+              << pred_adapt_utils.xi_l_lambda_2_ << " - " << pred_adapt_utils.xi_u_lambda_2_ << "\n"
+              << pred_adapt_utils.xi_l_eigenvect_rot_[0] << " - "
+              << pred_adapt_utils.xi_u_eigenvect_rot_[0] << "\n"
+              << pred_adapt_utils.xi_l_eigenvect_rot_[1] << " - "
+              << pred_adapt_utils.xi_u_eigenvect_rot_[1] << "\n"
+              << pred_adapt_utils.xi_l_eigenvect_rot_[2] << " - "
+              << pred_adapt_utils.xi_u_eigenvect_rot_[2] << std::endl;
+    std::cout << "values: " << std::endl;
+    std::cout << pred_adapt_utils.lambda_1_elast_pred_[gp] << " - "
+              << pred_adapt_utils.lambda_1_plast_pred_[gp] << "\n"
+              << pred_adapt_utils.lambda_2_elast_pred_[gp] << " - "
+              << pred_adapt_utils.lambda_2_plast_pred_[gp] << "\n"
+              << 0.0 << " - " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](0) << "\n"
+              << 0.0 << " - " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](1) << "\n"
+              << 0.0 << " - " << pred_adapt_utils.rel_eigenvect_rot_vect_plast_pred_[gp](2) << "\n"
+              << std::endl;
+  }
+
+
 
 }  // namespace
 
@@ -2017,9 +2050,24 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   }
 
 
+  // DEBUG
+  std::cout << std::setprecision(16);
+  std::cout << "------ Preevaluation of GP " << gp_ << std::endl;
+  std::cout << "defgrad: " << std::endl;
+  defgrad.print(std::cout);
+  std::cout << "inv_plastic_defgrad_elastic_pred: " << std::endl;
+  time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
+  std::cout << "inv_plastic_defgrad_plastic_pred: " << std::endl;
+  inv_plastic_defgrad_plastic_pred.print(std::cout);
+
+
+
   // preevaluate predictor adaptation factors
   if (parameter()->precondition_matrices_pred_adapt())
   {
+    // DEBUG
+    std::cout << "preconditioned version should be evaluated..." << std::endl;
+
     pred_adapt_utils_.pre_evaluate(gp_,
         precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_]),
         precondition_matrix(inv_plastic_defgrad_plastic_pred));
@@ -3018,7 +3066,19 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     // adapt predictor
     if (parameter()->use_pred_adapt())
     {
+      // DEBUG
+      std::cout << "Before initial predictor adaptation of GP " << gp_ << std::endl;
+      debug_predictor_state(gp_, x, pred_adapt_utils_);
+
+
       x_adapted = adapt_predictor_local_newton_loop(x, FredM);
+
+
+      // DEBUG
+      std::cout << "After initial predictor adaptation of GP " << gp_ << std::endl;
+      debug_predictor_state(gp_, x, pred_adapt_utils_);
+
+
 
       // update the maximum interpolation factor at the considered GP
       pred_adapt_utils_.update_current_max_xi(gp_);
@@ -3738,6 +3798,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // increment iteration counter
       ++lnl_data_.iter_;
 
+      // DEBUG
+      {
+        std::cout << "LNL iter: " << lnl_data_.iter_ << std::endl;
+      }
+
+
+
       // general local time integration analysis: increment iterations
       if (parameter()->analyze_timint()) ++general_local_timint_analysis_utils.eval_num_of_iters_;
 
@@ -3785,6 +3852,12 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 .residual_ = -1.0,
                 .equiv_stress_ = state_quantities_.curr_equiv_stress_,
                 .plastic_strain_ = sol(9)});
+
+        // DEBUG
+        {
+          std::cout << "failed residual evaluation with error " << EnumTools::enum_name(err_status)
+                    << std::endl;
+        }
       }
 
 
@@ -3830,6 +3903,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       }
       // 2-norm of the residual
       residualNorm2 = residual.norm2();
+
+
+      // DEBUG
+      {
+        std::cout << "residual: " << residualNorm2 << std::endl;
+      }
+
 
 
       // check convergence
@@ -4873,8 +4953,17 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
       return ErrorAction::return_solution_with_errors;
     }
 
+
+
     sol = adapt_predictor_local_newton_loop(
         pred_adapt_utils_.pred_, time_step_quantities_.current_defgrad_[gp_], false);
+
+
+
+    // DEBUG
+    std::cout << "Repredictorization " << pred_adapt_utils_.num_of_pred_adapt_ - 1 << " of GP "
+              << gp_ << " for error " << EnumTools::enum_name(err_status) << std::endl;
+    debug_predictor_state(gp_, sol, pred_adapt_utils_);
 
 
 
