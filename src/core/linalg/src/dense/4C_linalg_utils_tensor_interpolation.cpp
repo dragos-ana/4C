@@ -767,12 +767,6 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
   // auxiliaries
   Core::LinAlg::Matrix<3, 1> temp3x1(Core::LinAlg::Initialization::zero);
 
-  // DEBUG
-  {
-    std::cout << "Ordering eigenpairs" << std::endl;
-  }
-
-
   // loop through reference eigenpairs, determine the corresponding eigenpairs
   int tensor_ind;
   Core::LinAlg::Matrix<1, 1> max_scalar_prod;
@@ -789,31 +783,11 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
         eigenpairs[tensor_ind].second, ref_eigenpairs[i].second, 0.0);
 
 
-    // DEBUG
-    {
-      const std::pair<double, Core::LinAlg::Matrix<3, 1>>& ref{ref_eigenpairs[tensor_ind]};
-      const std::pair<double, Core::LinAlg::Matrix<3, 1>>& to_order{eigenpairs[i]};
-
-      std::cout << "tensor_ind: " << tensor_ind << std::endl;
-      std::cout << "ref_eigenpairs[tensor_ind]: " << std::endl;
-      std::cout << "eigenval: " << ref.first << ", eigenvect: " << ref.second(0) << ", "
-                << ref.second(1) << ", " << ref.second(2) << std::endl;
-      std::cout << "i: " << i << std::endl;
-      std::cout << "eigenpairs[i]: " << std::endl;
-      std::cout << "eigenval: " << to_order.first << ", eigenvect: " << to_order.second(0) << ", "
-                << to_order.second(1) << ", " << to_order.second(2) << std::endl;
-    }
-
     // check for multiple eigenvalues: loop through the next eigenpairs of the considered tensor
     for (int j = i + 1; j < 3; ++j)
     {
       if (std::abs(eigenpairs[j].first - eigenpairs[tensor_ind].first) < 1.0e-12)
       {
-        // DEBUG
-        {
-          std::cout << "---- this is a multiple eigenvalue" << std::endl;
-        }
-
         // multiple eigenvalue found
         // now we check whether the absolute value of the scalar product is larger than the
         // current max_scalar_prod
@@ -822,14 +796,6 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
         next_scalar_prod.multiply_tn(
             1.0 / (eigenpairs[j].second.norm2() * ref_eigenpairs[i].second.norm2()),
             eigenpairs[j].second, ref_eigenpairs[i].second, 0.0);
-
-        // DEBUG
-        {
-          std::cout << "---- j = " << j << std::endl;
-          std::cout << "next_scalar_prod: " << next_scalar_prod(0) << std::endl;
-          std::cout << "max_scalar_prod: " << max_scalar_prod(0) << std::endl;
-        }
-
 
 
         // if the absolute value of the current scalar product is larger: set tensor_ind to
@@ -840,19 +806,6 @@ void Core::LinAlg::order_eigenpairs_wrt_reference(
 
           // update maximum scalar product
           max_scalar_prod(0) = next_scalar_prod(0);
-        }
-      }
-      else
-      {
-        // DEBUG
-        {
-          std::cout << "---- this is NOT a multiple eigenvalue: " << std::endl;
-          std::cout << "---- j = " << j << std::endl;
-          std::cout << "---- eigenpairs[j]: eigenval = " << eigenpairs[j].first
-                    << "; eigenpairs[tensor_ind]: eigenval = " << eigenpairs[tensor_ind].first
-                    << std::endl;
-          std::cout << "relative difference: "
-                    << std::abs(eigenpairs[j].first - eigenpairs[tensor_ind].first) << std::endl;
         }
       }
     }
