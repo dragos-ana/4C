@@ -3999,7 +3999,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 {
                   FOUR_C_ASSERT_ALWAYS(
                       rel_sol_incr_norm <
-                          (lnl_data_.incr_tol_ + lnl_data_.max_exceedance_fact_incr_tol_),
+                          (lnl_data_.incr_tol_ * lnl_data_.max_exceedance_fact_incr_tol_),
                       "Relative increment {} exceeds the increment tolerance {} by more than the "
                       "set "
                       "exceedance tolerance factor {}!",
@@ -4013,10 +4013,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 {
                   FOUR_C_ASSERT_ALWAYS(
                       (residualNorm2 <
-                          (lnl_data_.res_tol_ + lnl_data_.max_exceedance_fact_res_tol_)) &&
+                          (lnl_data_.res_tol_ * lnl_data_.max_exceedance_fact_res_tol_)) &&
                           (rel_sol_incr_norm <
-                              (lnl_data_.incr_tol_ + lnl_data_.max_exceedance_fact_incr_tol_)),
-                      "Residual {} and relative increment {} exceeds the tolerance {} and {} by "
+                              (lnl_data_.incr_tol_ * lnl_data_.max_exceedance_fact_incr_tol_)),
+                      "Residual {} and relative increment {} exceeds the tolerances {} and {} by "
                       "more than the "
                       "set "
                       "exceedance tolerance factors {} and {}!",
