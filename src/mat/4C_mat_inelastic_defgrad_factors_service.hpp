@@ -1134,7 +1134,6 @@ namespace Mat
       static constexpr double max_exceedance_fact_incr_tol_ = 1.0e2;
 
 
-
       //! current LNL iteration
       unsigned int iter_;
 
