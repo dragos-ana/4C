@@ -30,6 +30,7 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_singleton_owner.hpp"
 
+#include <array>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -311,6 +312,7 @@ namespace
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_PRED_ADAPT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_OPTIMAL_PRED_ADAPT_FACT", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
@@ -322,7 +324,6 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LINEARIZATION",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
@@ -352,6 +353,7 @@ namespace
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_PRED_ADAPT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_OPTIMAL_PRED_ADAPT_FACT", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
@@ -364,7 +366,6 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LINEARIZATION",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
@@ -1222,6 +1223,7 @@ namespace
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       inelastic_defgrad_debug_vplast_data.add("USE_PRED_ADAPT", true);
       inelastic_defgrad_debug_vplast_data.add("USE_LAST_PRED_ADAPT_FACT", true);
+      inelastic_defgrad_debug_vplast_data.add("USE_OPTIMAL_PRED_ADAPT_FACT", false);
       inelastic_defgrad_debug_vplast_data.add("USE_LINE_SEARCH", true);
       inelastic_defgrad_debug_vplast_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_debug_vplast_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
@@ -1232,7 +1234,6 @@ namespace
       inelastic_defgrad_debug_vplast_data.add("ANALYZE_TIMINT", false);
       inelastic_defgrad_debug_vplast_data.add("LINEARIZATION",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
-      inelastic_defgrad_debug_vplast_data.add("USE_LAST_PRED_ADAPT_FACT", true);
       inelastic_defgrad_debug_vplast_data.add(
           "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
       inelastic_defgrad_debug_vplast_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
@@ -1344,7 +1345,6 @@ namespace
       Teuchos::ParameterList param_list_debug_vplast{};
 
       // call pre_evaluate
-<<<<<<< HEAD
       double total_time = 0.2;
       double time_step_size = 5e-3;
       Mat::EvaluationContext context{.total_time = &total_time,
@@ -1354,11 +1354,7 @@ namespace
 
 
       debug_vplast_->pre_evaluate(param_list_debug_vplast, context, 0, 0);
-      debug_vplast_->prepare_non_repeat_tasks();
-=======
-      debug_vplast_->pre_evaluate(param_list_debug_vplast, 0, 0);
       debug_vplast_->prepare_non_repeat_tasks(FM_);
->>>>>>> 916e1373b9 (Temp finished rework)
     }
 
     // deformation gradient
@@ -1991,7 +1987,6 @@ namespace
         computed_state_quantity_derivatives_isotrop.curr_dlpdepsp_, 1.0e-6);
   }
 
-<<<<<<< HEAD
   TEST_F(InelasticDefgradFactorsTest, DummyViscoplastTimIntLinearizTest)
   {
     set_up_dummy_viscoplast_material();
@@ -2041,13 +2036,19 @@ namespace
 
 
 
-    double last_xi = 0.0;
-    double last_max_xi = 0.0;
-    double optimal_xi = 0.0;
+    double last_xi_lambda_1 = 0.0;
+    double last_xi_lambda_2 = 0.0;
+    std::array<double, 3> last_xi_eigenvect_rot = {0.0, 0.0, 0.0};
+    double last_max_xi_lambda_1 = 0.0;
+    double last_max_xi_lambda_2 = 0.0;
+    std::array<double, 3> last_max_xi_eigenvect_rot = {0.0, 0.0, 0.0};
+    double optimal_xi_lambda_1 = 0.0;
+    double optimal_xi_lambda_2 = 0.0;
+    std::array<double, 3> optimal_xi_eigenvect_rot = {0.0, 0.0, 0.0};
 
     // set the values at the 0-th GP
     iso_mat->debug_set_last_quantities(0, last_plastic_defgrd_inverse, last_plastic_strain,
-        last_defgrad, last_rightCG, last_xi, last_max_xi, optimal_xi);
+        last_defgrad, last_rightCG, last_xi_lambda_1,last_xi_lambda_2, last_xi_eigenvect_rot, last_max_xi_lambda_1, last_max_xi_lambda_2, last_max_xi_eigenvect_rot, optimal_xi_lambda_1, optimal_xi_lambda_2, optimal_xi_eigenvect_rot);
 
 
     // define last_values to be set for the viscoplastic law (Anand)
@@ -2103,7 +2104,7 @@ namespace
 
 
     iso_mat->pre_evaluate(param_list, context, 0, 0);
-    iso_mat->prepare_non_repeat_tasks();
+    iso_mat->prepare_non_repeat_tasks(FM_);
 
     // set boolean for updating history variables
     iso_mat->debug_set_update_hist_var(true);
@@ -2266,7 +2267,5 @@ namespace
     // if we have reached this point, it is a success -> the test is passed
   }
 
-=======
->>>>>>> 916e1373b9 (Temp finished rework)
 
 }  // namespace

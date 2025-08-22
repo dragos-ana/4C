@@ -40,6 +40,7 @@
 #include <Teuchos_ParameterList.hpp>
 
 #include <algorithm>
+#include <iomanip>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -594,7 +595,6 @@ namespace Discret::Elements
 
     Core::LinAlg::make_matrix_view(defgrd).multiply_nt(scale_defgrd, element_nodes.displacements,
         Core::LinAlg::make_matrix_view(jacobian_mapping.N_XYZ), scale_defgrd);
-
     return defgrd;
   }
 
