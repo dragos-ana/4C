@@ -2781,6 +2781,12 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description = "boolean: precondition the matrices for predictor adaptation, "
                                 "i.e., set components smaller than a set numerical tolerance to 0?",
                     .default_value = true}),
+            parameter<double>("PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL",
+                {.description = "numerical tolerance used to precondition the matrices for "
+                                "predictor adaptation, "
+                                "i.e., set components smaller than (numerical tolerance * "
+                                "2-norm of input matrix) to 0?",
+                    .default_value = 1.0e-13}),
             parameter<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION",
                 {.description = "boolean: use steepest descent direction in single Local Newton "
                                 "iterations if the Newton direction is not a descent direction?"
