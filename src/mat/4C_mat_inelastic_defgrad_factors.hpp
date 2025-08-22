@@ -334,6 +334,10 @@ namespace Mat
       //! get boolean: use predictor adaptation before and in the Local
       //! Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_pred_adapt() const { return use_pred_adapt_; };
+      //! get type of plastic predictor: maintain elastic stretch from
+      //! previous time instant | eliminate elastic stretch entirely
+      //! (only meaningful for no-yield-surface viscoplastic laws)
+      [[nodiscard]] PlasticPredictorType plastic_pred_type() const { return plastic_pred_type_; };
       //! get boolean: check consistency of the matrices and their
       //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
       [[nodiscard]] bool check_consistency_pred_adapt() const
@@ -512,6 +516,11 @@ namespace Mat
 
       //! boolean: use predictor adaptation? (true: yes, false: no)
       const bool use_pred_adapt_;
+
+      //! type of plastic predictor: maintain elastic stretch from
+      //! previous time instant | eliminate elastic stretch entirely
+      //! (only meaningful for no-yield-surface viscoplastic laws)
+      const PlasticPredictorType plastic_pred_type_;
 
       //! boolean: use predictor adaptation factor from the previous time step at the GP as a
       //! performance-boost?
