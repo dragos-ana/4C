@@ -347,6 +347,13 @@ namespace Mat
       {
         return precondition_matrices_pred_adapt_;
       };
+      //! get numerical tolerance used to precondition matrices for the predictor adaptation
+      //! algorithm, i.e., set components smaller than (numerical
+      //! tolerance * 2-norm of input matrix) to 0?
+      [[nodiscard]] double precondition_matrices_pred_adapt_num_tol() const
+      {
+        return precondition_matrices_pred_adapt_num_tol_;
+      };
       //! get boolean: use the predictor interpolation factor from the predictor adaptation
       //! performed in the previous step at each GP to boost the
       //! performance of the predictor adaptation? (true: yes, false: no)
@@ -525,6 +532,10 @@ namespace Mat
       //! tolerance to 0? (true: yes, false: no)
       const bool precondition_matrices_pred_adapt_;
 
+      //! numerical tolerance used to precondition matrices for the predictor adaptation
+      //! algorithm, i.e., set components smaller than (numerical
+      //! tolerance * 2-norm of input matrix) to 0? (true: yes, false: no)
+      const double precondition_matrices_pred_adapt_num_tol_;
 
       //! boolean: use steepest descent direction if the Newton
       //! direction fails in single Local Newton iterations? (true: yes, false: no)

@@ -591,10 +591,9 @@ namespace
 
   // precondition matrix for spectral-polar decomposition: set entries
   // smaller than a set numerical tolerance to 0
-  Core::LinAlg::Matrix<3, 3> precondition_matrix(const Core::LinAlg::Matrix<3, 3>& input_matrix)
+  Core::LinAlg::Matrix<3, 3> precondition_matrix(
+      const Core::LinAlg::Matrix<3, 3>& input_matrix, const double num_tolerance)
   {
-    // numerical tolerance for a number to be set as 0.0
-    const double num_tolerance = 1.0e-14;
     Core::LinAlg::Matrix<3, 3> output_matrix{input_matrix};
     for (int i = 0; i < 3; ++i)
     {
@@ -798,6 +797,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       check_consistency_pred_adapt_(matdata.parameters.get<bool>("CHECK_CONSISTENCY_PRED_ADAPT")),
       precondition_matrices_pred_adapt_(
           matdata.parameters.get<bool>("PRECONDITION_MATRICES_PRED_ADAPT")),
+      precondition_matrices_pred_adapt_num_tol_(
+          matdata.parameters.get<double>("PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL")),
       use_steepest_descent_update_correction_(
           matdata.parameters.get<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION")),
       use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
@@ -2031,8 +2032,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   if (parameter()->precondition_matrices_pred_adapt())
   {
     pred_adapt_utils_.pre_evaluate(gp_,
-        precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_]),
-        precondition_matrix(inv_plastic_defgrad_plastic_pred));
+        precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
+            parameter()->precondition_matrices_pred_adapt_num_tol() *
+                time_step_quantities_.last_plastic_defgrad_inverse_[gp_].norm2()),
+        precondition_matrix(inv_plastic_defgrad_plastic_pred,
+            parameter()->precondition_matrices_pred_adapt_num_tol() *
+                inv_plastic_defgrad_plastic_pred.norm2()));
   }
   else
   {
@@ -3143,7 +3148,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
         if (parameter()->precondition_matrices_pred_adapt())
         {
           pred_adapt_utils_.compute_optimal_interp_factors(
-              gp, precondition_matrix(time_step_quantities_.current_plastic_defgrad_inverse_[gp]));
+              gp, precondition_matrix(time_step_quantities_.current_plastic_defgrad_inverse_[gp],
+                      parameter()->precondition_matrices_pred_adapt_num_tol() *
+                          time_step_quantities_.current_plastic_defgrad_inverse_[gp].norm2()));
         }
         else
         {

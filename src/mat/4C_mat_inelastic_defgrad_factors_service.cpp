@@ -727,11 +727,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
 #endif
   }
 
+
+  /*
   // collect all spectral pairs (elastic and plastic predictors) and use
   // this for ordering and alignment: we will rewrite them back to their
   // original form afterwards
   std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>> all_spectral_pairs{
       spectral_pairs_elast_pred_[gp], spectral_pairs_reference};
+*/
 
 
 
@@ -754,10 +757,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorAdaptation
   Core::LinAlg::order_eigenpairs_wrt_reference(
       spectral_pairs_elast_pred_[gp], spectral_pairs_reference);
 
-
-  // write back all spectral pairs
-  spectral_pairs_elast_pred_[gp] = all_spectral_pairs[0];
-  spectral_pairs_reference = all_spectral_pairs[1];
+  /*
+// write back all spectral pairs
+spectral_pairs_elast_pred_[gp] = all_spectral_pairs[0];
+spectral_pairs_reference = spectral_pairs_reference;
+*/
 
 
   // build the eigenvector matrices and get the associated relative rotation
