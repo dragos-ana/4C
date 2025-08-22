@@ -172,6 +172,10 @@ namespace Mat
       //! at the last time step (for all Gauss points)
       std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_spatial_stretch_;
 
+      //! inverse material stretch of the elastic deformation gradient
+      //! at the last time step (for all Gauss points)
+      std::vector<Core::LinAlg::Matrix<3, 3>> last_elastic_defgrad_material_stretch_inverse_;
+
       //! rotation of the inverse plastic deformation gradient
       //! at the last time step (for all Gauss points)
       std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_inverse_rot_;
@@ -268,6 +272,16 @@ namespace Mat
       void set_material_const_tensors(const Core::LinAlg::Matrix<3, 1>& m);
     };
 
+    //! plastic predictor types (predictor adaptation)
+    enum class PlasticPredictorType
+    {
+      maintain_elastic_stretch,   ///< elastic deformation gradient maintains its elastic stretch
+                                  ///< from the previous time instant
+      eliminate_elastic_stretch,  ///< elastic deformation gradient becomes a pure rotation tensor,
+                                  ///< motivated by stress relaxation (elastic deformation ->
+                                  ///< plastic deformation) -> only makes sense for no-yield-surface
+                                  ///< viscoplastic models
+    };
 
     //! class containing utilities for predictor interpolation
     struct PredictorAdaptationUtils
