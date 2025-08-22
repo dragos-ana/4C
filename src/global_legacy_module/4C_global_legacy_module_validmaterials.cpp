@@ -2770,6 +2770,13 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "Local Newton Loop? (true: yes, false: "
                                 "no)",
                     .default_value = true}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorType>(
+                "PLASTIC_PRED_TYPE",
+                {.description = "type of plastic predictor: maintain elastic stretch from previous "
+                                "time instant | eliminate elastic stretch entirely (only "
+                                "meaningful for no-yield-surface viscoplasticity laws)",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        PlasticPredictorType::maintain_elastic_stretch}),
             parameter<bool>("CHECK_CONSISTENCY_PRED_ADAPT",
                 {.description =
                         "boolean: check the consistency of the matrices determined in the "
