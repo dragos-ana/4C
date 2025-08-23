@@ -4471,7 +4471,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   //          strategy is employed.
   bool eval_elastic_pred =
       check_original_pred && (!use_performance_boosting_strategy ||
-                                 +(use_performance_boosting_strategy &&
+                                 (use_performance_boosting_strategy &&
                                      pred_adapt_utils_.verify_interp_factors_elast_pred(gp_)));
   if (eval_elastic_pred)
   {
