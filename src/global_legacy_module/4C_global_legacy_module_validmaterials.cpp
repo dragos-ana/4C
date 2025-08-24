@@ -2770,6 +2770,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "Local Newton Loop? (true: yes, false: "
                                 "no)",
                     .default_value = true}),
+            parameter<bool>("CHECK_ELASTIC_PRED",
+                {.description = "boolean: verify whether elastic predictor is numerically "
+                                "evaluable as an initial step of the predictor adaptation?",
+                    .default_value = true}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorType>(
                 "PLASTIC_PRED_TYPE",
                 {.description = "type of plastic predictor: maintain elastic stretch from previous "

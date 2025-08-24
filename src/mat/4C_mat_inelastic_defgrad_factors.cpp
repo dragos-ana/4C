@@ -629,6 +629,17 @@ namespace
     return output_matrix;
   }
 
+// DEBUG: check whether current gp and ele_gid match the debugging gp and ele_gid
+#ifdef DEBUG_MODE
+  bool debug_mode(const int ele_gid, const int gp)
+  {
+    const int debug_ele_gid = 0;
+    const int debug_gp = 0;
+
+    return (ele_gid == debug_ele_gid && gp == debug_gp);
+  }
+#endif
+
 
 }  // namespace
 
@@ -815,6 +826,7 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       max_plastic_strain_deriv_incr_(
           matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
       use_pred_adapt_(matdata.parameters.get<bool>("USE_PRED_ADAPT")),
+      check_elastic_pred_(matdata.parameters.get<bool>("CHECK_ELASTIC_PRED")),
       plastic_pred_type_(matdata.parameters.get<PlasticPredictorType>("PLASTIC_PRED_TYPE")),
       use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
       use_optimal_pred_adapt_fact_(matdata.parameters.get<bool>("USE_OPTIMAL_PRED_ADAPT_FACT")),
@@ -1968,7 +1980,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   const double numerical_tol{1.0e-8};
 
 
-  // set predictor interpolation factors for the predictor adaptation routine
+  // set initial predictor interpolation factors for the predictor adaptation routine
   if (parameter()->use_pred_adapt())
   {
     // set to the last interpolation factor from the previous substep
@@ -1987,12 +1999,21 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
       pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] =
           pred_adapt_utils_.optimal_xi_eigenvect_rot_[gp_];
     }
-    // otherwise set by default to 0.0 (=elastic predictor)
     else
     {
-      pred_adapt_utils_.current_xi_lambda_1_[gp_] = 0.0;
-      pred_adapt_utils_.current_xi_lambda_2_[gp_] = 0.0;
-      pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] = {0.0, 0.0, 0.0};
+      if (parameter()->check_elastic_pred())
+      {
+        pred_adapt_utils_.current_xi_lambda_1_[gp_] = 0.0;
+        pred_adapt_utils_.current_xi_lambda_2_[gp_] = 0.0;
+        pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] = {0.0, 0.0, 0.0};
+      }
+      else
+      {
+        pred_adapt_utils_.current_xi_lambda_1_[gp_] = parameter()->user_pred_interp_fact();
+        pred_adapt_utils_.current_xi_lambda_2_[gp_] = parameter()->user_pred_interp_fact();
+        pred_adapt_utils_.current_xi_eigenvect_rot_[gp_] = {parameter()->user_pred_interp_fact(),
+            parameter()->user_pred_interp_fact(), parameter()->user_pred_interp_fact()};
+      }
     }
   }
 
@@ -3063,7 +3084,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     // adapt predictor
     if (parameter()->use_pred_adapt())
     {
-      x_adapted = adapt_predictor_local_newton_loop(x, FredM);
+      x_adapted = adapt_predictor_local_newton_loop(x, FredM, parameter()->check_elastic_pred());
 
 
       // update the maximum interpolation factor at the considered GP
@@ -3821,6 +3842,24 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           time_step_quantities_.last_substep_plastic_strain_[gp_],
           local_substepping_utils_.curr_dt_, err_status);
 
+#ifdef DEBUG_LNL
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << "LNL ITER: " << lnl_data_.iter_ << " / " << lnl_data_.max_iter_ << std::endl;
+        std::cout << "x: " << std::endl;
+        sol.print(std::cout);
+        std::cout << "pred: interp_factor xi (lambda_1): " << pred_adapt_utils_.xi_l_lambda_1_
+                  << " <= " << pred_adapt_utils_.current_xi_lambda_1_[gp_]
+                  << " <= " << pred_adapt_utils_.xi_u_lambda_1_ << std::endl;
+        std::cout << "residual evaluation status:  " << EnumTools::enum_name(err_status)
+                  << std::endl;
+        if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+        {
+          std::cout << "residual: " << residual.norm2() << std::endl;
+        }
+      }
+#endif
+
 
       // based on the residual evaluation: communicate status and values
       // to the LNL data tracker
@@ -4407,10 +4446,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
 Core::LinAlg::Matrix<10, 1>
 Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_loop(
     const Core::LinAlg::Matrix<10, 1>& original_pred, const Core::LinAlg::Matrix<3, 3>& FM,
-    const bool check_original_pred)
+    const bool check_elastic_pred)
 {
   // auxiliaries
-  const double zero_tol = 1.0e-8;  // tolerance used for checking if a value is numerically 0
+  const double zero_tol = 1.0e-15;  // tolerance used for checking if a value is numerically 0
+
+#ifdef DEBUG_PRED_ADAPT
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << "Adapt predictor for ele_gid_ " << ele_gid_ << " and gp " << gp_ << std::endl;
+    std::cout << "initial: " << std::endl;
+    original_pred.print(std::cout);
+  }
+#endif
+
 
   // general local time integration analysis actions
   if (parameter()->analyze_timint())
@@ -4464,15 +4513,17 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
   // boolean: check if we need to evaluate the elastic predictor
   //          --> If we don't use a performance boosting strategy,
-  //          then we need to check this directly before
-  //          computing the other predictor extremum and interpolating.
+  //          then we may check this directly before
+  //          computing the other predictor extremum and interpolating
+  //          (if set so by the user).
   //          We also need to evaluate the elastic predictor in the case where the current
   //          interpolation factor is 0 and a performance boosting
   //          strategy is employed.
   bool eval_elastic_pred =
-      check_original_pred && (!use_performance_boosting_strategy ||
-                                 (use_performance_boosting_strategy &&
-                                     pred_adapt_utils_.verify_interp_factors_elast_pred(gp_)));
+      check_elastic_pred && (!use_performance_boosting_strategy ||
+                                (use_performance_boosting_strategy &&
+                                    pred_adapt_utils_.verify_interp_factors_elast_pred(gp_)));
+
   if (eval_elastic_pred)
   {
     iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
@@ -4529,6 +4580,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       if (parameter()->use_csv_output_pred_adapt_micro_iter())
         csv_output_pred_adapt_micro_iter_data_.write_pred_adapt_micro_iter_data_to_csv();
 
+#ifdef DEBUG_PRED_ADAPT
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << "final: " << std::endl;
+        pred_adapt_utils_.pred_.print(std::cout);
+      }
+#endif
+
+
+
       return pred_adapt_utils_.pred_;
     }
     else
@@ -4540,21 +4601,18 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   }
   else
   {
+    /*
+    // set interpolation factors to the interval scanning parameter
+    pred_adapt_utils_.adapt_interpolation_parameter(gp_);
+*/
+
+
     // set micro iteration data for the current evaluation (0-th
     // microiteration has to be set here already, we start with 1 in
     // the subsequent iterative procedure)
     if (parameter()->use_csv_output_pred_adapt_micro_iter())
       csv_output_pred_adapt_micro_iter_data_.append_micro_iter_data({}, 0);
   }
-
-  // get inverse plastic defgrad from the almost plastic predictor
-  Core::LinAlg::Matrix<3, 3> almost_plastic_pred_iFinM =
-      compute_inverse_plastic_defgrad_plastic_pred(FM, time_step_quantities_.last_defgrad_[gp_],
-          time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
-          time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_],
-          time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_],
-          time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp_],
-          parameter()->plastic_pred_type());
 
   // set maximum number of predictor adaptation steps and specific
   // counter
@@ -4593,6 +4651,25 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // evaluate the current state with the adapted predictor
     state_quantities_ = evaluate_state_quantities(CM, iFin_adapt_pred, original_pred(9), err_status,
         time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+
+#ifdef DEBUG_PRED_ADAPT
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "Interpolation step: " << pred_adapt_step_counter << " / "
+                << PredictorAdaptationUtils::MAX_NUM_PRED_ADAPT_ITERS << std::endl;
+      std::cout << "xi (lambda_1): " << pred_adapt_utils_.xi_l_lambda_1_
+                << " <= " << pred_adapt_utils_.current_xi_lambda_1_[gp_]
+                << " <= " << pred_adapt_utils_.xi_u_lambda_1_ << std::endl;
+      std::cout << "iFin_adapt_pred: " << std::endl;
+      iFin_adapt_pred.print(std::cout);
+      std::cout << "evaluate_state_quantities: status: " << EnumTools::enum_name(err_status)
+                << std::endl;
+      std::cout << "resulting plastic strain rate: "
+                << state_quantities_.curr_equiv_plastic_strain_rate_ << std::endl;
+    }
+#endif
+
+
 
     // compute plastic strain rate: if 0.0 for
     // the current plasticity state, then we are "under" the yield
@@ -4721,6 +4798,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   // write micro iteration data to csv
   if (parameter()->use_csv_output_pred_adapt_micro_iter())
     csv_output_pred_adapt_micro_iter_data_.write_pred_adapt_micro_iter_data_to_csv();
+
+#ifdef DEBUG_PRED_ADAPT
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << "final: " << std::endl;
+    pred_adapt_utils_.pred_.print(std::cout);
+  }
+#endif
+
+
 
   // return adapted predictor
   return pred_adapt_utils_.pred_;

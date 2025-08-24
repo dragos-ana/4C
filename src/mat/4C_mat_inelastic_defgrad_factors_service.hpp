@@ -1367,6 +1367,10 @@ namespace Mat
     // display / log evaluation warnings
 #define DISPLAY_WARNINGS ;
 
+    // #define DEBUG_MODE ;
+    // #define DEBUG_PRED_ADAPT ;
+    // #define DEBUG_LNL ;
+
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
 }  // namespace Mat

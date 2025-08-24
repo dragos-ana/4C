@@ -334,6 +334,10 @@ namespace Mat
       //! get boolean: use predictor adaptation before and in the Local
       //! Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_pred_adapt() const { return use_pred_adapt_; };
+      //! get boolean: check whether the elastic predictor can be
+      //! evaluated numerically as an initial step of
+      //! the predictor adaptation? (true: yes, false: no)
+      [[nodiscard]] bool check_elastic_pred() const { return check_elastic_pred_; };
       //! get type of plastic predictor: maintain elastic stretch from
       //! previous time instant | eliminate elastic stretch entirely
       //! (only meaningful for no-yield-surface viscoplastic laws)
@@ -516,6 +520,10 @@ namespace Mat
 
       //! boolean: use predictor adaptation? (true: yes, false: no)
       const bool use_pred_adapt_;
+
+      //! boolean: check whether elastic predictor is numerically evaluable as an initial step of
+      //! the predictor adaptation? (true: yes, false: no)
+      const bool check_elastic_pred_;
 
       //! type of plastic predictor: maintain elastic stretch from
       //! previous time instant | eliminate elastic stretch entirely
@@ -1803,14 +1811,14 @@ namespace Mat
      * Voigt representation of the inverse plastic deformation gradient
      * \f$ \boldsymbol{F}^{\text{p}^{-1}} \f$ (components 0 to 8), and
      * the plastic strain \f$ \varepsilon^{\text{p}} \f$
-     * @param[in] check_original_pred check whether the original
+     * @param[in] check_elastic_pred check whether the elastic
      * predictor is numerically evaluable? (true: yes, false: no)
      * @return adapted predictor with the same structure as the original
      * predictor
      */
     Core::LinAlg::Matrix<10, 1> adapt_predictor_local_newton_loop(
         const Core::LinAlg::Matrix<10, 1>& original_pred, const Core::LinAlg::Matrix<3, 3>& FM,
-        const bool check_original_pred = true);
+        const bool check_elastic_pred);
 
     /*!
      * @brief Local Newton Loop in order to calculate the current inverse plastic deformation
