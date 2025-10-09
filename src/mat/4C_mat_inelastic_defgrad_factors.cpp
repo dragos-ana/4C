@@ -59,6 +59,7 @@
 #include <utility>
 #include <vector>
 
+
 FOUR_C_NAMESPACE_OPEN
 
 using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
@@ -4685,6 +4686,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       err_status = ErrorType::under_yield_surface;
     }
 
+
+
     // evaluate derivatives of the state quantities
     if (err_status == ErrorType::no_errors)
     {
@@ -4701,6 +4704,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       plastic_strain_adapt_pred = integrate_plastic_strain(state_quantities_.curr_equiv_stress_,
           time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
     }
+
+#ifdef DEBUG_PRED_ADAPT
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "after integrating plastic strain: " << EnumTools::enum_name(err_status)
+                << std::endl;
+    }
+#endif
+
+
 
     // reevaluate the current state with the adapted predictor
     if (err_status == ErrorType::no_errors)
@@ -4726,6 +4739,25 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
           plastic_strain_adapt_pred, err_status, time_step_tracker_.dt_,
           StateQuantityDerivEvalType::PlasticStrainRateDerivsOnly);
     }
+
+
+#ifdef DEBUG_PRED_ADAPT
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "after recomputing state and derivatives: " << EnumTools::enum_name(err_status)
+                << std::endl;
+    }
+#endif
+
+
+
+#ifdef DEBUG_PRED_ADAPT
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "after all evaluations: " << EnumTools::enum_name(err_status) << std::endl;
+    }
+#endif
+
 
 
     // if there was an evaluation error: adapt interpolation interval
