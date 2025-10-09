@@ -118,8 +118,6 @@ namespace Mat
       void setup(const int numgp, const Discret::Elements::Fibers& fibers,
           const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
 
-      void pre_evaluate(int gp) override {};
-
       void update() override {};
 
       void update_gp_state(int gp) override {};

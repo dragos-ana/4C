@@ -13,8 +13,10 @@
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_vplast_law.hpp"
+#include "4C_utils_exceptions.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -89,6 +91,13 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
     // save the current values
     if (update_hist_var)
     {
+      // GP index safeguard
+      FOUR_C_ASSERT_ALWAYS(
+          static_cast<size_t>(gp_) < time_step_quantities_.current_yield_strength_.size(),
+          "The current gp index is {} while the stored number of GP within Reformulated Johnson - "
+          "Cook is {} ",
+          gp_, time_step_quantities_.current_yield_strength_.size());
+
       time_step_quantities_.current_yield_strength_[gp_] = equiv_stress * inv_stress_ratio;
     }
   }

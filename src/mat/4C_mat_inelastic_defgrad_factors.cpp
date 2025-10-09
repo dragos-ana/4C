@@ -1980,6 +1980,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   const double numerical_tol{1.0e-8};
 
 
+  // set current evaluation gp for the viscoplastic law
+  viscoplastic_law_->pre_evaluate(gp_);  // set last_substep <- last_
+
   // set initial predictor interpolation factors for the predictor adaptation routine
   if (parameter()->use_pred_adapt())
   {
