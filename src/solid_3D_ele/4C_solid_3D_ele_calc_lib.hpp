@@ -40,7 +40,6 @@
 #include <Teuchos_ParameterList.hpp>
 
 #include <algorithm>
-#include <iomanip>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -599,18 +598,18 @@ namespace Discret::Elements
     //   // displacements. Until we found the problem, we compute the deformation gradient based on
     //   // the current coordinates (F=(X+u)^T  dN/dX^T) for hex8 and based on the displacement (F=I
     //   // + u^T dN/dX^T) for the other celltypes.
-    //   Core::LinAlg::make_matrix_view(defgrd).multiply_nt(
-    //       scale_defgrd, element_nodes.current_coordinates, jacobian_mapping.N_XYZ_);
+    //   Core::LinAlg::make_matrix_view(defgrd).multiply_nt(scale_defgrd,
+    //       element_nodes.current_coordinates,
+    //       Core::LinAlg::make_matrix_view(jacobian_mapping.N_XYZ));
     // }
     // else
     //{
     defgrd = Core::LinAlg::get_full(Core::LinAlg::TensorGenerators::identity<double,
         Core::FE::dim<celltype>, Core::FE::dim<celltype>>);
 
-    Core::LinAlg::make_matrix_view(defgrd).multiply_nt(
-        scale_defgrd, element_nodes.displacements, jacobian_mapping.N_XYZ_, scale_defgrd);
+    Core::LinAlg::make_matrix_view(defgrd).multiply_nt(scale_defgrd, element_nodes.displacements,
+        Core::LinAlg::make_matrix_view(jacobian_mapping.N_XYZ), scale_defgrd);
     //}
-
 
     return defgrd;
   }
