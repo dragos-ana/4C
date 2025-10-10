@@ -4519,17 +4519,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   double plastic_strain_adapt_pred{0.0};
 
   // boolean: check if we need to evaluate the elastic predictor
-  //          --> If we don't use a performance boosting strategy,
-  //          then we may check this directly before
-  //          computing the other predictor extremum and interpolating
-  //          (if set so by the user).
-  //          We also need to evaluate the elastic predictor in the case where the current
-  //          interpolation factor is 0 and a performance boosting
-  //          strategy is employed.
+  //          --> If specified by the user,
+  //          we check this directly.
+  //          We also evaluate the elastic predictor in the case where the current
+  //          interpolation factors are all 0.
   bool eval_elastic_pred =
-      check_elastic_pred && (!use_performance_boosting_strategy ||
-                                (use_performance_boosting_strategy &&
-                                    pred_adapt_utils_.verify_interp_factors_elast_pred(gp_)));
+      check_elastic_pred || (pred_adapt_utils_.verify_interp_factors_elast_pred(gp_));
+  check_elastic_pred && (!use_performance_boosting_strategy ||
+                            (use_performance_boosting_strategy &&
+                                pred_adapt_utils_.verify_interp_factors_elast_pred(gp_)));
 
   if (eval_elastic_pred)
   {
