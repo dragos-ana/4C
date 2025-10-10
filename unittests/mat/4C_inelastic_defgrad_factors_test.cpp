@@ -2201,7 +2201,7 @@ namespace
     const int matid_multsplit(90000);
     const int matid_elastic(90001);
     const int inelastic_defgrad_id(90002);
-    const int reformjc_vplast_law_id(400);
+    const int vplast_law_id(400);
     // const int anand_vplast_law_id(4000);
     const int fiber_reader_id(90004);
     const int elast_struct_tens_id(90005);
@@ -2234,8 +2234,8 @@ namespace
     // set up inelastic material to be added to problem instance (WE
     // CLONE OUR CURRENT MATERIAL)
     Core::IO::InputParameterContainer mat_inelastic_data =
-        isotrop_vplast_refJC_->parameter()->raw_parameters();
-    mat_inelastic_data.add("VISCOPLAST_LAW_ID", reformjc_vplast_law_id);  // refJC
+        debug_vplast_->parameter()->raw_parameters();
+    mat_inelastic_data.add("VISCOPLAST_LAW_ID", vplast_law_id);  // refJC
     mat_inelastic_data.add("FIBER_READER_ID", fiber_reader_id);
 
     // add inelastic material to problem instance
@@ -2280,11 +2280,8 @@ namespace
         .set("MASSLIN", Inpar::Solid::MassLin::ml_none);
     parameter_list_pointer->sublist("SSI CONTROL")
         .set("COUPALGO", SSI::SolutionSchemeOverFields::ssi_IterStagg);
-
     // set the parameter list in the global problem
     problem.set_parameter_list(parameter_list_pointer);
-    parameter_list_pointer->sublist("SSI CONTROL")
-        .set("COUPALGO", SSI::SolutionSchemeOverFields::ssi_IterStagg);
 
     // get pointer to parameter class
     std::shared_ptr<Mat::PAR::MultiplicativeSplitDefgradElastHyper>
