@@ -34,7 +34,10 @@ Mat::Viscoplastic::PAR::ReformulatedJohnsonCook::ReformulatedJohnsonCook(
       strain_rate_exp_fac_(matdata.parameters.get<double>("STRAIN_RATE_EXP_FAC")),
       init_yield_strength_(matdata.parameters.get<double>("INIT_YIELD_STRENGTH")),
       isotrop_harden_prefac_(matdata.parameters.get<double>("ISOTROP_HARDEN_PREFAC")),
-      isotrop_harden_exp_(matdata.parameters.get<double>("ISOTROP_HARDEN_EXP"))
+      isotrop_harden_exp_(matdata.parameters.get<double>("ISOTROP_HARDEN_EXP")),
+      ref_temperature_(matdata.parameters.get<double>("REF_TEMPERATURE")),
+      melt_temperature_(matdata.parameters.get<double>("MELT_TEMPERATURE")),
+      temperature_sens_(matdata.parameters.get<double>("TEMPERATURE_SENS"))
 {
 }
 
@@ -49,6 +52,23 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::ReformulatedJohnsonCook(
 {
 }
 
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
+    const Teuchos::ParameterList& params, int gp)
+{
+  // get temperature factors
+  const double T = params.get<double>("temperature");
+  const double T_ref = parameter()->ref_temperature();
+  const double T_melt = parameter()->melt_temperature();
+  const double M = parameter()->temperature_sens();
+
+  // set temperature ratio
+  temperature_ratio_ =
+      1.0 - (std::pow(T, M) - std::pow(T_ref, M)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
+}
+
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_stress_ratio(
@@ -56,9 +76,12 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_stress_ratio(
 {
   // extract yield strength from the plastic strain and the material parameters
   const double yield_strength =
-      (parameter()->init_yield_strength() +
-          parameter()->isotrop_harden_prefac() *
+      (parameter()->init_yield_strength() * temperature_ratio_ +
+          parameter()->isotrop_harden_prefac() * temperature_ratio_ *
               std::pow(equiv_plastic_strain, parameter()->isotrop_harden_exp()));
+
+  // DEBUG
+  std::cout << "temperature_ratio_: " << temperature_ratio_ << std::endl;
 
   return equiv_stress / yield_strength;
 }

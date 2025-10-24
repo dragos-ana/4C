@@ -137,7 +137,7 @@ namespace Mat
        * @param[in] max_plastic_strain_deriv_incre maximum,
        * numerically evaluable increment of the
        * plastic strain derivatives (before throwing an overflow error),
-       * i.e. \f$ \Delta t \fra¢{\partial
+       * i.e. \f$ \Delta t \frac{\partial
        * \dot{\varepsilon}^{\text{p}}}{\partial s},~s \in
        * \left\{\varepsilon^{\text{p}}, \overline{\sigma}\right\} \f$
        * @param[out] err_status output variable: error of the terms considered in @note?
@@ -166,9 +166,10 @@ namespace Mat
        * @brief Pre-evaluation, intended to be used for stuff that has to be done only once per
        *        evaluate()
        *
+       * @param[in] params Various parameters, such as e.g. the temperature in TSI simulations
        * @param[in] gp      Current Gauss point
        */
-      virtual void pre_evaluate(int gp) { gp_ = gp; };
+      virtual void pre_evaluate(const Teuchos::ParameterList& params, int gp) { gp_ = gp; };
 
       /*!
        * @brief Update history variables of the viscoplasticity law for next time step
