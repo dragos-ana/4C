@@ -46,6 +46,7 @@ namespace Mat
 
         std::shared_ptr<Core::Mat::Material> create_material() override { return nullptr; };
 
+
         // getter methods
         //! get strain rate prefactor \f$ \dot{P}_0 \f$
         [[nodiscard]] double strain_rate_pre_fac() const { return strain_rate_prefac_; };
@@ -58,6 +59,12 @@ namespace Mat
         [[nodiscard]] double isotrop_harden_prefac() const { return isotrop_harden_prefac_; };
         //! get exponent of the isotropic hardening stress \f$ n \f$
         [[nodiscard]] double isotrop_harden_exp() const { return isotrop_harden_exp_; };
+        //! get reference temperature
+        [[nodiscard]] double ref_temperature() const { return ref_temperature_; };
+        //! get melting temperature
+        [[nodiscard]] double melt_temperature() const { return melt_temperature_; };
+        //! get temperature sensitivity factor
+        [[nodiscard]] double temperature_sens() const { return temperature_sens_; };
 
        private:
         //! strain rate prefactor \f$ \dot{P}_0 \f$
@@ -75,6 +82,15 @@ namespace Mat
 
         //! exponent of the isotropic hardening stress \f$ n \f$
         const double isotrop_harden_exp_;
+
+        //! reference temperature \f$ T_{\mathrm{ref}} \f$
+        const double ref_temperature_;
+
+        //! melting temperature \f$ T_{\mathrm{melt}} \f$
+        const double melt_temperature_;
+
+        //! temperature sensitivity \f$ M \f$
+        const double temperature_sens_;
       };
     }  // namespace PAR
 
@@ -118,6 +134,9 @@ namespace Mat
       void setup(const int numgp, const Discret::Elements::Fibers& fibers,
           const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
 
+
+      void pre_evaluate(const Teuchos::ParameterList& params, int gp) override;
+
       void update() override {};
 
       void update_gp_state(int gp) override {};
@@ -160,7 +179,6 @@ namespace Mat
         /// initial yield strength
         double sigma_Y0;
 
-
         /// constructor
         ConstPars(const double prefac, const double expon, const double harden_prefac,
             const double harden_expon, const double initial_yield_strength)
@@ -178,6 +196,10 @@ namespace Mat
 
       /// instance of ConstPars struct
       const ConstPars const_pars_;
+
+      /// temperature ratio \f$ D_T = 1 - \frac{T^M - T_{\mathrm{ref}}^M}{T_{\mathrm{melt}}^M -
+      /// T_{\mathrm{ref}}^M} \f$
+      double temperature_ratio_;
 
       //! struct containing quantities at the current time point (i.e., at \f[ t_n \f]). The
       //! quantities are tracked at all Gauss points, in order to update them simultaneously during

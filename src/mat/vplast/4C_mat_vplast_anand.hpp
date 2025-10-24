@@ -19,6 +19,7 @@
 #include "4C_utils_parameter_list.fwd.hpp"
 
 #include <Teuchos_RCP.hpp>
+#include <Teuchos_RCPDecl.hpp>
 
 #include <cmath>
 #include <memory>
@@ -126,7 +127,7 @@ namespace Mat
       void setup(const int numgp, const Discret::Elements::Fibers& fibers,
           const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
 
-      void pre_evaluate(int gp) override;
+      void pre_evaluate(const Teuchos::ParameterList& params, int gp) override;
 
       void update() override;
 
