@@ -2954,6 +2954,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                     {.description = "prefactor of the isotropic hardening stress $B_0$"}),
                 parameter<double>("ISOTROP_HARDEN_EXP",
                     {.description = "exponent of the isotropic hardening stress $n$"}),
+                parameter<double>("REF_TEMPERATURE", {.description = "reference temperature"}),
+                parameter<double>("MELT_TEMPERATURE", {.description = "melting temperature"}),
+                parameter<double>("TEMPERATURE_SENS", {.description = "temperature sensitivity"}),
+
             },
             {.description = "Reformulation of the Johnson-Cook viscoplastic law (comprising flow "
                             "rule $\\dot{P} = \\dot{P}_0 \\exp \\left( \\frac{ \\Sigma_{eq}}{C "
