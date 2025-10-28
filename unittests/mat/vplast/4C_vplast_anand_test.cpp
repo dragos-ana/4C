@@ -55,8 +55,14 @@ namespace
       int numgp = 8;  // HEX8 element, although not really relevant for the tested methods
       vplast_law_Anand_->setup(numgp, fibers, {});
 
+      // parameter list
+      Teuchos::ParameterList param_list{};
+      // TODO: test with other temperatures!
+      param_list.set<double>("temperature", 293);
+
+
       // call pre_evaluate
-      vplast_law_Anand_->pre_evaluate(0);
+      vplast_law_Anand_->pre_evaluate(param_list, 0);
     }
 
     // equivalent stress
