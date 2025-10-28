@@ -59,14 +59,25 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
     const Teuchos::ParameterList& params, int gp)
 {
   // get temperature factors
-  const double T = params.get<double>("temperature");
+  double T = parameter()->ref_temperature();
+  if (params.isParameter("temperature"))
+  {
+    T = params.get<double>("temperature");
+  }
   const double T_ref = parameter()->ref_temperature();
   const double T_melt = parameter()->melt_temperature();
   const double M = parameter()->temperature_sens();
 
   // set temperature ratio
-  temperature_ratio_ =
-      1.0 - (std::pow(T, M) - std::pow(T_ref, M)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
+  temperature_ratio_ = 1.0;
+  if (T != T_ref)
+  {
+    FOUR_C_ASSERT(T_ref != T_melt,
+        "You specified the reference temperature = melting temperature: {}! This cannot be "
+        "currently resolved by the Reformulated Johnson-Cook law!");
+    temperature_ratio_ =
+        1.0 - (std::pow(T, M) - std::pow(T_ref, M)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -79,9 +90,6 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_stress_ratio(
       (parameter()->init_yield_strength() * temperature_ratio_ +
           parameter()->isotrop_harden_prefac() * temperature_ratio_ *
               std::pow(equiv_plastic_strain, parameter()->isotrop_harden_exp()));
-
-  // DEBUG
-  std::cout << "temperature_ratio_: " << temperature_ratio_ << std::endl;
 
   return equiv_stress / yield_strength;
 }
