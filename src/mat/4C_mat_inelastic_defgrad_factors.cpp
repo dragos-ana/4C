@@ -1933,6 +1933,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
     const Teuchos::ParameterList& params, const EvaluationContext& context, const int gp,
     const int eleGID)
 {
+  // save parameter list
+  params_ = params;
+
   // set Gauss Point
   gp_ = gp;
 
@@ -1972,7 +1975,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
       time_step_quantities_.last_plastic_strain_[gp_];
 
   // call preevaluate method of the viscoplastic law
-  viscoplastic_law_->pre_evaluate(gp_);
+  viscoplastic_law_->pre_evaluate(params, gp_);
 }
 
 /*--------------------------------------------------------------------*
@@ -1985,7 +1988,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
 
 
   // set current evaluation gp for the viscoplastic law
-  viscoplastic_law_->pre_evaluate(gp_);  // set last_substep <- last_
+  viscoplastic_law_->pre_evaluate(params_, gp_);  // set last_substep <- last_
 
   // set initial predictor interpolation factors for the predictor adaptation routine
   if (parameter()->use_pred_adapt())
@@ -2892,7 +2895,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
             time_step_quantities_.current_plastic_strain_[gp_]);
 
     Core::LinAlg::Matrix<10, 10> jacMat(Core::LinAlg::Initialization::zero);
-    viscoplastic_law_->pre_evaluate(gp_);  // set last_substep <- last_
+    viscoplastic_law_->pre_evaluate(params_, gp_);  // set last_substep <- last_
     jacMat = calculate_jacobian(CredM, current_sol,
         time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
         time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);

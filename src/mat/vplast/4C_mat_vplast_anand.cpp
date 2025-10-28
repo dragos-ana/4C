@@ -76,7 +76,7 @@ void Mat::Viscoplastic::Anand::setup(const int numgp, const Discret::Elements::F
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::Viscoplastic::Anand::pre_evaluate(int gp)
+void Mat::Viscoplastic::Anand::pre_evaluate(const Teuchos::ParameterList& params, int gp)
 {  // set current Gauss point
   gp_ = gp;
 
