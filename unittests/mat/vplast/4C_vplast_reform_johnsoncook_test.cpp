@@ -38,6 +38,9 @@ namespace
       vplast_law_reformulated_JC_data.add("INIT_YIELD_STRENGTH", 792.0);
       vplast_law_reformulated_JC_data.add("ISOTROP_HARDEN_PREFAC", 510.0);
       vplast_law_reformulated_JC_data.add("ISOTROP_HARDEN_EXP", 0.26);
+      vplast_law_reformulated_JC_data.add("REF_TEMPERATURE", 293);
+      vplast_law_reformulated_JC_data.add("MELT_TEMPERATURE", 1793);
+      vplast_law_reformulated_JC_data.add("TEMPERATURE_SENS", 1.03);
       params_vplast_law_reformulated_JC_ =
           std::dynamic_pointer_cast<Mat::Viscoplastic::PAR::ReformulatedJohnsonCook>(
               std::shared_ptr(Mat::make_parameter(1,
@@ -50,8 +53,14 @@ namespace
       int numgp = 8;  // HEX8 element, although not really relevant for the tested methods
       vplast_law_reformulated_JC_->setup(numgp, {}, {});
 
+      // parameter list
+      Teuchos::ParameterList param_list{};
+      // TODO: test with other temperatures!
+      param_list.set<double>("temperature", 293);
+
+
       // call pre_evaluate
-      vplast_law_reformulated_JC_->pre_evaluate(0);
+      vplast_law_reformulated_JC_->pre_evaluate(param_list, 0);
     }
 
     // equivalent stress

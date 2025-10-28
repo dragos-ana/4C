@@ -1659,6 +1659,10 @@ namespace Mat
     //! current element ID
     int ele_gid_;
 
+    //! parameter list
+    Teuchos::ParameterList params_;
+
+
     //! map to elastic materials/potential summands (only isotropic)
     std::vector<std::shared_ptr<Mat::Elastic::Summand>> potsumel_;
 
