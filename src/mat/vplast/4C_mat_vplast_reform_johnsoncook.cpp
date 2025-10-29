@@ -58,6 +58,10 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::ReformulatedJohnsonCook(
 void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
     const Teuchos::ParameterList& params, int gp)
 {
+  // call pre_evaluate of base class
+  Mat::Viscoplastic::Law::pre_evaluate(params, gp);
+
+
   // get temperature factors
   double T = parameter()->ref_temperature();
   if (params.isParameter("temperature"))
@@ -74,7 +78,8 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
   {
     FOUR_C_ASSERT(T_ref != T_melt,
         "You specified the reference temperature = melting temperature: {}! This cannot be "
-        "currently resolved by the Reformulated Johnson-Cook law!");
+        "currently resolved by the Reformulated Johnson-Cook law!",
+        T_melt);
     temperature_ratio_ =
         1.0 - (std::pow(T, M) - std::pow(T_ref, M)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
   }
