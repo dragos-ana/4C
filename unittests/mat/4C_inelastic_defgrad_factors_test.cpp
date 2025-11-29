@@ -337,9 +337,12 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e13);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_TYPE",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorType::
-              maintain_elastic_stretch);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_STRETCH_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              PlasticPredictorStretchAssignType::maintain_elastic_stretch);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_ROT_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
+              trial_elastic_rotation);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "PRECONDITION_MATRICES_PRED_ADAPT", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
@@ -410,9 +413,12 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", 1.0e13);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e13);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("PLASTIC_PRED_TYPE",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorType::
-              maintain_elastic_stretch);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_STRETCH_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              PlasticPredictorStretchAssignType::maintain_elastic_stretch);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_ROT_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
+              trial_elastic_rotation);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("PRECONDITION_MATRICES_PRED_ADAPT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL", 1.0e-13);
@@ -1313,9 +1319,12 @@ namespace
       inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
       inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       inelastic_defgrad_debug_vplast_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
-      inelastic_defgrad_debug_vplast_data.add("PLASTIC_PRED_TYPE",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorType::
-              maintain_elastic_stretch);
+      inelastic_defgrad_debug_vplast_data.add("PLASTIC_PRED_STRETCH_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              PlasticPredictorStretchAssignType::maintain_elastic_stretch);
+      inelastic_defgrad_debug_vplast_data.add("PLASTIC_PRED_ROT_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
+              trial_elastic_rotation);
       inelastic_defgrad_debug_vplast_data.add("PRECONDITION_MATRICES_PRED_ADAPT", true);
       inelastic_defgrad_debug_vplast_data.add("PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL", 1.0e-13);
       inelastic_defgrad_debug_vplast_data.add("TIME_INTEGRATION_HIST_VARS",
