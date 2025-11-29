@@ -2774,13 +2774,22 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description = "boolean: verify whether elastic predictor is numerically "
                                 "evaluable as an initial step of the predictor adaptation?",
                     .default_value = true}),
-            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorType>(
-                "PLASTIC_PRED_TYPE",
-                {.description = "type of plastic predictor: maintain elastic stretch from previous "
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    PlasticPredictorStretchAssignType>("PLASTIC_PRED_STRETCH_ASSIGN",
+                {.description = "type of plastic predictor stretch assignment: maintain elastic "
+                                "stretch from previous "
                                 "time instant | eliminate elastic stretch entirely (only "
                                 "meaningful for no-yield-surface viscoplasticity laws)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        PlasticPredictorType::maintain_elastic_stretch}),
+                        PlasticPredictorStretchAssignType::maintain_elastic_stretch}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    PlasticPredictorRotAssignType>("PLASTIC_PRED_ROT_ASSIGN",
+                {.description =
+                        "type of plastic predictor rotation assignment: elastic rotation = trial "
+                        "elastic rotation (for isotropic materials generally the right choice) | "
+                        "plastic rotation = plastic rotation from previous time instant",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        PlasticPredictorRotAssignType::trial_elastic_rotation}),
             parameter<bool>("CHECK_CONSISTENCY_PRED_ADAPT",
                 {.description =
                         "boolean: check the consistency of the matrices determined in the "
