@@ -338,10 +338,16 @@ namespace Mat
       //! evaluated numerically as an initial step of
       //! the predictor adaptation? (true: yes, false: no)
       [[nodiscard]] bool check_elastic_pred() const { return check_elastic_pred_; };
-      //! get type of plastic predictor: maintain elastic stretch from
-      //! previous time instant | eliminate elastic stretch entirely
-      //! (only meaningful for no-yield-surface viscoplastic laws)
-      [[nodiscard]] PlasticPredictorType plastic_pred_type() const { return plastic_pred_type_; };
+      //! get type of plastic predictor stretch assignment
+      [[nodiscard]] PlasticPredictorStretchAssignType plastic_pred_stretch_assign_type() const
+      {
+        return plastic_pred_stretch_assign_type_;
+      };
+      //! get type of plastic predictor rotation assignment
+      [[nodiscard]] PlasticPredictorRotAssignType plastic_pred_rot_assign_type() const
+      {
+        return plastic_pred_rot_assign_type_;
+      };
       //! get boolean: check consistency of the matrices and their
       //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
       [[nodiscard]] bool check_consistency_pred_adapt() const
@@ -525,10 +531,11 @@ namespace Mat
       //! the predictor adaptation? (true: yes, false: no)
       const bool check_elastic_pred_;
 
-      //! type of plastic predictor: maintain elastic stretch from
-      //! previous time instant | eliminate elastic stretch entirely
-      //! (only meaningful for no-yield-surface viscoplastic laws)
-      const PlasticPredictorType plastic_pred_type_;
+      //! type of plastic predictor stretch assignment
+      const PlasticPredictorStretchAssignType plastic_pred_stretch_assign_type_;
+
+      //! type of plastic predictor rotation assignment:
+      const PlasticPredictorRotAssignType plastic_pred_rot_assign_type_;
 
       //! boolean: use predictor adaptation factor from the previous time step at the GP as a
       //! performance-boost?
@@ -1713,8 +1720,8 @@ namespace Mat
     //! based on the reference matrices of the current time step)
     const std::vector<double> ref_locs_{0.0, 1.0};
 
-    //! tracker object for the predictor adaptation
-    PredictorAdaptationUtils pred_adapt_utils_;
+    //! tracker object for the Local Newton initial guess interpolation
+    LocalNewtonGuessInterpolation lnl_guess_interpolation_;
 
     //! tracking data to be used for csv runtime output of local Newton
     //! loop, predictor adaptation, line search
