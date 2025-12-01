@@ -1870,6 +1870,31 @@ namespace Mat
         const double dt, ErrorType& err_status);
 
     /*!
+     * @brief Evaluate whether this is a valid initial guess for the Local
+     * Newton scheme: numerically
+     * evaluable residual and Jacobian, and leading to plastic flow
+     *
+     * @param[in] defgrad Deformation gradient
+     * @param[in] inv_defgrad Inverse deformation gradient
+     * @param[in] right_cg_tensor Right Cauchy-Green deformation tensor
+     * @param[in] inv_plastic_defgrad_guess Inverse plastic
+     * deformation gradient to be verified as initial guess
+     * @param[in] plastic_strain_guess Inverse plastic
+     * strain to be verified as initial guess
+     * @param[out] err_status Error type obtained during verification
+     * @param[out] state_quantities State quantities obtained during
+     * verification
+     * @param[out] state_quantity_derivatives State quantity derivatives obtained during
+     * verification
+     */
+    void is_valid_local_newton_initial_guess(const Core::LinAlg::Matrix<3, 3>& defgrad,
+        const Core::LinAlg::Matrix<3, 3>& inv_defgrad,
+        const Core::LinAlg::Matrix<3, 3>& right_cg_tensor,
+        const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_guess,
+        const double plastic_strain_guess, ErrorType& err_status, StateQuantities& state_quantities,
+        StateQuantityDerivatives& state_quantity_derivatives);
+
+    /*!
      * @brief Get the line search step size  for the current iteration of
      * the Local Newton Loop
      *
