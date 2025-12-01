@@ -296,8 +296,9 @@ namespace Mat
 
     //! class containing utilities for initial guess interpolation in the Local
     // Newton scheme for InelasticDefgradTransvIsotropElastViscoplast
-    struct LocalNewtonGuessInterpolation
+    class LocalNewtonGuessInterpolation
     {
+     public:
       //! struct: components of deformation gradient (standard, elastic, plastic) within elastic and
       //! plastic predictors extracted from combined spectral-polar decomposition as in Satheesh et
       //! al. 2023 (10.1002/nme.7373)
@@ -313,6 +314,10 @@ namespace Mat
         std::array<double, 3> lambda_elast_pred_;
         //! plastic predictor: eigenvalues \f$ \lambda_{\mathrm{plast}, i} \f$
         std::array<double, 3> lambda_plast_pred_;
+        //! elastic predictor: logarithm of eigenvalues \f$ \log(\lambda_{\mathrm{elast}, i}) \f$
+        std::array<double, 3> log_lambda_elast_pred_;
+        //! plastic predictor: logarithm eigenvalues \f$ \log(\lambda_{\mathrm{plast}, i}) \f$
+        std::array<double, 3> log_lambda_plast_pred_;
         //! elastic predictor: eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{elast}} \f$
         Core::LinAlg::Matrix<3, 3> Qmat_elast_pred_;
         //! plastic predictor: eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{plast}} \f$
@@ -362,9 +367,7 @@ namespace Mat
                 spectral_pairs_ref = std::nullopt);
       };
 
-      //! predictor decompositions for each GP of deformation gradient (with specified type:
-      //! elastic, inverse plastic, ...) within elastic and plastic predictors
-      std::vector<PredictorDefgradDecomposition> all_pred_decomp_specific_defgrad_;
+
 
       //! enum class: deformation gradient decomposed and
       //! interpolated in the interpolation routine
@@ -373,6 +376,7 @@ namespace Mat
         elastic_defgrad,      ///< elastic deformation gradients are decomposed
         inv_plastic_defgrad,  ///< inverse plastic deformation gradients are decomposed
       };
+
       /**
        * @brief Set deformation gradient type used in the interpolation routine.
        *
@@ -402,49 +406,29 @@ namespace Mat
               rot_assign_type);
         }
       }
-      //! decomposed deformation gradient type
-      const DefgradType defgrad_type_;
 
 
-
-      /**
-       * @brief Component interpolator storing arrays of interpolation parameters
-       *        and bounds for a single interpolation component.
-       *
-       * @tparam num_items Length of each interpolation parameter array.
-       */
-      template <std::size_t num_items>
-      struct ComponentInterpolator
+      //! struct: specified point in interpolation space used to interpolate the
+      //! inverse plastic deformation gradient (or the elastic deformation
+      //! gradient, depending on the user specification)
+      struct InterpolationPoint
       {
-        //! interpolation factor for the current timestep
-        std::array<double, num_items> current_xi_;
-
-        //! interpolation factor from previous timestep
-        std::array<double, num_items> last_xi_;
-
-        //! optimal interpolation factor based on the solution from the previous
-        //! timstep
-        std::array<double, num_items> optimal_xi_;
-
-        //! lower bound for the current interpolation parameter
-        std::array<double, num_items> xi_l_;
-
-        //! upper bound for the current interpolation parameter
-        std::array<double, num_items> xi_u_;
+        const double xi_lambda_1_;  ///< interpolation factor for the first
+                                    /// <eigenvalue lambda_1
+        const double xi_lambda_2_;  ///< interpolation factor for the second
+                                    ///< eigenvalue lambda_2
+        const std::array<double, 3>
+            xi_rel_eigenvect_rot_;  ///< interpolation factor for the relative eigenvector rotation
+                                    ///< vector
+        //! print method
+        void print(std::ostream& os) const
+        {
+          os << "-- Interpolation point: lambda_1: " << xi_lambda_1_
+             << "; lambda_2: " << xi_lambda_2_ << "; rel_eigenvect_rot: ["
+             << xi_rel_eigenvect_rot_[0] << ", " << xi_rel_eigenvect_rot_[1] << ", "
+             << xi_rel_eigenvect_rot_[2] << "] \n";
+        }
       };
-
-      //! interpolator for each GP for first eigenvalue \f$ \lambda_1 \f$ of either the
-      //! elastic or the plastic defgrad (depending on rotation assignment)
-      std::vector<ComponentInterpolator<1>> all_component_interp_lambda_1_;
-
-      //! interpolator for each GP for second eigenvalue \f$ \lambda_2 \f$ of either the
-      //! elastic or the plastic defgrad (depending on rotation assignment)
-      std::vector<ComponentInterpolator<1>> all_component_interp_lambda_2_;
-
-      //! interpolator for each GP for relative eigenvector rotation vector \f$
-      //! \boldsymbol{q}_{\mathrm{rel}} \f$ of either the elastic or the plastic defgrad (depending
-      //! on rotation assignment)
-      std::vector<ComponentInterpolator<3>> all_component_interp_rel_eigenvect_rot_;
 
       //! interval scanning parameter set by the user \f$ k_{\mathrm{scan}} \f$
       const double k_scan_;
@@ -457,20 +441,11 @@ namespace Mat
       const unsigned int max_num_pred_adapt_;
 
       // maximum allowed number number of predictor adaptation iterations
-      static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 50;
+      static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 100;
 
-      //! current predictor containing the inverse inelastic deformation
+      //! current initial guess containing the inverse inelastic deformation
       //! gradient (components 0-8) and the plastic strain (component 9)
       Core::LinAlg::Matrix<10, 1> guess_inv_plast_defgrad_;
-
-      //! user-specified stretch assignment for the elastic and
-      //! plastic deformation gradient within the plastic predictor
-      const PlasticPredictorStretchAssignType plast_pred_stretch_assign_type_;
-
-      //! user-specified rotation assignment for the elastic and
-      //! plastic deformation gradient within the plastic predictor
-      const PlasticPredictorRotAssignType plast_pred_rot_assign_type_;
-
 
       /*!
        * @brief Constructor
@@ -542,6 +517,153 @@ namespace Mat
           const Core::LinAlg::Matrix<3, 3>& defgrad);
 
       /*!
+       * @brief Retrieves the current interpolation point at a specified Gauss point, based on the
+       * current xi values.
+       *
+       * @param[in] gp Gauss point index
+       * @return Current interpolation point
+       */
+      InterpolationPoint get_curr_interp_point(const int gp) const
+      {
+        return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].current_xi_[0],
+            .xi_lambda_2_ = all_component_interp_lambda_2_[gp].current_xi_[0],
+            .xi_rel_eigenvect_rot_ = all_component_interp_rel_eigenvect_rot_[gp].current_xi_};
+      };
+
+      /*!
+       *
+       * @brief Retrieves the previous timestep interpolation point at a specified Gauss point,
+       * based on the last xi values.
+       *
+       * @param[in] gp Gauss point index
+       * @return Current interpolation point
+       */
+      InterpolationPoint get_last_interp_point(const int gp) const
+      {
+        return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].last_xi_[0],
+            .xi_lambda_2_ = all_component_interp_lambda_2_[gp].last_xi_[0],
+            .xi_rel_eigenvect_rot_ = all_component_interp_rel_eigenvect_rot_[gp].last_xi_};
+      };
+
+      /*!
+       *
+       * @brief Retrieves the optimal interpolation point at a specified Gauss point associated with
+       * the previous timestep
+       *
+       * @param[in] gp Gauss point index
+       * @return Current interpolation point
+       */
+      InterpolationPoint get_optimal_interp_point(const int gp) const
+      {
+        return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].optimal_xi_[0],
+            .xi_lambda_2_ = all_component_interp_lambda_2_[gp].optimal_xi_[0],
+            .xi_rel_eigenvect_rot_ = all_component_interp_rel_eigenvect_rot_[gp].optimal_xi_};
+      };
+
+      /*!
+       * @brief Retrieves the interpolation point associated with the lower interpolation interval
+       * bound at a specified Gauss point
+       *
+       * @param[in] gp Gauss point index
+       * @return Interpolation point of the lower bound
+       */
+      InterpolationPoint get_lower_bound_interp_point(const int gp) const
+      {
+        return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].xi_l_[0],
+            .xi_lambda_2_ = all_component_interp_lambda_2_[gp].xi_l_[0],
+            .xi_rel_eigenvect_rot_ = all_component_interp_rel_eigenvect_rot_[gp].xi_l_};
+      };
+
+
+      /*!
+       * @brief Retrieves the interpolation point associated with the upper interpolation interval
+       * bound at a specified Gauss point
+       *
+       * @param[in] gp Gauss point index
+       * @return Interpolation point of the upper bound
+       */
+      InterpolationPoint get_upper_bound_interp_point(const int gp) const
+      {
+        return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].xi_u_[0],
+            .xi_lambda_2_ = all_component_interp_lambda_2_[gp].xi_u_[0],
+            .xi_rel_eigenvect_rot_ = all_component_interp_rel_eigenvect_rot_[gp].xi_u_};
+      };
+
+      /*!
+       * @brief Sets the current interpolation point at specified Gauss point.
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_point Interpolation point to be specified as current
+       */
+      void set_curr_interp_point(const int gp, const InterpolationPoint& interp_point)
+      {
+        all_component_interp_lambda_1_[gp].current_xi_ = {interp_point.xi_lambda_1_};
+        all_component_interp_lambda_2_[gp].current_xi_ = {interp_point.xi_lambda_2_};
+        all_component_interp_rel_eigenvect_rot_[gp].current_xi_ =
+            interp_point.xi_rel_eigenvect_rot_;
+      }
+
+      /*!
+       * @brief Sets the last interpolation point, associated with the previous timestep, at
+       * specified Gauss point.
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_point Interpolation point to be specified as last
+       */
+      void set_last_interp_point(const int gp, const InterpolationPoint& interp_point)
+      {
+        all_component_interp_lambda_1_[gp].last_xi_ = {interp_point.xi_lambda_1_};
+        all_component_interp_lambda_2_[gp].last_xi_ = {interp_point.xi_lambda_2_};
+        all_component_interp_rel_eigenvect_rot_[gp].last_xi_ = interp_point.xi_rel_eigenvect_rot_;
+      }
+
+      /*!
+       * @brief Sets the optimal interpolation point, associated with the previous timestep, at
+       * specified Gauss point.
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_point Interpolation point to be specified as optimal
+       */
+      void set_optimal_interp_point(const int gp, const InterpolationPoint& interp_point)
+      {
+        all_component_interp_lambda_1_[gp].optimal_xi_ = {interp_point.xi_lambda_1_};
+        all_component_interp_lambda_2_[gp].optimal_xi_ = {interp_point.xi_lambda_2_};
+        all_component_interp_rel_eigenvect_rot_[gp].optimal_xi_ =
+            interp_point.xi_rel_eigenvect_rot_;
+      }
+
+
+      /*!
+       * @brief Sets the interpolation point associated with the lower
+       * interpolation interval bound at specified Gauss point.
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_point Interpolation point to be specified as lower
+       * bound
+       */
+      void set_lower_bound_interp_point(const int gp, const InterpolationPoint& interp_point)
+      {
+        all_component_interp_lambda_1_[gp].xi_l_ = {interp_point.xi_lambda_1_};
+        all_component_interp_lambda_2_[gp].xi_l_ = {interp_point.xi_lambda_2_};
+        all_component_interp_rel_eigenvect_rot_[gp].xi_l_ = interp_point.xi_rel_eigenvect_rot_;
+      }
+
+      /*!
+       * @brief Sets the interpolation point associated with the upper
+       * interpolation interval bound at specified Gauss point.
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_point Interpolation point to be specified as upper
+       * bound
+       */
+      void set_upper_bound_interp_point(const int gp, const InterpolationPoint& interp_point)
+      {
+        all_component_interp_lambda_1_[gp].xi_u_ = {interp_point.xi_lambda_1_};
+        all_component_interp_lambda_2_[gp].xi_u_ = {interp_point.xi_lambda_2_};
+        all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = interp_point.xi_rel_eigenvect_rot_;
+      }
+
+      /*!
        * @brief Interpolate inverse plastic deformation gradient between the
        * elastic and the plastic predictor, given the
        * current several interpolation factors
@@ -561,7 +683,8 @@ namespace Mat
        *
        */
       Core::LinAlg::Matrix<3, 3> interpolate_inv_plastic_defgrad(const int gp,
-          const Core::LinAlg::Matrix<3, 3>& defgrad, const Core::LinAlg::Matrix<3, 3>& inv_defgrad);
+          const Core::LinAlg::Matrix<3, 3>& defgrad, const InterpolationPoint& interp_point,
+          const Core::LinAlg::Matrix<3, 3>& inv_defgrad);
 
       /*!
        * @brief Adapt interpolation parameters  and interpolation intervals
@@ -601,6 +724,67 @@ namespace Mat
       void compute_optimal_interp_factors(const int gp,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
           const Core::LinAlg::Matrix<3, 3>& defgrad);
+
+
+      //! predictor decompositions for each GP of deformation gradient (with specified type:
+      //! elastic, inverse plastic, ...) within elastic and plastic predictors
+      //!--> MOVE TO PRIVATE?
+      std::vector<PredictorDefgradDecomposition> all_pred_decomp_specific_defgrad_;
+
+     private:
+      //! decomposed deformation gradient type
+      const DefgradType defgrad_type_;
+
+
+
+      /**
+       * @brief Component interpolator storing arrays of interpolation parameters
+       *        and bounds for a single interpolation component.
+       *
+       * @tparam num_items Length of each interpolation parameter array.
+       */
+      template <std::size_t num_items>
+      struct ComponentInterpolator
+      {
+        //! interpolation factor for the current timestep
+        std::array<double, num_items> current_xi_;
+
+        //! interpolation factor from previous timestep
+        std::array<double, num_items> last_xi_;
+
+        //! optimal interpolation factor based on the solution from the previous
+        //! timstep
+        std::array<double, num_items> optimal_xi_;
+
+        //! lower bound for the current interpolation parameter
+        std::array<double, num_items> xi_l_;
+
+        //! upper bound for the current interpolation parameter
+        std::array<double, num_items> xi_u_;
+      };
+
+      //! user-specified stretch assignment for the elastic and
+      //! plastic deformation gradient within the plastic predictor
+      const PlasticPredictorStretchAssignType plast_pred_stretch_assign_type_;
+
+      //! user-specified rotation assignment for the elastic and
+      //! plastic deformation gradient within the plastic predictor
+      const PlasticPredictorRotAssignType plast_pred_rot_assign_type_;
+
+
+
+      //! interpolator for each GP for first eigenvalue \f$ \lambda_1 \f$ of either the
+      //! elastic or the plastic defgrad (depending on rotation assignment)
+      std::vector<ComponentInterpolator<1>> all_component_interp_lambda_1_;
+
+      //! interpolator for each GP for second eigenvalue \f$ \lambda_2 \f$ of either the
+      //! elastic or the plastic defgrad (depending on rotation assignment)
+      std::vector<ComponentInterpolator<1>> all_component_interp_lambda_2_;
+
+      //! interpolator for each GP for relative eigenvector rotation vector \f$
+      //! \boldsymbol{q}_{\mathrm{rel}} \f$ of either the elastic or the plastic defgrad (depending
+      //! on rotation assignment)
+      std::vector<ComponentInterpolator<3>> all_component_interp_rel_eigenvect_rot_;
     };
 
     //! struct with local substepping utilities
@@ -1387,9 +1571,9 @@ namespace Mat
     // display / log evaluation warnings
 #define DISPLAY_WARNINGS ;
 
-    // #define DEBUG_MODE;
-    // #define DEBUG_PRED_ADAPT;
-    //  #define DEBUG_LNL ;
+#define DEBUG_MODE ;
+#define DEBUG_PRED_ADAPT ;
+#define DEBUG_LNL ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 

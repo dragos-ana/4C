@@ -11,6 +11,7 @@
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_utils_tensor_interpolation.hpp"
 #include "4C_mat_inelastic_defgrad_factors.hpp"
+#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
 #include <boost/graph/visitors.hpp>
@@ -356,6 +357,10 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
       spectral_pairs_elast_pred_[2].first};
   lambda_plast_pred_ = {spectral_pairs_plast_pred_[0].first, spectral_pairs_plast_pred_[1].first,
       spectral_pairs_plast_pred_[2].first};
+  log_lambda_elast_pred_ = {std::log(spectral_pairs_elast_pred_[0].first),
+      std::log(spectral_pairs_elast_pred_[1].first), std::log(spectral_pairs_elast_pred_[2].first)};
+  log_lambda_plast_pred_ = {std::log(spectral_pairs_plast_pred_[0].first),
+      std::log(spectral_pairs_plast_pred_[1].first), std::log(spectral_pairs_plast_pred_[2].first)};
 
   // save eigenvector rotation matrices and vectors
   for (int i = 0; i < 3; ++i)
@@ -383,11 +388,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
     LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_pred_adapt,
         const PlasticPredictorStretchAssignType stretch_assign_type,
         const PlasticPredictorRotAssignType rot_assign_type)
-    : defgrad_type_(get_defgrad_type(rot_assign_type)),
-      k_scan_(k_scan),
+    : k_scan_(k_scan),
       num_of_pred_adapt_(0),
       max_num_pred_adapt_(max_num_pred_adapt),
       guess_inv_plast_defgrad_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}},
+      defgrad_type_(get_defgrad_type(rot_assign_type)),
       plast_pred_stretch_assign_type_(stretch_assign_type),
       plast_pred_rot_assign_type_(rot_assign_type)
 {
@@ -553,7 +558,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
     LocalNewtonGuessInterpolation::interpolate_inv_plastic_defgrad(const int gp,
-        const Core::LinAlg::Matrix<3, 3>& defgrad, const Core::LinAlg::Matrix<3, 3>& inv_defgrad)
+        const Core::LinAlg::Matrix<3, 3>& defgrad, const InterpolationPoint& interp_point,
+        const Core::LinAlg::Matrix<3, 3>& inv_defgrad)
 {
   // declare interpolated inverse plastic deformation gradient
   Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad{Core::LinAlg::Initialization::zero};
@@ -562,7 +568,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   Core::LinAlg::Matrix<3, 1> rel_eigenvect_rot_vect{Core::LinAlg::Initialization::zero};
   for (unsigned int i = 0; i < 3; ++i)
   {
-    rel_eigenvect_rot_vect(i) = all_component_interp_rel_eigenvect_rot_[gp].current_xi_[i] *
+    rel_eigenvect_rot_vect(i) = interp_point.xi_rel_eigenvect_rot_[i] *
                                 all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i);
   }
   // get relative eigenvector (rotation) matrix associated with the rotation
@@ -578,17 +584,75 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
       1.0, all_pred_decomp_specific_defgrad_[gp].Qmat_elast_pred_, rel_eigenvect_rot_matrix, 0.0);
 
   // calculate eigenvalue matrix assuming plastic incompressibility (det
-  // = 1)
+  // = 1) --> set only first two eigenvalues, the third one is set based on the
+  // considered deformation gradient type
   Core::LinAlg::Matrix<3, 3> eigenvalue_matrix{Core::LinAlg::Initialization::zero};
-  eigenvalue_matrix(0, 0) = (1 - all_component_interp_lambda_1_[gp].current_xi_[0]) *
+
+  // --> eigenvalue interpolation
+
+  // compute weights
+  const double unnorm_w_lambda_1_elast_pred = 1.0 - std::pow(interp_point.xi_lambda_1_, 1.0);
+  const double unnorm_w_lambda_1_plast_pred = std::pow(interp_point.xi_lambda_1_, 1.0);
+  /*  const double unnorm_w_lambda_1_elast_pred =
+        std::exp(-10.0 * std::abs(interp_point.xi_lambda_1_.current_xi_[0]));
+    const double unnorm_w_lambda_1_plast_pred =
+        std::exp(-10.0 * std::abs(1.0 - interp_point.xi_lambda_1_.current_xi_[0]));
+  */
+
+
+
+  const double inv_sum_unnorm_w_lambda_1 =
+      1.0 / (unnorm_w_lambda_1_elast_pred + unnorm_w_lambda_1_plast_pred);
+  const double w_lambda_1_elast_pred = unnorm_w_lambda_1_elast_pred * inv_sum_unnorm_w_lambda_1;
+  const double w_lambda_1_plast_pred = unnorm_w_lambda_1_plast_pred * inv_sum_unnorm_w_lambda_1;
+
+
+  eigenvalue_matrix(0, 0) = std::exp(
+      w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[0] +
+      w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[0]);
+  eigenvalue_matrix(1, 1) = std::exp(
+      w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[1] +
+      w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[1]);
+
+  /*
+  eigenvalue_matrix(0, 0) = (1.0 - all_component_interp_lambda_1_[gp].current_xi_[0]) *
                                 all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0] +
                             all_component_interp_lambda_1_[gp].current_xi_[0] *
                                 all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0];
-  eigenvalue_matrix(1, 1) = (1 - all_component_interp_lambda_2_[gp].current_xi_[0]) *
+  eigenvalue_matrix(1, 1) = (1.0 - all_component_interp_lambda_2_[gp].current_xi_[0]) *
                                 all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1] +
                             all_component_interp_lambda_2_[gp].current_xi_[0] *
                                 all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1];
-  eigenvalue_matrix(2, 2) = 1.0 / (eigenvalue_matrix(0, 0) * eigenvalue_matrix(1, 1));
+*/
+
+
+// DEBUG
+#ifdef DEBUG_PRED_ADAPT
+  std::cout << "Interpolating inverse plastic defgrad: " << std::endl;
+  std::cout << "--> defgrad_type: " << EnumTools::enum_name(defgrad_type_) << std::endl;
+  std::cout << "--> lambda_1: elast_pred: "
+            << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0]
+            << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0]
+            << "; current_xi: " << all_component_interp_lambda_1_[gp].current_xi_[0] << std::endl;
+  std::cout << "--> lambda_2: elast_pred: "
+            << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1]
+            << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1]
+            << "; current_xi: " << all_component_interp_lambda_2_[gp].current_xi_[0] << std::endl;
+  std::cout << "--> lambda_3: elast_pred: "
+            << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[2]
+            << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[2]
+            << std::endl;
+  std::cout << "--> Qmat_elast_pred: " << std::endl;
+  all_pred_decomp_specific_defgrad_[gp].Qmat_elast_pred_.print(std::cout);
+  std::cout << "--> Qmat_plast_pred: " << std::endl;
+  all_pred_decomp_specific_defgrad_[gp].Qmat_plast_pred_.print(std::cout);
+  std::cout << "--> Qvec_plast_pred_rel_: " << std::endl;
+  all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_.print(std::cout);
+  std::cout << "--> eigenvect_rot_matrix: " << std::endl;
+  eigenvect_rot_matrix.print(std::cout);
+  std::cout << "inv_defgrad (relevant for defgrad_type: elastic_defgrad): " << std::endl;
+  inv_defgrad.print(std::cout);
+#endif
 
 
 
@@ -596,6 +660,11 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   // interpolation
   if (defgrad_type_ == DefgradType::elastic_defgrad)
   {
+    // the elastic deformation gradient has the determinant of the full
+    // deformation gradient
+    eigenvalue_matrix(2, 2) =
+        defgrad.determinant() / (eigenvalue_matrix(0, 0) * eigenvalue_matrix(1, 1));
+
     // build elastic deformation gradient
     Core::LinAlg::Matrix<3, 3> elastic_defgrad{Core::LinAlg::Initialization::zero};
     Core::LinAlg::Matrix<3, 3> lambda_Q{Core::LinAlg::Initialization::zero};
@@ -610,6 +679,10 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   }
   else if (defgrad_type_ == DefgradType::inv_plastic_defgrad)
   {
+    // the plastic deformation gradient has the determinant 1 -> plastic
+    // incompressibility assumed!
+    eigenvalue_matrix(2, 2) = 1.0 / (eigenvalue_matrix(0, 0) * eigenvalue_matrix(1, 1));
+
     // build inverse plastic deformation gradient
     Core::LinAlg::Matrix<3, 3> lambda_Q{Core::LinAlg::Initialization::zero};
     Core::LinAlg::Matrix<3, 3> QT_lambda_Q{Core::LinAlg::Initialization::zero};
