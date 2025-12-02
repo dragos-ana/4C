@@ -669,58 +669,6 @@ namespace
   }
 
 
-  /*!
-   * @brief Retrieves the difference (2-norm) between two interpolation points.
-   *
-   * @param[in] interp_point_1 First interpolation point
-   * @param[in] interp_point_2 Second interpolation point
-   */
-  double get_diff_interp_points(
-      const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_1,
-      const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_2)
-  {
-    const double diff_lambda_1 = (interp_point_2.xi_lambda_1_ - interp_point_1.xi_lambda_1_) *
-                                 (interp_point_2.xi_lambda_1_ - interp_point_1.xi_lambda_1_);
-    const double diff_lambda_2 = (interp_point_2.xi_lambda_2_ - interp_point_1.xi_lambda_2_) *
-                                 (interp_point_2.xi_lambda_2_ - interp_point_1.xi_lambda_2_);
-    const double diff_rot_1 =
-        (interp_point_2.xi_rel_eigenvect_rot_[0] - interp_point_1.xi_rel_eigenvect_rot_[0]) *
-        (interp_point_2.xi_rel_eigenvect_rot_[0] - interp_point_1.xi_rel_eigenvect_rot_[0]);
-    const double diff_rot_2 =
-        (interp_point_2.xi_rel_eigenvect_rot_[1] - interp_point_1.xi_rel_eigenvect_rot_[1]) *
-        (interp_point_2.xi_rel_eigenvect_rot_[1] - interp_point_1.xi_rel_eigenvect_rot_[1]);
-    const double diff_rot_3 =
-        (interp_point_2.xi_rel_eigenvect_rot_[2] - interp_point_1.xi_rel_eigenvect_rot_[2]) *
-        (interp_point_2.xi_rel_eigenvect_rot_[2] - interp_point_1.xi_rel_eigenvect_rot_[2]);
-
-    return std::sqrt(diff_lambda_1 + diff_lambda_2 + diff_rot_1 + diff_rot_2 + diff_rot_3);
-  }
-
-  /*!
-   * @brief Add interpolation points.
-   *
-   */
-  LocalNewtonGuessInterpolation::InterpolationPoint add_interpolation_points(const double scalar_a,
-      const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_a,
-      const double scalar_b,
-      const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_b)
-  {
-    return LocalNewtonGuessInterpolation::InterpolationPoint{
-        .xi_lambda_1_ =
-            scalar_a * interp_point_a.xi_lambda_1_ + scalar_b * interp_point_b.xi_lambda_1_,
-        .xi_lambda_2_ =
-            scalar_a * interp_point_a.xi_lambda_2_ + scalar_b * interp_point_b.xi_lambda_2_,
-        .xi_rel_eigenvect_rot_ = {
-            scalar_a * interp_point_a.xi_rel_eigenvect_rot_[0] +
-                scalar_b * interp_point_b.xi_rel_eigenvect_rot_[0],
-            scalar_a * interp_point_a.xi_rel_eigenvect_rot_[1] +
-                scalar_b * interp_point_b.xi_rel_eigenvect_rot_[1],
-            scalar_a * interp_point_a.xi_rel_eigenvect_rot_[2] +
-                scalar_b * interp_point_b.xi_rel_eigenvect_rot_[2],
-        }};
-  }
-
-
 
 // DEBUG: check whether current gp and ele_gid match the debugging gp and ele_gid
 #ifdef DEBUG_MODE
@@ -942,6 +890,10 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
       user_pred_interp_fact_(matdata.parameters.get<double>("USER_PRED_INTERP_FACT")),
       max_num_pred_adapt_(matdata.parameters.get<int>("MAX_NUM_PRED_ADAPT")),
+      init_guess_interp_min_interval_(
+          matdata.parameters.get<double>("INIT_GUESS_INTERP_MIN_INTERVAL")),
+      init_guess_reinterp_min_diff_lbound_(
+          matdata.parameters.get<double>("INIT_GUESS_REINTERP_MIN_DIFF_LBOUND")),
       max_substepping_halve_num_(matdata.parameters.get<int>("MAX_SUBSTEPPING_HALVE_NUM")),
       mat_exp_calc_method_(
           matdata.parameters.get<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD")),
@@ -1967,7 +1919,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       tensor_interpolator_{init_tensor_interpolator()},
       lnl_guess_interpolation_(parameter()->user_pred_interp_fact(),
           parameter()->max_num_pred_adapt(), parameter()->plastic_pred_stretch_assign_type(),
-          parameter()->plastic_pred_rot_assign_type()),
+          parameter()->plastic_pred_rot_assign_type(),
+          parameter()->init_guess_interp_min_interval()),
       csv_output_tracking_data_{},
       csv_output_pred_adapt_micro_iter_data_{csv_output_tracking_data_},
       csv_output_line_search_micro_iter_data_{csv_output_tracking_data_},
@@ -3471,6 +3424,74 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       // else: set all optimal values to 0.0 = elastic predictor
       if (std::abs(current_state_quantities.curr_equiv_plastic_strain_rate_) > 0.0)
       {
+        // DEBUG
+        // std::cout << "--> update: GP = " << gp << std::endl;
+        /*Core::LinAlg::Matrix<3, 3> inv_curr_defgrad{Core::LinAlg::Initialization::zero};
+            inv_curr_defgrad.invert(time_step_quantities_.current_defgrad_[gp]);
+    Core::LinAlg::Matrix<3, 3> iFin_elast_pred{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Matrix<3, 3> iFin_plast_pred{Core::LinAlg::Initialization::zero};
+    if (lnl_guess_interpolation_.get_defgrad_type(
+            parameter()->plastic_pred_rot_assign_type()) ==
+        InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+            DefgradType::elastic_defgrad)
+    {
+      iFin_elast_pred.multiply_nn(1.0, inv_curr_defgrad,
+          lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
+              .specific_defgrad_elast_pred_,
+          0.0);
+      iFin_plast_pred.multiply_nn(1.0, inv_curr_defgrad,
+          lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
+              .specific_defgrad_plast_pred_,
+          0.0);
+    }
+    else if (lnl_guess_interpolation_.get_defgrad_type(
+                 parameter()->plastic_pred_rot_assign_type()) ==
+             InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+                 DefgradType::inv_plastic_defgrad)
+    {
+      iFin_elast_pred = lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
+                            .specific_defgrad_elast_pred_;
+      iFin_plast_pred = lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
+                            .specific_defgrad_plast_pred_;
+
+    }
+    else
+    {
+      FOUR_C_THROW("Unsupported defgrad type: {}",
+          EnumTools::enum_name(lnl_guess_interpolation_.get_defgrad_type(
+              parameter()->plastic_pred_rot_assign_type())));
+    }
+    ErrorType debug_err_status
+    {InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors}; StateQuantities
+    state_quantities_elast_pred =
+        evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
+            iFin_elast_pred,
+            0.0, debug_err_status, time_step_tracker_.dt_,
+            StateQuantityEvalType::PlasticStrainRateOnly);
+    //FOUR_C_ASSERT_ALWAYS(debug_err_status ==
+    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Evaluating elastic
+    predictor failed with error {}", EnumTools::enum_name(debug_err_status)); StateQuantities
+    state_quantities_plast_pred =
+        evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
+            iFin_plast_pred,
+            0.0, debug_err_status, time_step_tracker_.dt_,
+            StateQuantityEvalType::PlasticStrainRateOnly);
+    //FOUR_C_ASSERT_ALWAYS(debug_err_status ==
+    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Evaluating plastic
+    predictor failed with error {}", EnumTools::enum_name(debug_err_status)); StateQuantities
+    state_quantities_sol = evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
+            time_step_quantities_.current_plastic_defgrad_inverse_[gp],
+            0.0, debug_err_status, time_step_tracker_.dt_,
+            StateQuantityEvalType::PlasticStrainRateOnly);
+    //FOUR_C_ASSERT_ALWAYS(debug_err_status ==
+    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Evaluating solution
+    failed with error {}", EnumTools::enum_name(debug_err_status)); std::cout << "EQUIV STRESS: " <<
+    std::endl; std::cout<< "elast_pred: " << state_quantities_elast_pred.curr_equiv_stress_ <<
+    std::endl; std::cout<< "sol: " << state_quantities_sol.curr_equiv_stress_ << std::endl;
+    std::cout<< "plast_pred: " << state_quantities_plast_pred.curr_equiv_stress_ << std::endl;
+    */
+
+
         if (parameter()->precondition_matrices_pred_adapt())
         {
           lnl_guess_interpolation_.compute_optimal_interp_factors(gp,
@@ -4959,15 +4980,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     ++pred_adapt_step_counter;
 
 
-    // check whether we have reached the maximum number of allowed
-    // predictor adaptation steps
-    if (pred_adapt_step_counter > LocalNewtonGuessInterpolation::MAX_NUM_PRED_ADAPT_ITERS)
+    // check whether interpolation is still possible
+
+    if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, pred_adapt_step_counter))
     {
       // write micro iteration data to csv
       if (parameter()->use_csv_output_pred_adapt_micro_iter())
         csv_output_pred_adapt_micro_iter_data_.write_pred_adapt_micro_iter_data_to_csv();
 
-      std::cout << debug_get_error_info("Could not adapt the predictor at all") << std::endl;
+      std::cout << debug_get_error_info("Could not determine an initial guess!") << std::endl;
       FOUR_C_THROW("See above");
     }
 
@@ -5524,13 +5545,9 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     // increment number of predictor adaptations / repredictorizations
     ++lnl_guess_interpolation_.num_of_pred_adapt_;
     // check whether predictor adaptation still possible
-    if (lnl_guess_interpolation_.num_of_pred_adapt_ > lnl_guess_interpolation_.max_num_pred_adapt_)
+    if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, 0))
     {
-      std::cout << debug_get_error_info(
-                       "Maximum number of predictor adaptations / repredictorizations within a "
-                       "single Local "
-                       "Newton Loop exceeded!")
-                << std::endl;
+      std::cout << debug_get_error_info("Reinterpolation not possible") << std::endl;
       return ErrorAction::return_solution_with_errors;
     }
 
@@ -5554,36 +5571,23 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
 
     // build interpolation point to be evaluated next as initial guess
     LocalNewtonGuessInterpolation::InterpolationPoint next_interp_point =
-        add_interpolation_points(0.5, interp_point_lbound, 0.5, curr_interp_point);
-
-    // DEBUG
-    std::cout << std::string(50, '-') << std::endl;
-    std::cout << "NEXT INTERPOLATION POINT: " << std::endl;
-    next_interp_point.print(std::cout);
-    std::cout << "LOWER BOUND: " << std::endl;
-    interp_point_lbound.print(std::cout);
-    std::cout << "CURRENT INTERPOLATION POINT: " << std::endl;
-    curr_interp_point.print(std::cout);
+        LocalNewtonGuessInterpolation::add_interpolation_points(
+            0.5, interp_point_lbound, 0.5, curr_interp_point);
 
 
     // get difference with respect to the lower bound
-    const double next_min_lbound = get_diff_interp_points(next_interp_point, interp_point_lbound);
+    const double next_min_lbound = LocalNewtonGuessInterpolation::get_diff_interp_points(
+        next_interp_point, interp_point_lbound);
 
-
-    // DEBUG
-    std::cout << "diff next - lower: " << next_min_lbound << std::endl;
 
     // initialize boolean: is next interpolation point suitable as an initial
     // guess
     bool is_init_guess = true;
     // check if it is too near to the lower bound, and if not, then properly
     // evaluate as initial guess
-    if (next_min_lbound < 1.0e-2)
+    if (next_min_lbound < parameter()->init_guess_reinterp_min_diff_lbound())
     {
       is_init_guess = false;
-
-      // DEBUG
-      std::cout << "smaller than set diff tolerance: is_init_guess <- false " << std::endl;
     }
     else
     {
@@ -5625,10 +5629,6 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
           if (next_guess_err ==
               InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
           {
-            // DEBUG
-            std::cout << "SUCCESS: after evaluating the interpolation point: is_init_guess <- true "
-                      << std::endl;
-
             lnl_guess_interpolation_.set_curr_interp_point(gp_, next_interp_point);
 
             sol = wrap_unknowns(next_iFin, next_plastic_strain);
@@ -5639,13 +5639,6 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
       // if this was not an initial valid guess: set dedicated boolean
       is_init_guess = (next_guess_err ==
                        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors);
-
-      // DEBUG
-      if (!is_init_guess)
-      {
-        std::cout << "after evaluating the interpolation point: is_init_guess <- false "
-                  << std::endl;
-      }
     }
 
 
