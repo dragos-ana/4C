@@ -18,6 +18,7 @@
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_four_tensor_generators.hpp"
+#include "4C_mat_scatra.hpp"
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
@@ -440,6 +441,10 @@ namespace Mat
       //! repredictorizations (including the initial predictor adaptation) before throwing error
       const unsigned int max_num_pred_adapt_;
 
+      //! minimum interpolation interval as a 2-norm \f$ \|  \mathbf{\xi}_{\text{upper}} -
+      //! \mathbf{\xi}_{\text{upper}} \| \f$
+      const double min_interp_interval_;
+
       // maximum allowed number number of predictor adaptation iterations
       static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 100;
 
@@ -457,14 +462,56 @@ namespace Mat
        * and plastic deformation gradient within the plastic predictor
        * @param[in] rot_assign_type Rotation assignment type for the elastic
        * and plastic deformation gradient within the plastic predictor
+       *  @param[in] min_interp_interval Minimum interpolation interval upper -
+       *  lower (2-norm in interpolation space)
        */
       LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_pred_adapt,
           const PlasticPredictorStretchAssignType stretch_assign_type,
-          const PlasticPredictorRotAssignType rot_assign_type);
+          const PlasticPredictorRotAssignType rot_assign_type, const double min_interp_interval);
 
       //! setup method: set the correct number of Gauss Points to track the internal variables
       //! of the class
-      void setup(const int num_gp);
+      void setup(const unsigned int num_gp);
+
+      /*!
+       * @brief Verify whether interpolation is still possible, based on the
+       * set minimum interpolation interval, the set maximum number of interpolation
+       * iterations, and the set maximum number of reinterpolations
+       *
+       */
+      bool is_interpolation_possible(const unsigned int gp, const unsigned int num_interp_iters)
+      {
+        // check interpolation interval
+        const double diff_bounds = get_diff_interp_points(
+            get_lower_bound_interp_point(gp), get_upper_bound_interp_point(gp));
+        bool check_min_interp_interval = (diff_bounds >= min_interp_interval_);
+        if (!check_min_interp_interval)
+        {
+          std::cout << "INIT GUESS INTERPOLATION ERROR: difference between bounds: " << diff_bounds
+                    << " < " << min_interp_interval_ << std::endl;
+          return false;
+        }
+
+        // check number of reinterpolations
+        bool check_num_reinterp = (num_of_pred_adapt_ <= max_num_pred_adapt_);
+        if (!check_num_reinterp)
+        {
+          std::cout << "INIT GUESS INTERPOLATION ERROR: num of reinterpolations : "
+                    << num_of_pred_adapt_ << " > " << max_num_pred_adapt_ << std::endl;
+          return false;
+        }
+
+        // check number of interpolation iterations
+        bool check_interp_iters = (num_interp_iters <= MAX_NUM_PRED_ADAPT_ITERS);
+        if (!check_interp_iters)
+        {
+          std::cout << "INIT GUESS INTERPOLATION ERROR: num of interpolation iters : "
+                    << check_interp_iters << " > " << MAX_NUM_PRED_ADAPT_ITERS << std::endl;
+          return false;
+        }
+
+        return true;
+      }
 
       /*!
        * @brief Preevaluation method, performing reset tasks and setting the reference values
@@ -478,7 +525,7 @@ namespace Mat
        * @param[in] defgrad Current deformation gradient (current Local Newton
        * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
        */
-      void pre_evaluate(const int gp,
+      void pre_evaluate(const unsigned int gp,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred,
           const Core::LinAlg::Matrix<3, 3>& defgrad);
@@ -511,7 +558,7 @@ namespace Mat
        * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
        *
        */
-      void perform_predictor_decomposition(const int gp,
+      void perform_predictor_decomposition(const unsigned int gp,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred,
           const Core::LinAlg::Matrix<3, 3>& defgrad);
@@ -523,7 +570,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @return Current interpolation point
        */
-      InterpolationPoint get_curr_interp_point(const int gp) const
+      InterpolationPoint get_curr_interp_point(const unsigned int gp) const
       {
         return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].current_xi_[0],
             .xi_lambda_2_ = all_component_interp_lambda_2_[gp].current_xi_[0],
@@ -538,7 +585,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @return Current interpolation point
        */
-      InterpolationPoint get_last_interp_point(const int gp) const
+      InterpolationPoint get_last_interp_point(const unsigned int gp) const
       {
         return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].last_xi_[0],
             .xi_lambda_2_ = all_component_interp_lambda_2_[gp].last_xi_[0],
@@ -553,7 +600,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @return Current interpolation point
        */
-      InterpolationPoint get_optimal_interp_point(const int gp) const
+      InterpolationPoint get_optimal_interp_point(const unsigned int gp) const
       {
         return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].optimal_xi_[0],
             .xi_lambda_2_ = all_component_interp_lambda_2_[gp].optimal_xi_[0],
@@ -567,7 +614,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @return Interpolation point of the lower bound
        */
-      InterpolationPoint get_lower_bound_interp_point(const int gp) const
+      InterpolationPoint get_lower_bound_interp_point(const unsigned int gp) const
       {
         return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].xi_l_[0],
             .xi_lambda_2_ = all_component_interp_lambda_2_[gp].xi_l_[0],
@@ -582,7 +629,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @return Interpolation point of the upper bound
        */
-      InterpolationPoint get_upper_bound_interp_point(const int gp) const
+      InterpolationPoint get_upper_bound_interp_point(const unsigned int gp) const
       {
         return InterpolationPoint{.xi_lambda_1_ = all_component_interp_lambda_1_[gp].xi_u_[0],
             .xi_lambda_2_ = all_component_interp_lambda_2_[gp].xi_u_[0],
@@ -595,7 +642,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @param[in] interp_point Interpolation point to be specified as current
        */
-      void set_curr_interp_point(const int gp, const InterpolationPoint& interp_point)
+      void set_curr_interp_point(const unsigned int gp, const InterpolationPoint& interp_point)
       {
         all_component_interp_lambda_1_[gp].current_xi_ = {interp_point.xi_lambda_1_};
         all_component_interp_lambda_2_[gp].current_xi_ = {interp_point.xi_lambda_2_};
@@ -610,7 +657,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @param[in] interp_point Interpolation point to be specified as last
        */
-      void set_last_interp_point(const int gp, const InterpolationPoint& interp_point)
+      void set_last_interp_point(const unsigned int gp, const InterpolationPoint& interp_point)
       {
         all_component_interp_lambda_1_[gp].last_xi_ = {interp_point.xi_lambda_1_};
         all_component_interp_lambda_2_[gp].last_xi_ = {interp_point.xi_lambda_2_};
@@ -624,7 +671,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @param[in] interp_point Interpolation point to be specified as optimal
        */
-      void set_optimal_interp_point(const int gp, const InterpolationPoint& interp_point)
+      void set_optimal_interp_point(const unsigned int gp, const InterpolationPoint& interp_point)
       {
         all_component_interp_lambda_1_[gp].optimal_xi_ = {interp_point.xi_lambda_1_};
         all_component_interp_lambda_2_[gp].optimal_xi_ = {interp_point.xi_lambda_2_};
@@ -641,7 +688,8 @@ namespace Mat
        * @param[in] interp_point Interpolation point to be specified as lower
        * bound
        */
-      void set_lower_bound_interp_point(const int gp, const InterpolationPoint& interp_point)
+      void set_lower_bound_interp_point(
+          const unsigned int gp, const InterpolationPoint& interp_point)
       {
         all_component_interp_lambda_1_[gp].xi_l_ = {interp_point.xi_lambda_1_};
         all_component_interp_lambda_2_[gp].xi_l_ = {interp_point.xi_lambda_2_};
@@ -656,12 +704,66 @@ namespace Mat
        * @param[in] interp_point Interpolation point to be specified as upper
        * bound
        */
-      void set_upper_bound_interp_point(const int gp, const InterpolationPoint& interp_point)
+      void set_upper_bound_interp_point(
+          const unsigned int gp, const InterpolationPoint& interp_point)
       {
         all_component_interp_lambda_1_[gp].xi_u_ = {interp_point.xi_lambda_1_};
         all_component_interp_lambda_2_[gp].xi_u_ = {interp_point.xi_lambda_2_};
         all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = interp_point.xi_rel_eigenvect_rot_;
       }
+
+      /*!
+       * @brief Retrieves the difference (2-norm) between two interpolation points.
+       *
+       * @param[in] interp_point_1 First interpolation point
+       * @param[in] interp_point_2 Second interpolation point
+       */
+      static double get_diff_interp_points(
+          const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_1,
+          const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_2)
+      {
+        const double diff_lambda_1 = (interp_point_2.xi_lambda_1_ - interp_point_1.xi_lambda_1_) *
+                                     (interp_point_2.xi_lambda_1_ - interp_point_1.xi_lambda_1_);
+        const double diff_lambda_2 = (interp_point_2.xi_lambda_2_ - interp_point_1.xi_lambda_2_) *
+                                     (interp_point_2.xi_lambda_2_ - interp_point_1.xi_lambda_2_);
+        const double diff_rot_1 =
+            (interp_point_2.xi_rel_eigenvect_rot_[0] - interp_point_1.xi_rel_eigenvect_rot_[0]) *
+            (interp_point_2.xi_rel_eigenvect_rot_[0] - interp_point_1.xi_rel_eigenvect_rot_[0]);
+        const double diff_rot_2 =
+            (interp_point_2.xi_rel_eigenvect_rot_[1] - interp_point_1.xi_rel_eigenvect_rot_[1]) *
+            (interp_point_2.xi_rel_eigenvect_rot_[1] - interp_point_1.xi_rel_eigenvect_rot_[1]);
+        const double diff_rot_3 =
+            (interp_point_2.xi_rel_eigenvect_rot_[2] - interp_point_1.xi_rel_eigenvect_rot_[2]) *
+            (interp_point_2.xi_rel_eigenvect_rot_[2] - interp_point_1.xi_rel_eigenvect_rot_[2]);
+
+        return std::sqrt(diff_lambda_1 + diff_lambda_2 + diff_rot_1 + diff_rot_2 + diff_rot_3);
+      }
+
+      /*!
+       * @brief Add interpolation points.
+       *
+       */
+      static LocalNewtonGuessInterpolation::InterpolationPoint add_interpolation_points(
+          const double scalar_a,
+          const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_a,
+          const double scalar_b,
+          const LocalNewtonGuessInterpolation::InterpolationPoint& interp_point_b)
+      {
+        return LocalNewtonGuessInterpolation::InterpolationPoint{
+            .xi_lambda_1_ =
+                scalar_a * interp_point_a.xi_lambda_1_ + scalar_b * interp_point_b.xi_lambda_1_,
+            .xi_lambda_2_ =
+                scalar_a * interp_point_a.xi_lambda_2_ + scalar_b * interp_point_b.xi_lambda_2_,
+            .xi_rel_eigenvect_rot_ = {
+                scalar_a * interp_point_a.xi_rel_eigenvect_rot_[0] +
+                    scalar_b * interp_point_b.xi_rel_eigenvect_rot_[0],
+                scalar_a * interp_point_a.xi_rel_eigenvect_rot_[1] +
+                    scalar_b * interp_point_b.xi_rel_eigenvect_rot_[1],
+                scalar_a * interp_point_a.xi_rel_eigenvect_rot_[2] +
+                    scalar_b * interp_point_b.xi_rel_eigenvect_rot_[2],
+            }};
+      }
+
 
       /*!
        * @brief Interpolate inverse plastic deformation gradient between the
@@ -682,7 +784,7 @@ namespace Mat
        * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
        *
        */
-      Core::LinAlg::Matrix<3, 3> interpolate_inv_plastic_defgrad(const int gp,
+      Core::LinAlg::Matrix<3, 3> interpolate_inv_plastic_defgrad(const unsigned int gp,
           const Core::LinAlg::Matrix<3, 3>& defgrad, const InterpolationPoint& interp_point,
           const Core::LinAlg::Matrix<3, 3>& inv_defgrad);
 
@@ -695,7 +797,7 @@ namespace Mat
        * an adaptation of the parameter and the interval
        *
        */
-      void adapt_interpolation_intervals(const int gp, const ErrorType eval_err_type);
+      void adapt_interpolation_intervals(const unsigned int gp, const ErrorType eval_err_type);
 
       /*!
        * @brief Adapt interpolation parameters based on the current
@@ -704,11 +806,13 @@ namespace Mat
        * @param[in] gp Gauss point index
        *
        */
-      void adapt_interpolation_parameters(const int gp);
+      void adapt_interpolation_parameters(const unsigned int gp);
+
+
 
       //! verify whether we are at the elastic predictor based on the
       //! current interpolation factors
-      bool verify_interp_factors_elast_pred(const int gp);
+      bool verify_interp_factors_elast_pred(const unsigned int gp);
 
       /**
        * @brief Compute optimal interpolation factors based on the solution of
@@ -721,7 +825,7 @@ namespace Mat
        * serving as input for Local Newton loop
        *
        */
-      void compute_optimal_interp_factors(const int gp,
+      void compute_optimal_interp_factors(const unsigned int gp,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
           const Core::LinAlg::Matrix<3, 3>& defgrad);
 
@@ -782,8 +886,8 @@ namespace Mat
       std::vector<ComponentInterpolator<1>> all_component_interp_lambda_2_;
 
       //! interpolator for each GP for relative eigenvector rotation vector \f$
-      //! \boldsymbol{q}_{\mathrm{rel}} \f$ of either the elastic or the plastic defgrad (depending
-      //! on rotation assignment)
+      //! \boldsymbol{q}_{\mathrm{rel}} \f$ of either the elastic or the plastic defgrad
+      //! (depending on rotation assignment)
       std::vector<ComponentInterpolator<3>> all_component_interp_rel_eigenvect_rot_;
     };
 
@@ -901,28 +1005,31 @@ namespace Mat
       double curr_pred_interp_factor_lambda_2_ = 0;
 
       //! predictor interpolation factor for rotation vector (component
-      //! 0) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained from
-      //! the predictor adaptation routine (for set GP, current time step, last global iteration)
+      //! 0) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
+      //! from the predictor adaptation routine (for set GP, current time step, last global
+      //! iteration)
       double curr_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
 
       //! predictor interpolation factor for rotation vector (component
-      //! 1) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained from
-      //! the predictor adaptation routine (for set GP, current time step, last global iteration)
+      //! 1) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
+      //! from the predictor adaptation routine (for set GP, current time step, last global
+      //! iteration)
       double curr_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
 
       //! predictor interpolation factor for rotation vector (component
-      //! 2) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained from
-      //! the predictor adaptation routine (for set GP, current time step, last global iteration)
+      //! 2) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
+      //! from the predictor adaptation routine (for set GP, current time step, last global
+      //! iteration)
       double curr_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! predictor interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the predictor
-      //! adaptation routine (for set GP, current
-      //! time step, maximum over all global iterations)
+      //! predictor interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
+      //! predictor adaptation routine (for set GP, current time step, maximum over all global
+      //! iterations)
       double curr_max_pred_interp_factor_lambda_1_ = 0;
 
-      //! predictor interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the predictor
-      //! adaptation routine (for set GP, current
-      //! time step, maximum over all global iterations)
+      //! predictor interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
+      //! predictor adaptation routine (for set GP, current time step, maximum over all global
+      //! iterations)
       double curr_max_pred_interp_factor_lambda_2_ = 0;
 
       //! predictor interpolation factor (rotation vector associated
@@ -1160,8 +1267,8 @@ namespace Mat
 
 
     //! struct containing specific derivatives of quantities computed from a given
-    //! elasticity/plasticity state; given: current right Cauchy-Green deformation tensor, inelastic
-    //! deformation gradient and plastic strain at the previous time instant
+    //! elasticity/plasticity state; given: current right Cauchy-Green deformation tensor,
+    //! inelastic deformation gradient and plastic strain at the previous time instant
     struct StateQuantityDerivatives
     {
       // ----- current state variable derivatives (for the evaluated Gauss points)----- //
@@ -1183,8 +1290,8 @@ namespace Mat
       //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
       //! inverse inelastic deformation gradient (Voigt stress form)
       Core::LinAlg::Matrix<6, 9> curr_dMe_dev_sym_diFin_{Core::LinAlg::Initialization::zero};
-      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the right
-      //! Cauchy-Green deformation tensor (Voigt stress-stress form)
+      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
+      //! right Cauchy-Green deformation tensor (Voigt stress-stress form)
       Core::LinAlg::Matrix<6, 6> curr_dMe_dev_sym_dC_{Core::LinAlg::Initialization::zero};
 
       //! derivative of the plastic strain rate w.r.t. the equivalent stress
@@ -1212,8 +1319,8 @@ namespace Mat
       //! deformation tensor (Voigt stress form)
       Core::LinAlg::Matrix<9, 6> curr_dlpdC_{Core::LinAlg::Initialization::zero};
 
-      //! derivative of the plastic update tensor w.r.t. the inverse inelastic deformation gradient
-      //! (Voigt notation)
+      //! derivative of the plastic update tensor w.r.t. the inverse inelastic deformation
+      //! gradient (Voigt notation)
       Core::LinAlg::Matrix<9, 9> curr_dEpdiFin_{Core::LinAlg::Initialization::zero};
       //! derivative of the plastic update tensor w.r.t. the equivalent plastic strain (Voigt
       //! notation)
@@ -1232,8 +1339,8 @@ namespace Mat
     enum class StateQuantityEvalType
     {
       FullEval,  ///< full evaluation (full call of the evaluate_state_quantities method)
-      PlasticStrainRateOnly,  ///< return in evaluate_state_quantities once the plastic strain rate
-                              ///< has been evaluated
+      PlasticStrainRateOnly,  ///< return in evaluate_state_quantities once the plastic strain
+                              ///< rate has been evaluated
     };
 
     /// enum class for evaluations of the state quantity derivatives in
@@ -1242,9 +1349,11 @@ namespace Mat
     /// derivatives of the plastic strain rate,...)
     enum class StateQuantityDerivEvalType
     {
-      FullEval,  ///< full evaluation (full call of the evaluate_state_quantity_derivatives method)
+      FullEval,  ///< full evaluation (full call of the evaluate_state_quantity_derivatives
+                 ///< method)
       PlasticStrainRateDerivsOnly,  ///< return in evaluate_state_quantity_derivatives once the
-                                    ///< derivatives of the plastic strain rate have been evaluated
+                                    ///< derivatives of the plastic strain rate have been
+                                    ///< evaluated
     };
 
     //! struct holding relevant tracking data when writing to csv
@@ -1281,8 +1390,8 @@ namespace Mat
                       ///< residual
       IncrementOnly,  ///< only verify convergence based on the 2-norm of the Local Newton
                       ///< solution increment
-      ResidualAndIncrement,  ///< verify convergence based on both the Local Newton residual and the
-                             ///< solution increment
+      ResidualAndIncrement,  ///< verify convergence based on both the Local Newton residual and
+                             ///< the solution increment
     };
 
 
@@ -1291,10 +1400,11 @@ namespace Mat
     enum class LocalNewtonDiverCont
     {
       Stop,      ///< stop the simulation entirely
-      Continue,  ///<  continue the simulation, and display warning in regards to the current state
+      Continue,  ///<  continue the simulation, and display warning in regards to the current
+                 ///<  state
                  ///< within the Local Newton Loop
-      ContinueWithSafeGuard  ///< continue the simulation only if the convergence tolerances are not
-                             ///< exceeded excessively
+      ContinueWithSafeGuard  ///< continue the simulation only if the convergence tolerances are
+                             ///< not exceeded excessively
     };
 
 
@@ -1438,7 +1548,8 @@ namespace Mat
         //! eigenvalue \f$ \lambda_2 \f$
         double current_xi_lambda_2_ = -1;
         //! current interpolation factor \f$ \xi_{\boldsymbol{Q}} \f$ for the
-        //! rotation vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$
+        //! rotation vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q}
+        //! \f$
         std::array<double, 3> current_xi_eigenvect_rot_{1.0, 1.0, 1.0};
         //! current equivalent stress
         double current_equiv_stress_ = -1;
@@ -1563,17 +1674,17 @@ namespace Mat
       //! tracking data used to specify the settings for csv output
       CSVOutputTrackingData csv_output_tracking_data_;
 
-      //! writes data from each microiteration of a single line search (specified via tracking data)
-      //! to a dedicated csv file
+      //! writes data from each microiteration of a single line search (specified via tracking
+      //! data) to a dedicated csv file
       void write_line_search_micro_iter_data_to_csv();
     };
 
     // display / log evaluation warnings
 #define DISPLAY_WARNINGS ;
 
-#define DEBUG_MODE ;
-#define DEBUG_PRED_ADAPT ;
-#define DEBUG_LNL ;
+    // #define DEBUG_MODE ;
+    // #define DEBUG_PRED_ADAPT ;
+    // #define DEBUG_LNL ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
