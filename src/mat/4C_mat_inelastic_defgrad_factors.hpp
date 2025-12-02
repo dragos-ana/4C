@@ -430,8 +430,22 @@ namespace Mat
       }
       //! get user-specified interpolation factor for the predictor adaptation
       [[nodiscard]] double user_pred_interp_fact() const { return user_pred_interp_fact_; }
-      //! get user-specified interpolation factor for the predictor adaptation
+      //! get maximum number of reinterpolations set by the user
       [[nodiscard]] int max_num_pred_adapt() const { return max_num_pred_adapt_; }
+      //! get minimum interpolation interval | xi_upper - xi_lower | (2-norm in
+      //! interpolation space), for which further interpolation is not possible /
+      //! feasible
+      [[nodiscard]] double init_guess_interp_min_interval() const
+      {
+        return init_guess_interp_min_interval_;
+      }
+      //! get minimum difference between current interpolation point and its lower bound  | xi -
+      //! xi_lower | (2-norm in interpolation space), upon which xi_lower is set as xi in the
+      //! reinterpolation routine
+      [[nodiscard]] double init_guess_reinterp_min_diff_lbound() const
+      {
+        return init_guess_reinterp_min_diff_lbound_;
+      }
       //! get computation method for the matrix exponential
       [[nodiscard]] Core::LinAlg::MatrixExpCalcMethod mat_exp_calc_method() const
       {
@@ -593,6 +607,16 @@ namespace Mat
       //! repredictorizations allowed in a single Local Newton Loop
       //! until error is thrown
       const int max_num_pred_adapt_;
+
+      //! minimum interpolation interval | xi_upper - xi_lower | (2-norm in
+      //! interpolation space), for which further interpolation is not possible /
+      //! feasible
+      const double init_guess_interp_min_interval_;
+
+      //! minimum difference between current interpolation point and its lower bound  | xi -
+      //! xi_lower | (2-norm in interpolation space), upon which xi_lower is set as xi in the
+      //! reinterpolation routine
+      const double init_guess_reinterp_min_diff_lbound_;
 
       //! maximum number of times the given time step can be halved before reaching the minimum
       //! allowed substep length
