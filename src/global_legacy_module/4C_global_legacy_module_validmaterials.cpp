@@ -2862,6 +2862,18 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "in a single Local Newton Loop"
                         "until error is thrown (default: 10)",
                     .default_value = 10}),
+            parameter<double>("INIT_GUESS_INTERP_MIN_INTERVAL",
+                {.description = "minimum interpolation interval | xi_upper - xi_lower | (2-norm of "
+                                "interpolation points in interpolation space) for which further "
+                                "interpolation is not possible / feasible",
+                    .default_value = 1.0e-5}),
+            parameter<double>("INIT_GUESS_REINTERP_MIN_DIFF_LBOUND",
+                {.description =
+                        "minimum difference between current interpolation point xi  and its lower "
+                        "bound xi_lower as | xi - xi_lower | (2-norm of interpolation points in "
+                        "interpolation space), "
+                        "upon which xi_lower is set as xi in the reinterpolation routine",
+                    .default_value = 1.0e-2}),
             parameter<bool>("USE_LAST_PRED_ADAPT_FACT",
                 {.description = "utilize the predictor interpolation factor from the last "
                                 "predictor adaptation "

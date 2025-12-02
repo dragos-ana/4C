@@ -30,7 +30,7 @@ namespace
   // input for verifying optimal interpolation factors
   struct InputVerifyOptimalInterpolationFactors
   {
-    const int gp_;
+    const unsigned int gp_;
     const double reference_val_;
     const double elast_pred_val_;
     const double plast_pred_val_;
@@ -387,10 +387,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
     LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_pred_adapt,
         const PlasticPredictorStretchAssignType stretch_assign_type,
-        const PlasticPredictorRotAssignType rot_assign_type)
+        const PlasticPredictorRotAssignType rot_assign_type, const double min_interp_interval)
     : k_scan_(k_scan),
       num_of_pred_adapt_(0),
       max_num_pred_adapt_(max_num_pred_adapt),
+      min_interp_interval_(min_interp_interval),
       guess_inv_plast_defgrad_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}},
       defgrad_type_(get_defgrad_type(rot_assign_type)),
       plast_pred_stretch_assign_type_(stretch_assign_type),
@@ -428,7 +429,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::setup(
-    const int num_gp)
+    const unsigned int num_gp)
 {
   // setup predictor decompositions with the right number of Gauss points
   all_pred_decomp_specific_defgrad_.resize(num_gp, all_pred_decomp_specific_defgrad_[0]);
@@ -443,7 +444,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    pre_evaluate(const int gp, const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
+    pre_evaluate(const unsigned int gp,
+        const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
         const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred,
         const Core::LinAlg::Matrix<3, 3>& defgrad)
 {
@@ -524,7 +526,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    perform_predictor_decomposition(const int gp,
+    perform_predictor_decomposition(const unsigned int gp,
         const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
         const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred,
         const Core::LinAlg::Matrix<3, 3>& defgrad)
@@ -557,7 +559,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-    LocalNewtonGuessInterpolation::interpolate_inv_plastic_defgrad(const int gp,
+    LocalNewtonGuessInterpolation::interpolate_inv_plastic_defgrad(const unsigned int gp,
         const Core::LinAlg::Matrix<3, 3>& defgrad, const InterpolationPoint& interp_point,
         const Core::LinAlg::Matrix<3, 3>& inv_defgrad)
 {
@@ -614,7 +616,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
       w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[1] +
       w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[1]);
 
-  /*
+
   eigenvalue_matrix(0, 0) = (1.0 - all_component_interp_lambda_1_[gp].current_xi_[0]) *
                                 all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0] +
                             all_component_interp_lambda_1_[gp].current_xi_[0] *
@@ -623,7 +625,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
                                 all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1] +
                             all_component_interp_lambda_2_[gp].current_xi_[0] *
                                 all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1];
-*/
+
 
 
 // DEBUG
@@ -703,7 +705,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    adapt_interpolation_intervals(const int gp, const ErrorType eval_err_type)
+    adapt_interpolation_intervals(const unsigned int gp, const ErrorType eval_err_type)
 {
   // collect all current interpolation factors
   std::array<double, 5> all_current_xi = {all_component_interp_lambda_1_[gp].current_xi_[0],
@@ -748,7 +750,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    adapt_interpolation_parameters(const int gp)
+    adapt_interpolation_parameters(const unsigned int gp)
 {
   // adapt interpolation parameters based on the current interval
   all_component_interp_lambda_1_[gp].current_xi_ = {
@@ -778,7 +780,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    verify_interp_factors_elast_pred(const int gp)
+    verify_interp_factors_elast_pred(const unsigned int gp)
 {
   const double num_tolerance = 1.0e-8;
 
@@ -792,7 +794,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    compute_optimal_interp_factors(const int gp,
+    compute_optimal_interp_factors(const unsigned int gp,
         const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
         const Core::LinAlg::Matrix<3, 3>& defgrad)
 {
@@ -813,14 +815,32 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
         "Unsupported deformation gradient type {} for initial guess interpolation", defgrad_type_);
   }
 
+  // DEBUG
+  /*std::cout << "About to determine the optimal interpolation factors: " << std::endl;
+  std::cout << "Elastic predictor: " << std::endl;
+  all_pred_decomp_specific_defgrad_[gp].specific_defgrad_elast_pred_.print(std::cout);
+  std::cout << "Solution: " << std::endl;
+  solution_defgrad.print(std::cout);
+  std::cout << "Plastic predictor: " << std::endl;
+  all_pred_decomp_specific_defgrad_[gp].specific_defgrad_plast_pred_.print(std::cout);*/
+
+
   // decompose solution, using the elastic predictor as reference as in the
-  // interpolation routine
-  // !!!!! IS THIS RELIABLE? THEORETICALLY WE HAVE TO PERFORM THE
-  // DECOMPOSITION WITH RESPECT TO THE SAME BASIS, SO NO REROTATION OF THE
-  // BASIS
+  // interpolation routine --> we do this without rerotating the elastic predictor as our base
+  // (i.e., reordering eigenvectors in case of multiple eigenvalues)
   PredictorDefgradDecomposition solution_defgrad_decomposition{
       all_pred_decomp_specific_defgrad_[gp].specific_defgrad_elast_pred_, solution_defgrad,
       all_pred_decomp_specific_defgrad_[gp].spectral_pairs_elast_pred_};
+
+
+  // DEBUG
+  /*
+    std::cout << "current rotation: " << std::endl;
+    Core::LinAlg::Matrix<3, 1> debug_rot_vect_sol =
+        Core::LinAlg::calc_rot_vect_from_rot_matrix(solution_defgrad_decomposition.Qmat_plast_pred_);
+    debug_rot_vect_sol.print(std::cout);
+  */
+
 
   // determine the optimal interpolation factors
   all_component_interp_lambda_1_[gp].optimal_xi_ = {determine_optimal_interpolation_factors(
@@ -846,6 +866,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
                 .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i)},
             "eigenvector rotation vector, component " + std::to_string(i));
   }
+
+
+  // DEBUG
+  /*std::cout << "rel. rot (plastic pred): "
+            << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(0) << ", "
+            << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(1) << ", "
+            << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(2) << std::endl;
+  std::cout << "rel. rot (optimal): " << solution_defgrad_decomposition.Qvec_plast_pred_rel_(0)
+            << ", " << solution_defgrad_decomposition.Qvec_plast_pred_rel_(1) << ", "
+            << solution_defgrad_decomposition.Qvec_plast_pred_rel_(2) << std::endl;*/
 }
 
 
