@@ -9,7 +9,6 @@
 
 #include "4C_config.hpp"
 
-#include "4C_comm_mpi_utils.hpp"
 #include "4C_comm_utils.hpp"
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
@@ -18,14 +17,10 @@
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_four_tensor_generators.hpp"
-#include "4C_mat_scatra.hpp"
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
-#include <magic_enum/magic_enum.hpp>
-
 #include <array>
-#include <iterator>
 #include <map>
 #include <optional>
 #include <ostream>
@@ -546,14 +541,14 @@ namespace Mat
       void unpack(Core::Communication::UnpackBuffer& buffer);
 
       /*!
-       * @brief Perform decompositions of plastic | elastic deformation
-       * gradient within the elastic and plastic deformation gradients.
+       * @brief Perform decompositions of inverse plastic | elastic deformation
+       * gradient within the elastic and plastic predictors.
        *
        * @param[in] gp Gauss point index
        * @param[in] inv_plastic_defgrad_elast_pred inverse plastic deformation
-       * gradient inside the elastic predictor
+       * gradient within the elastic predictor
        * @param[in] inv_plastic_defgrad_plast_pred inverse plastic deformation
-       * gradient inside the plastic predictor
+       * gradient within the plastic predictor
        * @param[in] defgrad Current deformation gradient (current Local Newton
        * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
        *
@@ -774,12 +769,15 @@ namespace Mat
        * possible that the elastic deformation gradient is actually
        * interpolated, and the inverse plastic deformation gradient is simply
        * computed based on it.
-       * 2. Linear interpolation is employed for each eigenvalue, and
-       * for the eigenvector rotation vector
+       * 2. Linear interpolation is employed for the relative eigenvector rotation, and the
+       * eigenvalues are interpolated using the logarithmic weighted average
+       * (see Satheesh et al. 2022, 10.1002/nme.7373) with linear weighting
+       * between the predictors.
        *
        * @param[in] gp Gauss point index
        * @param[in] defgrad Current deformation gradient (current Local Newton
        * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
+       * @param[in] interp_point Interpolation point to be used.
        * @param[in] inv_defgrad Inverse of the current deformation gradient (current Local Newton
        * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
        *
