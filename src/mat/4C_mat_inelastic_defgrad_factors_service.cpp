@@ -593,21 +593,8 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   // --> eigenvalue interpolation
 
   // compute weights
-  const double unnorm_w_lambda_1_elast_pred = 1.0 - std::pow(interp_point.xi_lambda_1_, 1.0);
-  const double unnorm_w_lambda_1_plast_pred = std::pow(interp_point.xi_lambda_1_, 1.0);
-  /*  const double unnorm_w_lambda_1_elast_pred =
-        std::exp(-10.0 * std::abs(interp_point.xi_lambda_1_.current_xi_[0]));
-    const double unnorm_w_lambda_1_plast_pred =
-        std::exp(-10.0 * std::abs(1.0 - interp_point.xi_lambda_1_.current_xi_[0]));
-  */
-
-
-
-  const double inv_sum_unnorm_w_lambda_1 =
-      1.0 / (unnorm_w_lambda_1_elast_pred + unnorm_w_lambda_1_plast_pred);
-  const double w_lambda_1_elast_pred = unnorm_w_lambda_1_elast_pred * inv_sum_unnorm_w_lambda_1;
-  const double w_lambda_1_plast_pred = unnorm_w_lambda_1_plast_pred * inv_sum_unnorm_w_lambda_1;
-
+  const double w_lambda_1_elast_pred = 1.0 - interp_point.xi_lambda_1_;
+  const double w_lambda_1_plast_pred = interp_point.xi_lambda_1_;
 
   eigenvalue_matrix(0, 0) = std::exp(
       w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[0] +
@@ -617,18 +604,6 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
       w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[1]);
 
 
-  eigenvalue_matrix(0, 0) = (1.0 - all_component_interp_lambda_1_[gp].current_xi_[0]) *
-                                all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0] +
-                            all_component_interp_lambda_1_[gp].current_xi_[0] *
-                                all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0];
-  eigenvalue_matrix(1, 1) = (1.0 - all_component_interp_lambda_2_[gp].current_xi_[0]) *
-                                all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1] +
-                            all_component_interp_lambda_2_[gp].current_xi_[0] *
-                                all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1];
-
-
-
-// DEBUG
 #ifdef DEBUG_PRED_ADAPT
   std::cout << "Interpolating inverse plastic defgrad: " << std::endl;
   std::cout << "--> defgrad_type: " << EnumTools::enum_name(defgrad_type_) << std::endl;
@@ -673,8 +648,9 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
     Core::LinAlg::Matrix<3, 3> QT_lambda_Q{Core::LinAlg::Initialization::zero};
     lambda_Q.multiply_nn(1.0, eigenvalue_matrix, eigenvect_rot_matrix, 0.0);
     QT_lambda_Q.multiply_tn(1.0, eigenvect_rot_matrix, lambda_Q, 0.0);
-    elastic_defgrad.multiply_nn(
-        1.0, all_pred_decomp_specific_defgrad_[gp].Rmat_plast_pred_, QT_lambda_Q, 0.0);
+    elastic_defgrad.multiply_nn(1.0, all_pred_decomp_specific_defgrad_[gp].Rmat_elast_pred_,
+        QT_lambda_Q, 0.0);  // both R rotation matrices can be taken, since they should be the same!
+                            // This is already checked previously!
 
     // compute inverse inelastic deformation gradient
     inv_plastic_defgrad.multiply_nn(1.0, inv_defgrad, elastic_defgrad, 0.0);
@@ -729,10 +705,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     const double max_current_xi = *std::max_element(all_current_xi.begin(), all_current_xi.end());
 
     // adapt the upper bounds of the interpolation factors
-    all_component_interp_lambda_1_[gp].xi_u_ = {max_current_xi};
-    all_component_interp_lambda_2_[gp].xi_u_ = {max_current_xi};
-    all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = {
-        max_current_xi, max_current_xi, max_current_xi};
+    set_upper_bound_interp_point(
+        gp, InterpolationPoint{.xi_lambda_1_ = max_current_xi,
+                .xi_lambda_2_ = max_current_xi,
+                .xi_rel_eigenvect_rot_ = {max_current_xi, max_current_xi, max_current_xi}});
   }
   else  // there is "too much" plastic strain rate -> leads to overflow error
   {
@@ -740,10 +716,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     const double min_current_xi = *std::min_element(all_current_xi.begin(), all_current_xi.end());
 
     // adapt the lower bounds of the interpolation factors
-    all_component_interp_lambda_1_[gp].xi_l_ = {min_current_xi};
-    all_component_interp_lambda_2_[gp].xi_l_ = {min_current_xi};
-    all_component_interp_rel_eigenvect_rot_[gp].xi_l_ = {
-        min_current_xi, min_current_xi, min_current_xi};
+    set_lower_bound_interp_point(
+        gp, InterpolationPoint{.xi_lambda_1_ = min_current_xi,
+                .xi_lambda_2_ = min_current_xi,
+                .xi_rel_eigenvect_rot_ = {min_current_xi, min_current_xi, min_current_xi}});
   }
 }
 
@@ -753,26 +729,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     adapt_interpolation_parameters(const unsigned int gp)
 {
   // adapt interpolation parameters based on the current interval
-  all_component_interp_lambda_1_[gp].current_xi_ = {
-      all_component_interp_lambda_1_[gp].xi_l_[0] +
-      k_scan_ * (all_component_interp_lambda_1_[gp].xi_u_[0] -
-                    all_component_interp_lambda_1_[gp].xi_l_[0])};
-  all_component_interp_lambda_2_[gp].current_xi_ = {
-      all_component_interp_lambda_2_[gp].xi_l_[0] +
-      k_scan_ * (all_component_interp_lambda_2_[gp].xi_u_[0] -
-                    all_component_interp_lambda_2_[gp].xi_l_[0])};
-  all_component_interp_rel_eigenvect_rot_[gp].current_xi_[0] =
-      all_component_interp_rel_eigenvect_rot_[gp].xi_l_[0] +
-      k_scan_ * (all_component_interp_rel_eigenvect_rot_[gp].xi_u_[0] -
-                    all_component_interp_rel_eigenvect_rot_[gp].xi_l_[0]);
-  all_component_interp_rel_eigenvect_rot_[gp].current_xi_[1] =
-      all_component_interp_rel_eigenvect_rot_[gp].xi_l_[1] +
-      k_scan_ * (all_component_interp_rel_eigenvect_rot_[gp].xi_u_[1] -
-                    all_component_interp_rel_eigenvect_rot_[gp].xi_l_[1]);
-  all_component_interp_rel_eigenvect_rot_[gp].current_xi_[2] =
-      all_component_interp_rel_eigenvect_rot_[gp].xi_l_[2] +
-      k_scan_ * (all_component_interp_rel_eigenvect_rot_[gp].xi_u_[2] -
-                    all_component_interp_rel_eigenvect_rot_[gp].xi_l_[2]);
+  set_curr_interp_point(gp, add_interpolation_points(1 - k_scan_, get_lower_bound_interp_point(gp),
+                                k_scan_, get_upper_bound_interp_point(gp)));
 }
 
 
@@ -798,8 +756,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
         const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
         const Core::LinAlg::Matrix<3, 3>& defgrad)
 {
-  // considered solution matrix for optimal interpolation factors: different treatment based on the
-  // considered deformation gradient type
+  // considered solution matrix for optimal interpolation factors: different treatment based on
+  // the considered deformation gradient type
   Core::LinAlg::Matrix<3, 3> solution_defgrad{Core::LinAlg::Initialization::zero};
   if (defgrad_type_ == DefgradType::elastic_defgrad)
   {
@@ -815,31 +773,27 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
         "Unsupported deformation gradient type {} for initial guess interpolation", defgrad_type_);
   }
 
-  // DEBUG
-  /*std::cout << "About to determine the optimal interpolation factors: " << std::endl;
-  std::cout << "Elastic predictor: " << std::endl;
-  all_pred_decomp_specific_defgrad_[gp].specific_defgrad_elast_pred_.print(std::cout);
-  std::cout << "Solution: " << std::endl;
-  solution_defgrad.print(std::cout);
-  std::cout << "Plastic predictor: " << std::endl;
-  all_pred_decomp_specific_defgrad_[gp].specific_defgrad_plast_pred_.print(std::cout);*/
-
-
   // decompose solution, using the elastic predictor as reference as in the
-  // interpolation routine --> we do this without rerotating the elastic predictor as our base
-  // (i.e., reordering eigenvectors in case of multiple eigenvalues)
+  // interpolation routine --> we do this without rerotating the elastic predictor since this was
+  // our base during interpolation (i.e., the eigenvectors have the same ordering as in our current
+  // predictor decomposition)
   PredictorDefgradDecomposition solution_defgrad_decomposition{
       all_pred_decomp_specific_defgrad_[gp].specific_defgrad_elast_pred_, solution_defgrad,
       all_pred_decomp_specific_defgrad_[gp].spectral_pairs_elast_pred_};
 
-
-  // DEBUG
-  /*
-    std::cout << "current rotation: " << std::endl;
-    Core::LinAlg::Matrix<3, 1> debug_rot_vect_sol =
-        Core::LinAlg::calc_rot_vect_from_rot_matrix(solution_defgrad_decomposition.Qmat_plast_pred_);
-    debug_rot_vect_sol.print(std::cout);
-  */
+  // consistency check: if the elastic defgrad is interpolated, the R-rotation
+  // of the solution must be the same as in the elastic predictor (and the
+  // plastic predictor)
+  if (defgrad_type_ == DefgradType::elastic_defgrad)
+  {
+    const double rel_rot_norm = solution_defgrad_decomposition.Rvec_plast_pred_rel_.norm2();
+    FOUR_C_ASSERT_ALWAYS(rel_rot_norm < 1.0e-8,
+        "Inconsistency when determining the optimal interpolation factors. The relative R-rotation "
+        "is not 0, but [{}, {}, {}]",
+        solution_defgrad_decomposition.Rvec_plast_pred_rel_(0),
+        solution_defgrad_decomposition.Rvec_plast_pred_rel_(1),
+        solution_defgrad_decomposition.Rvec_plast_pred_rel_(2));
+  }
 
 
   // determine the optimal interpolation factors
@@ -866,16 +820,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
                 .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i)},
             "eigenvector rotation vector, component " + std::to_string(i));
   }
-
-
-  // DEBUG
-  /*std::cout << "rel. rot (plastic pred): "
-            << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(0) << ", "
-            << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(1) << ", "
-            << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(2) << std::endl;
-  std::cout << "rel. rot (optimal): " << solution_defgrad_decomposition.Qvec_plast_pred_rel_(0)
-            << ", " << solution_defgrad_decomposition.Qvec_plast_pred_rel_(1) << ", "
-            << solution_defgrad_decomposition.Qvec_plast_pred_rel_(2) << std::endl;*/
 }
 
 
