@@ -14,13 +14,11 @@
 #include "4C_mat_inelastic_defgrad_factors.hpp"
 
 #include "4C_global_data.hpp"
-#include "4C_io_pstream.hpp"
 #include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_solver.hpp"
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
-#include "4C_linalg_four_tensor_generators.hpp"
 #include "4C_linalg_symmetric_tensor.hpp"
 #include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_generators.hpp"
@@ -28,16 +26,13 @@
 #include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_linalg_utils_scalar_interpolation.hpp"
 #include "4C_linalg_utils_tensor_interpolation.hpp"
-#include "4C_linalg_vector.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_electrode.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
-#include "4C_mat_maxwell_0d_acinus_Ogden.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_vplast_law.hpp"
-#include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_function_of_time.hpp"
 
@@ -58,7 +53,6 @@
 #include <map>
 #include <memory>
 #include <ostream>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -3421,74 +3415,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       // else: set all optimal values to 0.0 = elastic predictor
       if (std::abs(current_state_quantities.curr_equiv_plastic_strain_rate_) > 0.0)
       {
-        // DEBUG
-        // std::cout << "--> update: GP = " << gp << std::endl;
-        /*Core::LinAlg::Matrix<3, 3> inv_curr_defgrad{Core::LinAlg::Initialization::zero};
-            inv_curr_defgrad.invert(time_step_quantities_.current_defgrad_[gp]);
-    Core::LinAlg::Matrix<3, 3> iFin_elast_pred{Core::LinAlg::Initialization::zero};
-    Core::LinAlg::Matrix<3, 3> iFin_plast_pred{Core::LinAlg::Initialization::zero};
-    if (lnl_guess_interpolation_.get_defgrad_type(
-            parameter()->plastic_pred_rot_assign_type()) ==
-        InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-            DefgradType::elastic_defgrad)
-    {
-      iFin_elast_pred.multiply_nn(1.0, inv_curr_defgrad,
-          lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
-              .specific_defgrad_elast_pred_,
-          0.0);
-      iFin_plast_pred.multiply_nn(1.0, inv_curr_defgrad,
-          lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
-              .specific_defgrad_plast_pred_,
-          0.0);
-    }
-    else if (lnl_guess_interpolation_.get_defgrad_type(
-                 parameter()->plastic_pred_rot_assign_type()) ==
-             InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-                 DefgradType::inv_plastic_defgrad)
-    {
-      iFin_elast_pred = lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
-                            .specific_defgrad_elast_pred_;
-      iFin_plast_pred = lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp]
-                            .specific_defgrad_plast_pred_;
-
-    }
-    else
-    {
-      FOUR_C_THROW("Unsupported defgrad type: {}",
-          EnumTools::enum_name(lnl_guess_interpolation_.get_defgrad_type(
-              parameter()->plastic_pred_rot_assign_type())));
-    }
-    ErrorType debug_err_status
-    {InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors}; StateQuantities
-    state_quantities_elast_pred =
-        evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
-            iFin_elast_pred,
-            0.0, debug_err_status, time_step_tracker_.dt_,
-            StateQuantityEvalType::PlasticStrainRateOnly);
-    //FOUR_C_ASSERT_ALWAYS(debug_err_status ==
-    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Evaluating elastic
-    predictor failed with error {}", EnumTools::enum_name(debug_err_status)); StateQuantities
-    state_quantities_plast_pred =
-        evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
-            iFin_plast_pred,
-            0.0, debug_err_status, time_step_tracker_.dt_,
-            StateQuantityEvalType::PlasticStrainRateOnly);
-    //FOUR_C_ASSERT_ALWAYS(debug_err_status ==
-    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Evaluating plastic
-    predictor failed with error {}", EnumTools::enum_name(debug_err_status)); StateQuantities
-    state_quantities_sol = evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
-            time_step_quantities_.current_plastic_defgrad_inverse_[gp],
-            0.0, debug_err_status, time_step_tracker_.dt_,
-            StateQuantityEvalType::PlasticStrainRateOnly);
-    //FOUR_C_ASSERT_ALWAYS(debug_err_status ==
-    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Evaluating solution
-    failed with error {}", EnumTools::enum_name(debug_err_status)); std::cout << "EQUIV STRESS: " <<
-    std::endl; std::cout<< "elast_pred: " << state_quantities_elast_pred.curr_equiv_stress_ <<
-    std::endl; std::cout<< "sol: " << state_quantities_sol.curr_equiv_stress_ << std::endl;
-    std::cout<< "plast_pred: " << state_quantities_plast_pred.curr_equiv_stress_ << std::endl;
-    */
-
-
         if (parameter()->precondition_matrices_pred_adapt())
         {
           lnl_guess_interpolation_.compute_optimal_interp_factors(gp,
