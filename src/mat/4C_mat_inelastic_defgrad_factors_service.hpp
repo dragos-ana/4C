@@ -1447,12 +1447,12 @@ namespace Mat
       const LocalNewtonDiverCont diver_cont_;
 
       //! maximum number of Local Newton Loop iterations
-      static constexpr unsigned max_iter_ = 200;
+      static constexpr unsigned max_iter_ = 50;
 
       //! maximum exceedance factor of the residual tolerance (to be used when
       //! using the divergence management strategy for continuation with
       //! safeguard)
-      static constexpr double max_exceedance_fact_res_tol_ = 1.0e2;
+      static constexpr double max_exceedance_fact_res_tol_ = 1.0e3;
 
       //! maximum exceedance of the solution increment tolerance (to be used when
       //! using the divergence management strategy for continuation with
