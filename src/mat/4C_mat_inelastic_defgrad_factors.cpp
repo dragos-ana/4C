@@ -669,7 +669,7 @@ namespace
   bool debug_mode(const int ele_gid, const int gp)
   {
     const int debug_ele_gid = 0;
-    const int debug_gp = 2;
+    const int debug_gp = 4;
 
     return (ele_gid == debug_ele_gid && gp == debug_gp);
   }
@@ -4135,6 +4135,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
         {
           std::cout << "residual: " << residual.norm2() << std::endl;
+          std::cout << "increment: " << alpha * dx.norm2() / sol.norm2() << std::endl;
         }
       }
 #endif
@@ -4179,6 +4180,44 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 .plastic_strain_ = sol(9)});
       }
 
+      // no errors: compute relevant 2-norms: residual and increment; also: check for "stuck" Local
+      // Newton
+      if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+      {
+        // 2-norm of the residual
+        residualNorm2 = residual.norm2();
+
+        // 2-norm of the solution increment
+        rel_sol_incr_norm = alpha * dx.norm2() / sol.norm2();
+
+        // check for "stuck" Local Newton (check only feasible after the first
+        // iteration)
+        if ((lnl_data_.iter_ > 1) && (dx.norm2() < sol.norm2() * 1.0e-15))
+        {
+          // only in the case that the residual is verified, we set an
+          // error status
+          switch (lnl_data_.conv_check_)
+          {
+            case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+                ResidualOnly:
+            case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                LocalNewtonConvCheck::ResidualAndIncrement:
+              if (residualNorm2 > lnl_data_.res_tol_)
+              {
+                err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::
+                    no_convergence_local_newton;
+              }
+              break;
+            case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+                IncrementOnly:
+              // do nothing
+              break;
+            default:
+              FOUR_C_THROW("You should not be here (check: is Local Newton stuck?)");
+          }
+        }
+      }
+
 
       // error management
       err_action = manage_evaluation_error(err_status, sol, curr_CM);
@@ -4220,25 +4259,20 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         // to errors
         continue;
       }
-      // 2-norm of the residual
-      residualNorm2 = residual.norm2();
-
-      // 2-norm of the solution increment
-      rel_sol_incr_norm = alpha * dx.norm2() / sol.norm2();
 
       // check convergence
       switch (lnl_data_.conv_check_)
       {
         case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::ResidualOnly:
-          converged = (residualNorm2 < lnl_data_.res_tol_);
+          converged = (residualNorm2 <= lnl_data_.res_tol_);
           break;
         case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::IncrementOnly:
-          converged = (rel_sol_incr_norm < lnl_data_.incr_tol_);
+          converged = (rel_sol_incr_norm <= lnl_data_.incr_tol_);
           break;
         case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
             ResidualAndIncrement:
           converged =
-              (residualNorm2 < lnl_data_.res_tol_ && rel_sol_incr_norm < lnl_data_.incr_tol_);
+              (residualNorm2 <= lnl_data_.res_tol_ && rel_sol_incr_norm <= lnl_data_.incr_tol_);
           break;
         default:
           FOUR_C_THROW("You should not be here (convergence checking of the Local Newton Loop)");
