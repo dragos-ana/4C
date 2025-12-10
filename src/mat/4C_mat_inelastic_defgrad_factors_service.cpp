@@ -1172,9 +1172,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::LocalNe
   all_equiv_stress_.resize(1);
   all_plastic_strain_.resize(1);
   all_iter_status_.resize(1);
+  num_iter_curr_timestep_.resize(1, 0);
 
   // reset the values (set initial 0-values to all arrays above)
   reset_all_iteration_data(0);
+
 
   // initialize global iteration / timestep index tracker
   globiter_or_timestep_index_ = 0;
@@ -1189,6 +1191,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::se
   all_equiv_stress_.resize(num_of_gp, all_equiv_stress_[0]);
   all_plastic_strain_.resize(num_of_gp, all_plastic_strain_[0]);
   all_iter_status_.resize(num_of_gp, all_iter_status_[0]);
+  num_iter_curr_timestep_.resize(num_of_gp, num_iter_curr_timestep_[0]);
 }
 
 /*--------------------------------------------------------------------*
