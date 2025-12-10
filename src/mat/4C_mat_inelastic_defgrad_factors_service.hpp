@@ -1408,7 +1408,7 @@ namespace Mat
 
     //! struct containing settings and iteration data from the Local Newton-Raphson
     //! Loop (time integration of the viscoplasticity equations)
-    //! (used for Gauss-Point output). In contrast to
+    //! used for Gauss-Point output. In contrast to
     //! GeneralLocalTimIntAnalysisUtils which tracks general information
     //! over time steps (such as how many iterations were performed for
     //! a specific time step), this utility struct considers the data
@@ -1447,7 +1447,7 @@ namespace Mat
       const LocalNewtonDiverCont diver_cont_;
 
       //! maximum number of Local Newton Loop iterations
-      static constexpr unsigned max_iter_ = 50;
+      static constexpr unsigned max_iter_ = 100;
 
       //! maximum exceedance factor of the residual tolerance (to be used when
       //! using the divergence management strategy for continuation with
@@ -1459,7 +1459,7 @@ namespace Mat
       //! safeguard)
       static constexpr double max_exceedance_fact_incr_tol_ = 1.0e2;
 
-      //! current LNL iteration
+      //! current LNL iteration index
       unsigned int iter_;
 
       //! tracker for the global iteration (if we have output every
@@ -1483,6 +1483,9 @@ namespace Mat
       //! all iteration values of the plastic strain; vector of GP values
       std::vector<std::array<double, max_iter_>> all_plastic_strain_;
 
+      //! number of LNL iterations for the current timestep; vector of GP values
+      std::vector<unsigned int> num_iter_curr_timestep_;
+
       //! resize all relevant vectors based on the number of Gauss
       //! points known only after setting up the problem -> each vector
       //! item gets the same value for now
@@ -1491,6 +1494,7 @@ namespace Mat
       //! reset all arrays holding values for all iterations (for a
       //! given Gauss point)
       void reset_all_iteration_data(const unsigned int gp);
+
 
       // maybe we need some pack and unpack methods perspectively? If
       // this is to be used consistently in the future...-> would mainly

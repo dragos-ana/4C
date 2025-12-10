@@ -669,7 +669,7 @@ namespace
   bool debug_mode(const int ele_gid, const int gp)
   {
     const int debug_ele_gid = 0;
-    const int debug_gp = 4;
+    const int debug_gp = 7;
 
     return (ele_gid == debug_ele_gid && gp == debug_gp);
   }
@@ -3310,7 +3310,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
       }
     }
 
-
     // get solution via time integration (Local Newton Loop LNL)
     if (parameter()->analyze_timint())  // general local time integration analysis: start timer
       general_local_timint_analysis_utils.eval_teuchos_timer_LNL_.start(true);
@@ -3344,7 +3343,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
         general_local_timint_analysis_utils.eval_time_LNL_ +=
             general_local_timint_analysis_utils.eval_teuchos_timer_LNL_.stop();
       }
+
+      // increment number of LNL iterations for the current timestep at the
+      // current GP
+      lnl_data_.num_iter_curr_timestep_[gp_] += lnl_data_.iter_;
     }
+
 
     // extract the inverse inelastic defgrad from the LNL solution
     iFinM = extract_inverse_inelastic_defgrad(sol);
@@ -3586,6 +3590,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       ++general_local_timint_analysis_utils.num_update_calls_;
     }
   }
+
+  // reset number of LNL iterations for current timestep at at all Gauss
+  // points
+  std::ranges::fill(lnl_data_.num_iter_curr_timestep_, 0);
 }
 
 
@@ -5824,6 +5832,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantitie
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::register_output_data_names(
     std::unordered_map<std::string, int>& names_and_size) const
 {
+  names_and_size["lnl_iters"] = 1;
   names_and_size["inverse_plastic_defgrad"] = 9;
   names_and_size["plastic_strain"] = 1;
   names_and_size["plastic_strain_LNL"] =
@@ -5851,7 +5860,15 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   // auxiliaries
   Core::LinAlg::Matrix<9, 1> temp9x1{Core::LinAlg::Initialization::zero};
 
-  if (name == "inverse_plastic_defgrad")
+  if (name == "lnl_iters")
+  {
+    for (int gp = 0; gp < static_cast<int>(lnl_data_.num_iter_curr_timestep_.size()); ++gp)
+    {
+      data(gp, 0) = lnl_data_.num_iter_curr_timestep_[gp];
+    }
+    return true;
+  }
+  else if (name == "inverse_plastic_defgrad")
   {
     for (int gp = 0;
         gp < static_cast<int>(time_step_quantities_.current_plastic_defgrad_inverse_.size()); ++gp)
