@@ -1370,11 +1370,9 @@ namespace Mat
       //! time instant \f$t_{n+1}\f$
       double tnp_;
 
-      //! tracker for the global iteration (if we have output every
-      //! iteration) or the timestep index; increased by 1 every time
-      //! the Gauss point output routine / or the update method (if no
-      //! Gauss point output is considered) is called
-      unsigned int globiter_or_timestep_index_;
+      //! tracker for the global iteration; should be reset after calling update
+      //! material of the material
+      unsigned int globiter_;
 
       //! tracker for the local NR iteration
       unsigned int lnl_iter_;
@@ -1462,11 +1460,6 @@ namespace Mat
       //! current LNL iteration index
       unsigned int iter_;
 
-      //! tracker for the global iteration (if we have output every
-      //! iteration) or the timestep index; increased by 1 every time
-      //! the Gauss point output routine is called
-      unsigned int globiter_or_timestep_index_;
-
       //! do we have Gauss point output every global iteration?
       bool is_Gauss_point_output_every_global_iter_ = false;
 
@@ -1552,7 +1545,7 @@ namespace Mat
         //! current interpolation factor \f$ \xi_{\boldsymbol{Q}} \f$ for the
         //! rotation vector associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q}
         //! \f$
-        std::array<double, 3> current_xi_eigenvect_rot_{1.0, 1.0, 1.0};
+        std::array<double, 3> current_xi_eigenvect_rot_{-1.0, -1.0, -1.0};
         //! current equivalent stress
         double current_equiv_stress_ = -1;
         //! current plastic strain

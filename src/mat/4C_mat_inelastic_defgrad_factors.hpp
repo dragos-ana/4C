@@ -1741,9 +1741,8 @@ namespace Mat
     //! tracker object for the Local Newton initial guess interpolation
     LocalNewtonGuessInterpolation lnl_guess_interpolation_;
 
-    //! tracking data to be used for csv runtime output of local Newton
-    //! loop, predictor adaptation, line search
-    CSVOutputTrackingData csv_output_tracking_data_;
+    //! tracker for current global iteration index
+    unsigned int globiter_;
 
     //! micro iteration data for all microiterations
     //! of the predictor adaptation, to be written to csv

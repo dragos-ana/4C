@@ -1914,9 +1914,10 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
           parameter()->max_num_pred_adapt(), parameter()->plastic_pred_stretch_assign_type(),
           parameter()->plastic_pred_rot_assign_type(),
           parameter()->init_guess_interp_min_interval()),
-      csv_output_tracking_data_{},
-      csv_output_pred_adapt_micro_iter_data_{csv_output_tracking_data_},
-      csv_output_line_search_micro_iter_data_{csv_output_tracking_data_},
+      globiter_(-1),  // initialized as -1, because this is called one time even
+                      // prior to the first global predictor evaluation
+      csv_output_pred_adapt_micro_iter_data_{CSVOutputTrackingData{}},
+      csv_output_line_search_micro_iter_data_{CSVOutputTrackingData{}},
       lnl_data_(parameter()->local_newton_res_tol(), parameter()->local_newton_incr_tol(),
           parameter()->local_newton_conv_check(), parameter()->local_newton_diver_cont())
 {
@@ -2356,6 +2357,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     general_local_timint_analysis_utils.reset();
     general_local_timint_analysis_utils.is_reset_current_timestep_ = true;
   }
+
+  // Increment the global iteration here (only for first GP, we don't want to do this for each GP).
+  // We assume that this method is only called in new global iterations!
+  if (gp_ == 0) ++globiter_;
 }
 
 
@@ -3374,9 +3379,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 {
-  // update tracker index for the time step, if we have no Gauss point
-  // output
-  if (!lnl_data_.is_Gauss_point_output_every_global_iter_) ++lnl_data_.globiter_or_timestep_index_;
+  // reset global iteration tracker
+  globiter_ = 0;
 
   // initialize error status for subsequent computations
   ErrorType err_status{InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors};
@@ -3769,6 +3773,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::unpack_inelastic(
   // now that the fiber direction is available, we set the material-dependent constant tensors
   // with it
   const_mat_tensors_.set_material_const_tensors(m_);
+
+  // set global iteration number to its initial value (as in the setup method)
+  globiter_ = -1;
 }
 
 
@@ -4159,7 +4166,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 .gp_ = gp_,
                 .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
                 .tnp_ = time_step_tracker_.tnp_,
-                .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                .globiter_ = globiter_,
                 .lnl_iter_ =
                     lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
                                            // updating the iteration count at the beginning
@@ -4177,7 +4184,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 .gp_ = gp_,
                 .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
                 .tnp_ = time_step_tracker_.tnp_,
-                .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                .globiter_ = globiter_,
                 .lnl_iter_ =
                     lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
                                            // updating the iteration count at the beginning
@@ -4237,7 +4244,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                 .gp_ = gp_,
                 .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
                 .tnp_ = time_step_tracker_.tnp_,
-                .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                .globiter_ = globiter_,
                 .lnl_iter_ =
                     lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
                                            // updating the iteration count at the beginning
@@ -4255,7 +4262,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                   .gp_ = gp_,
                   .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
                   .tnp_ = time_step_tracker_.tnp_,
-                  .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                  .globiter_ = globiter_,
                   .lnl_iter_ = lnl_data_.iter_ - 1});
 
         // return bad solution
@@ -4355,7 +4362,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                       .gp_ = gp_,
                       .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
                       .tnp_ = time_step_tracker_.tnp_,
-                      .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                      .globiter_ = globiter_,
                       .lnl_iter_ = lnl_data_.iter_ - 1});
 
 
@@ -4378,7 +4385,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
                       .gp_ = gp_,
                       .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
                       .tnp_ = time_step_tracker_.tnp_,
-                      .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+                      .globiter_ = globiter_,
                       .lnl_iter_ = lnl_data_.iter_ - 1});
 
 
@@ -4601,7 +4608,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           .gp_ = gp_,
           .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
           .tnp_ = time_step_tracker_.tnp_,
-          .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
+          .globiter_ = globiter_,
           .lnl_iter_ = lnl_data_.iter_ - 1},  // subtract 1 to match the current loop structure
                                               // updating the iteration count at the beginning
       LocalNewtonData::LocalIterDataCollector{.iter_status_ = LocalIterationStatus::converged,
@@ -4796,19 +4803,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   // csv runtime output
   if (parameter()->use_csv_output_pred_adapt_micro_iter())
   {
-    // initialize tracking data for the csv output of the predictor
-    // adaptation
-    csv_output_tracking_data_ = CSVOutputTrackingData{.ele_gid_ = ele_gid_,
-        .gp_ = gp_,
-        .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
-        .tnp_ = time_step_tracker_.tnp_,
-        .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
-        .lnl_iter_ = lnl_data_.iter_};
-
     // initialize micro iteration data for all microiterations
     // of the subsequent predictor adaptation, to be written to csv
     csv_output_pred_adapt_micro_iter_data_ =
-        CSVOutputPredAdaptMicroIterData{csv_output_tracking_data_};
+        CSVOutputPredAdaptMicroIterData{CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+            .gp_ = gp_,
+            .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+            .tnp_ = time_step_tracker_.tnp_,
+            .globiter_ = globiter_,
+            .lnl_iter_ = lnl_data_.iter_}};
   }
 
 
@@ -5163,20 +5166,18 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
 {
   if (parameter()->use_csv_output_line_search_micro_iter())
   {
-    // initialize tracking data for the csv output of the line search
-    csv_output_tracking_data_ = CSVOutputTrackingData{.ele_gid_ = ele_gid_,
-        .gp_ = gp_,
-        .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
-        .tnp_ = time_step_tracker_.tnp_,
-        .globiter_or_timestep_index_ = lnl_data_.globiter_or_timestep_index_,
-        .lnl_iter_ = lnl_data_.iter_ -
-                     1};  // we subtract 1 from the current iteration number to start with 0, and
-                          // make this consistent with the output of the predictor adaptation
-
     // initialize micro iteration data for all "micro"
     // iterations of the subsequent line search, to be written to csv
-    csv_output_line_search_micro_iter_data_ =
-        CSVOutputLineSearchMicroIterData{csv_output_tracking_data_};
+    csv_output_line_search_micro_iter_data_ = CSVOutputLineSearchMicroIterData{
+        CSVOutputTrackingData{.ele_gid_ = ele_gid_,
+            .gp_ = gp_,
+            .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
+            .tnp_ = time_step_tracker_.tnp_,
+            .globiter_ = globiter_,
+            .lnl_iter_ = lnl_data_.iter_ - 1}
+        // we subtract 1 from the current local iteration number to start with 0, and
+        // make this consistent with the output of the predictor adaptation
+    };
   }
 
   // set necessary decrease parameter \f$ \rho \in \left(0, \frac{1}{2}\right) \f$ of the
@@ -6028,9 +6029,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
     }
     return true;
   }
-  // update tracker index for global iteration (output every iteration)
-  // or for the time step
-  ++lnl_data_.globiter_or_timestep_index_;
+
   // update information that we have Gauss point output for every global
   // iteration
   lnl_data_.is_Gauss_point_output_every_global_iter_ = true;
