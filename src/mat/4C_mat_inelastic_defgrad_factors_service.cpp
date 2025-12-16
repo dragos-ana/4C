@@ -1176,10 +1176,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::LocalNe
 
   // reset the values (set initial 0-values to all arrays above)
   reset_all_iteration_data(0);
-
-
-  // initialize global iteration / timestep index tracker
-  globiter_or_timestep_index_ = 0;
 }
 
 /*--------------------------------------------------------------------*
@@ -1245,7 +1241,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::
 
   // register data to be added
   csv_writer.register_data_vector("previous_time", 1, 16);
-  csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+  csv_writer.register_data_vector("globiter", 1, 16);
   csv_writer.register_data_vector("element_gid", 1, 16);
   csv_writer.register_data_vector("gauss_point", 1, 16);
   csv_writer.register_data_vector("residual", 1, 16);
@@ -1258,7 +1254,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonData::
   {
     std::map<std::string, std::vector<double>> output_data;
     output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data.tn_)};
-    output_data["globiter_or_timestep_index"] = {static_cast<double>(globiter_or_timestep_index_)};
+    output_data["globiter"] = {static_cast<double>(csv_output_tracking_data.globiter_)};
     output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data.ele_gid_)};
     output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data.gp_)};
     output_data["residual"] = {
@@ -1365,20 +1361,23 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptM
       *Global::Problem::instance()->output_control_file(),
       "pred-adapt-micro-iter-output-ele-gid-" + std::to_string(csv_output_tracking_data_.ele_gid_) +
           "-gp-" + std::to_string(csv_output_tracking_data_.gp_) + "-tn-" +
-          std::to_string(csv_output_tracking_data_.tn_) + "-globiter-or-timestep-index-" +
-          std::to_string(csv_output_tracking_data_.globiter_or_timestep_index_) + "-lnl-iter-" +
+          std::to_string(csv_output_tracking_data_.tn_) + "-globiter-" +
+          std::to_string(csv_output_tracking_data_.globiter_) + "-lnl-iter-" +
           std::to_string(csv_output_tracking_data_.lnl_iter_)};
   csv_writer.register_data_vector("element_gid", 1, 16);
   csv_writer.register_data_vector("gauss_point", 1, 16);
   csv_writer.register_data_vector("previous_time", 1, 16);
-  csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+  csv_writer.register_data_vector("globiter", 1, 16);
   csv_writer.register_data_vector("lnl_iter", 1, 16);
   csv_writer.register_data_vector("current_xi_lambda_1", 1, 16);
   csv_writer.register_data_vector("current_xi_lambda_2", 1, 16);
-  csv_writer.register_data_vector("current_xi_eigenvect_rot", 1, 16);
+  csv_writer.register_data_vector("current_xi_eigenvect_rot_comp_0", 1, 16);
+  csv_writer.register_data_vector("current_xi_eigenvect_rot_comp_1", 1, 16);
+  csv_writer.register_data_vector("current_xi_eigenvect_rot_comp_2", 1, 16);
   csv_writer.register_data_vector("current_equiv_stress", 1, 16);
   csv_writer.register_data_vector("current_plastic_strain", 1, 16);
   csv_writer.register_data_vector("current_err_status", 1, 16);
+
 
   // already fill the columns containing solely the tracking data
   for (unsigned int mi = 0; mi < all_microiter_.size(); ++mi)
@@ -1387,8 +1386,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptM
     output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data_.ele_gid_)};
     output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data_.gp_)};
     output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data_.tn_)};
-    output_data["globiter_or_timestep_index"] = {
-        static_cast<double>(csv_output_tracking_data_.globiter_or_timestep_index_)};
+    output_data["globiter"] = {static_cast<double>(csv_output_tracking_data_.globiter_)};
     output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data_.lnl_iter_)};
     output_data["current_xi_lambda_1"] = {static_cast<double>(all_current_xi_lambda_1_[mi])};
     output_data["current_xi_lambda_2"] = {static_cast<double>(all_current_xi_lambda_2_[mi])};
@@ -1444,13 +1442,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
       "line-search-micro-iter-output-ele-gid-" +
           std::to_string(csv_output_tracking_data_.ele_gid_) + "-gp-" +
           std::to_string(csv_output_tracking_data_.gp_) + "-tn-" +
-          std::to_string(csv_output_tracking_data_.tn_) + "-globiter-or-timestep-index-" +
-          std::to_string(csv_output_tracking_data_.globiter_or_timestep_index_) + "-lnl-iter-" +
+          std::to_string(csv_output_tracking_data_.tn_) + "-globiter-" +
+          std::to_string(csv_output_tracking_data_.globiter_) + "-lnl-iter-" +
           std::to_string(csv_output_tracking_data_.lnl_iter_)};
   csv_writer.register_data_vector("element_gid", 1, 16);
   csv_writer.register_data_vector("gauss_point", 1, 16);
   csv_writer.register_data_vector("previous_time", 1, 16);
-  csv_writer.register_data_vector("globiter_or_timestep_index", 1, 16);
+  csv_writer.register_data_vector("globiter", 1, 16);
   csv_writer.register_data_vector("lnl_iter", 1, 16);
   csv_writer.register_data_vector("current_alpha", 1, 16);
   csv_writer.register_data_vector("max_alpha", 1, 16);
@@ -1467,8 +1465,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
     output_data["element_gid"] = {static_cast<double>(csv_output_tracking_data_.ele_gid_)};
     output_data["gauss_point"] = {static_cast<double>(csv_output_tracking_data_.gp_)};
     output_data["previous_time"] = {static_cast<double>(csv_output_tracking_data_.tn_)};
-    output_data["globiter_or_timestep_index"] = {
-        static_cast<double>(csv_output_tracking_data_.globiter_or_timestep_index_)};
+    output_data["globiter"] = {static_cast<double>(csv_output_tracking_data_.globiter_)};
     output_data["lnl_iter"] = {static_cast<double>(csv_output_tracking_data_.lnl_iter_)};
     output_data["current_alpha"] = {static_cast<double>(all_current_alpha_[mi])};
     output_data["max_alpha"] = {static_cast<double>(all_max_alpha_[mi])};
