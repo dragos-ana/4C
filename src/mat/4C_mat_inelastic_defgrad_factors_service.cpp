@@ -796,6 +796,31 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   }
 
 
+  // DEBUG
+  if (gp == 0)
+  {
+    std::cout << std::string(50, '-') << std::endl;
+    std::cout << "GP: 0: Foundation for determining optimal interpolation factors: " << std::endl;
+    std::cout << "VAL -> ELAST. PRED - PLAST. PRED: OPTIMAL" << std::endl;
+    std::cout << "lambda_1 -> " << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0]
+              << " - " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0] << ": "
+              << solution_defgrad_decomposition.lambda_plast_pred_[0] << std::endl;
+    std::cout << "lambda_2 -> " << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1]
+              << " - " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1] << ": "
+              << solution_defgrad_decomposition.lambda_plast_pred_[1] << std::endl;
+    std::cout << "q_rel_1 -> " << "0"
+              << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(0) << ": "
+              << solution_defgrad_decomposition.Qvec_plast_pred_rel_(0) << std::endl;
+    std::cout << "q_rel_2 -> " << "0"
+              << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(1) << ": "
+              << solution_defgrad_decomposition.Qvec_plast_pred_rel_(1) << std::endl;
+    std::cout << "q_rel_3 -> " << "0"
+              << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(2) << ": "
+              << solution_defgrad_decomposition.Qvec_plast_pred_rel_(2) << std::endl;
+    std::cout << std::string(50, '-') << std::endl;
+  }
+
+
   // determine the optimal interpolation factors
   all_component_interp_lambda_1_[gp].optimal_xi_ = {determine_optimal_interpolation_factors(
       InputVerifyOptimalInterpolationFactors{.gp_ = gp,
