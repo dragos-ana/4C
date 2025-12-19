@@ -237,8 +237,8 @@ namespace Core::LinAlg
    * positive definite) component. Moreover, the method calculates the eigenvalues, and it also
    * returns the spectral pairs of the tensor \f$ \boldsymbol{U} \f$, i.e., all 3 (eigenvalue,
    * eigenvector) eigenpairs. The spectral pairs are sorted in descending order of their
-   * corresponding eigenvalues, while the eigenvalue matrix contains the lowest eigenvalue in (0,0)
-   * and the highest in (2, 2).
+   * corresponding eigenvalues, while the diagonal eigenvalue matrix contains the lowest eigenvalue
+   * in (0,0) and the highest in (2, 2).
    *
    * @param[in]  inp_matrix  input matrix \boldsymbol{T} to be decomposed
    * @param[out]  R_matrix  rotation matrix \boldsymbol{R}

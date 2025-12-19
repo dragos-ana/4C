@@ -2778,7 +2778,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                     PlasticPredictorStretchAssignType>("PLASTIC_PRED_STRETCH_ASSIGN",
                 {.description = "type of plastic predictor stretch assignment: maintain elastic "
                                 "stretch from previous "
-                                "time instant | eliminate elastic stretch entirely (only "
+                                "time instant | rotate elastic stretch eigenvectors to match "
+                                "eigenvectors within trial "
+                                "state | eliminate elastic stretch entirely (only "
                                 "meaningful for no-yield-surface viscoplasticity laws)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         PlasticPredictorStretchAssignType::maintain_elastic_stretch}),
