@@ -173,6 +173,11 @@ namespace Mat
       //! at the last time step (for all Gauss points)
       std::vector<Core::LinAlg::Matrix<3, 3>> last_elastic_defgrad_material_stretch_inverse_;
 
+      //! inverse elastic stretch eigenvalues (inverse values ordered from
+      //! smallest to highest) at the
+      //! last time step (for all Gauss points)
+      std::vector<std::array<double, 3>> last_inverse_elastic_stretch_eigenval_;
+
       //! rotation of the inverse plastic deformation gradient
       //! at the last time step (for all Gauss points)
       std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_inverse_rot_;
@@ -272,8 +277,12 @@ namespace Mat
     //! plastic predictor stretch assignment types (initial guess interpolation)
     enum class PlasticPredictorStretchAssignType
     {
-      maintain_elastic_stretch,   ///< elastic deformation gradient maintains its elastic stretch
-                                  ///< from the previous time instant
+      maintain_elastic_stretch,  ///< elastic deformation gradient maintains its elastic stretch
+                                 ///< from the previous time instant
+      rotate_previous_elastic_stretch,  ///< maintain elastic stretch
+                                        ///< eigenvalues of the previous time instant, but rotate
+                                        ///< the related eigenvectors to match the eigenvectors
+                                        ///< within the trial state
       eliminate_elastic_stretch,  ///< elastic deformation gradient becomes a pure rotation tensor,
                                   ///< motivated by stress relaxation (elastic deformation ->
                                   ///< plastic deformation) -> only makes sense for no-yield-surface
