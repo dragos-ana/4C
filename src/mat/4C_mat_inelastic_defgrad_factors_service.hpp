@@ -37,7 +37,7 @@ namespace Mat
   namespace InelasticDefgradTransvIsotropElastViscoplastUtils
   {
     /// enum class for error types in InelasticDefgradTransvIsotropElastViscoplast, used for
-    /// triggering different procedures (e.g. repredictorization,
+    /// triggering different procedures (e.g. Reinterpolation,
     /// substepping, line search) during the
     /// Local Newton Loop
     enum class ErrorType
@@ -185,8 +185,8 @@ namespace Mat
       //! (equivalent) plastic strain at the last time step (for all Gauss points)
       std::vector<double> last_plastic_strain_;
 
-      //! last (reduced) deformation gradient: used to in the predictor
-      //! adaptation routine
+      //! last (reduced) deformation gradient: used to in the Local Newton Guess
+      //! Interpolation routine
       std::vector<Core::LinAlg::Matrix<3, 3>> last_defgrad_;
 
       //! temporary variable, for which we store the right Cauchy-Green deformation tensor at each
@@ -297,6 +297,27 @@ namespace Mat
                                   /// generally the right choice)
       preserve_plastic_rotation,  ///< plastic rotation = plastic rotation from
                                   /// previous time instant
+    };
+
+
+    //! starting point type (initial guess interpolation)
+    enum class LocalNewtonGuessInterpolationStartingPointType
+    {
+      user_set,                  ///< User-set constant factor
+      last_interpolation_point,  ///< Takes the interpolation point of the previous timestep, which
+                                 ///< led to a valid initial guess, as the starting point for the
+                                 ///< interpolation within the current timestep
+      optimal_interpolation_point,  ///< Takes the optimal interpolation point
+                                    ///< of the previous timestep, i.e., the interpolation point
+                                    ///< leading to the solution of the Local Newton loop of the
+                                    ///< last global Newton iteration, as the starting point for th
+                                    ///< interpolation within the current timestep
+      optimal_equiv_stress          ///< Similar to optimal_interpolation_point, but
+                                    ///< considers the interpolation factor of the equivalent
+      ///< stress for the previous timestep with respect to the previous
+      ///< elastic and plastic predictors. Hence, all components of the interpolation point are
+      ///< effectively set to this one factor, instead of the generally
+      ///< different interpolation components obtained with optimal_interpolation_point
     };
 
     //! class containing utilities for initial guess interpolation in the Local
@@ -436,18 +457,19 @@ namespace Mat
       //! interval scanning parameter set by the user \f$ k_{\mathrm{scan}} \f$
       const double k_scan_;
 
-      //! current number of predictor adaptations
-      unsigned int num_of_pred_adapt_;
+      //! current number of Local Newton Guess Interpolations
+      unsigned int num_of_lngi_;
 
       //! maximum number of allowed
-      //! repredictorizations (including the initial predictor adaptation) before throwing error
-      const unsigned int max_num_pred_adapt_;
+      //! Reinterpolations (including the initial Local Newton Guess Interpolation) before throwing
+      //! error
+      const unsigned int max_num_lngi_;
 
       //! minimum interpolation interval as a 2-norm \f$ \|  \mathbf{\xi}_{\text{upper}} -
       //! \mathbf{\xi}_{\text{upper}} \| \f$
       const double min_interp_interval_;
 
-      // maximum allowed number number of predictor adaptation iterations
+      // maximum allowed number number of Local Newton Guess Interpolation iterations
       static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 100;
 
       //! current initial guess containing the inverse inelastic deformation
@@ -458,8 +480,9 @@ namespace Mat
        * @brief Constructor
        *
        * @param[in] k_scan Interval scanning parameter \f$ k_{\mathrm{scan}} \f$
-       * @param[in] max_num_pred_adapt Maximum number of allowed
-       * repredictorizations (including the initial predictor adaptation) before throwing error
+       * @param[in] max_num_reinterp Maximum number of allowed
+       * Reinterpolations (including the initial Local Newton Guess Interpolation) before throwing
+       * error
        * @param[in] stretch_assign_type Stretch assignment type for the elastic
        * and plastic deformation gradient within the plastic predictor
        * @param[in] rot_assign_type Rotation assignment type for the elastic
@@ -467,7 +490,7 @@ namespace Mat
        *  @param[in] min_interp_interval Minimum interpolation interval upper -
        *  lower (2-norm in interpolation space)
        */
-      LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_pred_adapt,
+      LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_reinterp,
           const PlasticPredictorStretchAssignType stretch_assign_type,
           const PlasticPredictorRotAssignType rot_assign_type, const double min_interp_interval);
 
@@ -495,11 +518,11 @@ namespace Mat
         }
 
         // check number of reinterpolations
-        bool check_num_reinterp = (num_of_pred_adapt_ <= max_num_pred_adapt_);
+        bool check_num_reinterp = (num_of_lngi_ <= max_num_lngi_);
         if (!check_num_reinterp)
         {
-          std::cout << "INIT GUESS INTERPOLATION ERROR: num of reinterpolations : "
-                    << num_of_pred_adapt_ << " > " << max_num_pred_adapt_ << std::endl;
+          std::cout << "INIT GUESS INTERPOLATION ERROR: num of reinterpolations : " << num_of_lngi_
+                    << " > " << max_num_lngi_ << std::endl;
           return false;
         }
 
@@ -533,11 +556,8 @@ namespace Mat
           const Core::LinAlg::Matrix<3, 3>& defgrad);
 
       /*!
-       * @brief update method: update the internal variables of the predictor
-       * interpolation struct based on the time step quantities of the
-       * material. We have to specify whether we want to compute and
-       * update the optimal xi value.
-       *
+       * @brief update method: update the internal variables based on the time step quantities of
+       * the material.
        */
       void update();
 
@@ -834,17 +854,14 @@ namespace Mat
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
           const Core::LinAlg::Matrix<3, 3>& defgrad);
 
-
       //! predictor decompositions for each GP of deformation gradient (with specified type:
       //! elastic, inverse plastic, ...) within elastic and plastic predictors
-      //!--> MOVE TO PRIVATE?
+      //!--> MOVE TO PRIVATE AFTER REMOVING CONSISTENCY CHECKS
       std::vector<PredictorDefgradDecomposition> all_pred_decomp_specific_defgrad_;
 
      private:
       //! decomposed deformation gradient type
       const DefgradType defgrad_type_;
-
-
 
       /**
        * @brief Component interpolator storing arrays of interpolation parameters
@@ -922,8 +939,8 @@ namespace Mat
     };
 
     /// class containing utilities for general analysis of the material
-    /// time integration (including predictor adaptation, Local Newton
-    /// loop, line search):
+    /// time integration (including Local Newton loop, Local Newton
+    /// Guess Interpolation, line search):
     /// error types, number of line searches, timers, ... Currently only
     /// employed for single-element single-processor simulations.
     class GeneralLocalTimIntAnalysisUtils
@@ -941,28 +958,29 @@ namespace Mat
       //! total number of LNL iterations over all time steps
       unsigned int total_num_of_iters_ = 0;
 
-      //! number of repredictorizations for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_repredict_ = 0;
+      //! number of reinterpolations for the current timestep evaluation (LNL)
+      unsigned int eval_num_of_lngi_reinterp_ = 0;
 
-      //! total number of LNL repredictorizations over all time steps
-      unsigned int total_num_of_repredict_ = 0;
+      //! total number of Local Newton Guess Reinterpolations over all time steps
+      unsigned int total_num_of_lngi_reinterp_ = 0;
 
-      //! number of iterations spent in the predictor adaptation for the
-      //! current timestep evaluation (including repredictorization)
-      unsigned int eval_num_of_pred_adapt_iters_ = 0;
+      //! number of iterations spent in the Local Newton Guess Interpolations for the
+      //! current timestep evaluation (including Reinterpolations)
+      unsigned int eval_num_of_lngi_iters_ = 0;
 
-      //! total number of iterations spent in the predictor adaptation
-      //! over all time steps (including repredictorization)
-      unsigned int total_num_of_pred_adapt_iters_ = 0;
+      //! total number of iterations spent in the Local Newton Guess
+      //! Interpolation
+      //! over all time steps (including Reinterpolation)
+      unsigned int total_num_of_lngi_iters_ = 0;
 
-      //! number of iterations spent in the predictor adaptation for the
-      //! current timestep evaluation (LNL), in the specific case of repredictorization
-      unsigned int eval_num_of_repredict_iters_ = 0;
+      //! number of iterations spent in the Local Newton Guess Interpolation for the
+      //! current timestep evaluation (LNL), in the specific case of Reinterpolation
+      unsigned int eval_num_of_reinterp_iters_ = 0;
 
-      //! total number of iterations spent in the predictor adaptation
+      //! total number of iterations spent in the Local Newton Guess Interpolation
       //! over all time steps,
-      //! in the specific case of repredictorization
-      unsigned int total_num_of_repredict_iters_ = 0;
+      //! in the specific case of Reinterpolation
+      unsigned int total_num_of_reinterp_iters_ = 0;
 
       //! number of line searches for the current timestep evaluation (LNL)
       unsigned int eval_num_of_line_search_ = 0;
@@ -995,99 +1013,90 @@ namespace Mat
       //! total number of line search iterations over all time steps
       unsigned int total_num_of_line_search_iters_ = 0;
 
-      //! number of times the LNL convergences directly in its first
-      //! iteration (due to a good predictor!) for the current timestep evaluation
-      unsigned int eval_num_of_first_iter_convergences = 0;
+      //! Local Newton Guess Interpolation factor for eigenvalue \f$ \lambda_1 \f$ obtained from the
+      //! Local Newton Guess Interpolation routine (for set GP, current time step, last global
+      //! iteration)
+      double curr_lngi_factor_lambda_1_ = 0;
 
-      //! total number of times the LNL convergences directly in its first
-      //! iteration (due to a good predictor!)
-      unsigned int total_num_of_first_iter_convergences = 0;
+      //! Local Newton Guess Interpolation factor for eigenvalue \f$ \lambda_2 \f$ obtained from the
+      //! Local Newton Guess Interpolation routine (for set GP, current time step, last global
+      //! iteration)
+      double curr_lngi_factor_lambda_2_ = 0;
 
-      //! predictor interpolation factor for eigenvalue \f$ \lambda_1 \f$ obtained from the
-      //! predictor adaptation routine (for set GP, current time step, last global iteration)
-      double curr_pred_interp_factor_lambda_1_ = 0;
-
-      //! predictor interpolation factor for eigenvalue \f$ \lambda_2 \f$ obtained from the
-      //! predictor adaptation routine (for set GP, current time step, last global iteration)
-      double curr_pred_interp_factor_lambda_2_ = 0;
-
-      //! predictor interpolation factor for rotation vector (component
+      //! Local Newton Guess Interpolation factor for rotation vector (component
       //! 0) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
-      //! from the predictor adaptation routine (for set GP, current time step, last global
-      //! iteration)
-      double curr_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
+      //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
+      //! global iteration)
+      double curr_lngi_factor_eigenvect_rot_comp_0_ = 0;
 
-      //! predictor interpolation factor for rotation vector (component
+      //! Local Newton Guess Interpolation factor for rotation vector (component
       //! 1) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
-      //! from the predictor adaptation routine (for set GP, current time step, last global
-      //! iteration)
-      double curr_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
+      //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
+      //! global iteration)
+      double curr_lngi_factor_eigenvect_rot_comp_1_ = 0;
 
-      //! predictor interpolation factor for rotation vector (component
+      //! Local Newton Guess Interpolation factor for rotation vector (component
       //! 2) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
-      //! from the predictor adaptation routine (for set GP, current time step, last global
-      //! iteration)
-      double curr_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
+      //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
+      //! global iteration)
+      double curr_lngi_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! predictor interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
-      //! predictor adaptation routine (for set GP, current time step, maximum over all global
-      //! iterations)
-      double curr_max_pred_interp_factor_lambda_1_ = 0;
+      //! Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
+      //! Local Newton Guess Interpolation routine (for set GP, current time step, maximum over all
+      //! global iterations)
+      double curr_max_lngi_factor_lambda_1_ = 0;
 
-      //! predictor interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
-      //! predictor adaptation routine (for set GP, current time step, maximum over all global
-      //! iterations)
-      double curr_max_pred_interp_factor_lambda_2_ = 0;
+      //! Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
+      //! Local Newton Guess Interpolation routine (for set GP, current time step, maximum over all
+      //! global iterations)
+      double curr_max_lngi_factor_lambda_2_ = 0;
 
-      //! predictor interpolation factor (rotation vector associated
+      //! Local Newton Guess Interpolation factor (rotation vector associated
       //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 0) obtained from the predictor
-      //! adaptation routine (for set GP, current
-      //! time step, maximum over all global iterations)
-      double curr_max_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
+      //! component 0) obtained for set GP, current
+      //! time step, maximum over all global iterations
+      double curr_max_lngi_factor_eigenvect_rot_comp_0_ = 0;
 
-      //! predictor interpolation factor (rotation vector associated
+      //! Local Newton Guess Interpolation factor (rotation vector associated
       //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 1) obtained from the predictor
-      //! adaptation routine (for set GP, current
-      //! time step, maximum over all global iterations)
-      double curr_max_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
+      //! component 1) obtained for set GP, current
+      //! time step, maximum over all global iterations
+      double curr_max_lngi_factor_eigenvect_rot_comp_1_ = 0;
 
-      //! predictor interpolation factor (rotation vector associated
+      //! Local Newton Guess Interpolation factor (rotation vector associated
       //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 2) obtained from the predictor
-      //! adaptation routine (for set GP, current
-      //! time step, maximum over all global iterations)
-      double curr_max_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
+      //! component 2) obtained for set GP, current
+      //! time step, maximum over all global iterations
+      double curr_max_lngi_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! optimal predictor interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
-      //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_pred_interp_factor_lambda_1_ = 0;
+      //! optimal Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained
+      //! from the time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_lngi_factor_lambda_1_ = 0;
 
-      //! optimal predictor interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
-      //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_pred_interp_factor_lambda_2_ = 0;
+      //! optimal Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained
+      //! from the time step solution (for GP 0 of element 0 after the current time step)
+      double optimal_lngi_factor_lambda_2_ = 0;
 
-      //! optimal predictor interpolation factor (rotation vector associated
+      //! optimal Local Newton Guess Interpolation factor (rotation vector associated
       //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
       //! component 0) obtained from the
       //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_pred_interp_factor_eigenvect_rot_comp_0_ = 0;
+      double optimal_lngi_factor_eigenvect_rot_comp_0_ = 0;
 
-      //! optimal predictor interpolation factor (rotation vector associated
+      //! optimal Local Newton Guess Interpolation factor (rotation vector associated
       //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
       //! component 1) obtained from the
       //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_pred_interp_factor_eigenvect_rot_comp_1_ = 0;
+      double optimal_lngi_factor_eigenvect_rot_comp_1_ = 0;
 
-      //! optimal predictor interpolation factor (rotation vector associated
+      //! optimal Local Newton Guess Interpolation factor (rotation vector associated
       //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
       //! component 2) obtained from the
       //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_pred_interp_factor_eigenvect_rot_comp_2_ = 0;
+      double optimal_lngi_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! Local Newton residual obtained from the optimal predictor interpolation factor
-      double lnl_res_optimal_pred_interp_factor_ = 0;
+      //! Local Newton residual obtained from the optimal Local Newton Guess Interpolation factor
+      double lnl_res_optimal_lngi_factor_ = 0;
 
       //! timer for the current inelastic deformation gradient evaluation in the current timestep
       Teuchos::Time eval_teuchos_timer_inelastic_defgrad_{
@@ -1098,15 +1107,19 @@ namespace Mat
       Teuchos::Time eval_teuchos_timer_LNL_{
           "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
 
-      //! timer for the time spent adapting the predictor (including repredictorization)
-      Teuchos::Time eval_teuchos_timer_pred_adapt_{
-          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation"};
+      //! timer for the time spent adapting the initial guess (including Local Newton Guess
+      //! Reinterpolation)
+      Teuchos::Time eval_teuchos_timer_lngi_{
+          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
+          "Interpolation"};
 
-      //! timer for the time spent adapting the predictor only in the
-      //! specific case of repredictorization
-      Teuchos::Time eval_teuchos_timer_repredict_{
-          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the predictor adaptation "
-          "(repredictorization)"};
+      //! timer for the time spent in the Local Newton Guess Interpolation
+      //! routine, only in the
+      //! specific case of Reinterpolation
+      Teuchos::Time eval_teuchos_timer_reinterp_{
+          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
+          "Interpolation "
+          "(Reinterpolation)"};
 
       //! timer for the time spent in the line search scheme
       Teuchos::Time eval_teuchos_timer_line_search_{
@@ -1132,20 +1145,20 @@ namespace Mat
       //! total time spent in the Local Newton Loop over all time steps
       double total_time_LNL_;
 
-      //! evaluation time spent in the predictor adaptation (current
+      //! evaluation time spent in the Local Newton Guess Interpolation (current
       //! time step)
-      double eval_time_pred_adapt_;
+      double eval_time_lngi_;
 
-      //! total time spent in the predictor adaptation over all time steps
-      double total_time_pred_adapt_;
+      //! total time spent in the Local Newton Guess Interpolation over all time steps
+      double total_time_lngi_;
 
-      //! evaluation time spent in the predictor adaptation (current
-      //! time step), in the specific case of repredictorization
-      double eval_time_repredict_;
+      //! evaluation time spent in the Local Newton Guess Interpolation (current
+      //! time step), in the specific case of Reinterpolation
+      double eval_time_reinterp_;
 
-      //! total time spent in the predictor adaptation over all time steps, in the specific
-      //! case of repredictorization
-      double total_time_repredict_;
+      //! total time spent in the Local Newton Guess Interpolation over all time steps, in the
+      //! specific case of Reinterpolation
+      double total_time_reinterp_;
 
       //! evaluation time spent in the line search (current
       //! time step)
@@ -1530,7 +1543,7 @@ namespace Mat
     };
 
     //! struct holding the relevant output data of all
-    //! microiterations of a single predictor adaptation which can be
+    //! microiterations of a single Local Newton Guess Interpolation which can be
     //! written to a csv file
     struct CSVOutputPredAdaptMicroIterData
     {
@@ -1542,7 +1555,8 @@ namespace Mat
       CSVOutputPredAdaptMicroIterData(const CSVOutputTrackingData csv_output_tracking_data);
 
       //! data collector for a single micro iteration within the
-      //! predictor adaptation -> used to assign the values at the specific microiterations
+      //! Local Newton Guess Interpolation -> used to assign the values at the specific
+      //! microiterations
       struct MicroIterDataCollector
       {
         //! current interpolation factor \f$ \xi_{\lambda_1} \f$ for the
@@ -1564,8 +1578,8 @@ namespace Mat
             ErrorType::overflow_error;
       };
 
-      //! all indices of the microiterations (iterations within the predictor
-      //! adaptation)
+      //! all indices of the microiterations (iterations within the Local Newton
+      //! Guess Interpolation)
       std::vector<unsigned int> all_microiter_;
 
       //! current interpolation factors \f$ \xi_{\lambda_1} \f$ for
@@ -1602,9 +1616,9 @@ namespace Mat
       void append_micro_iter_data(
           const MicroIterDataCollector mi_data_collector, const unsigned micro_iter);
 
-      //! writes data from each microiteration of a single predictor
-      //! adaptation (specified via tracking data) to a dedicated csv file
-      void write_pred_adapt_micro_iter_data_to_csv();
+      //! writes data from each microiteration of a single Local Newton Guess Interpolation
+      //! (specified via tracking data) to a dedicated csv file
+      void write_lngi_micro_iter_data_to_csv();
     };
 
     //! struct holding the relevant output data of all
@@ -1619,7 +1633,7 @@ namespace Mat
       CSVOutputLineSearchMicroIterData(const CSVOutputTrackingData csv_output_tracking_data);
 
       //! data collector for a single micro iteration within the
-      //! predictor adaptation -> assigns the values at the specific microiterations
+      //! Local Newton Guess Interpolation -> assigns the values at the specific microiterations
       struct MicroIterDataCollector
       {
         //! current step size \f$ \alpha \f$

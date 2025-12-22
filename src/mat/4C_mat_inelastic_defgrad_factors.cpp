@@ -635,20 +635,6 @@ namespace
     */
   }
 
-  // checks if a given 3x3 matrix is diagonal
-  bool check_3x3_diagonal(const Core::LinAlg::Matrix<3, 3>& mat, const double tol = 1.0e-8)
-  {
-    // check if the matrix is diagonal
-    for (int i = 0; i < 3; ++i)
-    {
-      for (int j = 0; j < 3; ++j)
-      {
-        if (i != j && std::abs(mat(i, j)) > tol) return false;
-      }
-    }
-    return true;
-  }
-
   // compute matrix from its spectral-polar decomposed components \f$ \boldsymbol{T}
   // = \boldsymbol{R} \boldsymbol{Q}^{T} \boldsymbol{\lambda} \boldsymbol{Q} \f$: sorted
   // eigenvalues, relative eigenvector rotation (specified using a
@@ -907,19 +893,25 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       max_plastic_strain_incr_(matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_INCR")),
       max_plastic_strain_deriv_incr_(
           matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
-      use_pred_adapt_(matdata.parameters.get<bool>("USE_PRED_ADAPT")),
-      check_elastic_pred_(matdata.parameters.get<bool>("CHECK_ELASTIC_PRED")),
-      plastic_pred_stretch_assign_type_(
-          matdata.parameters.get<PlasticPredictorStretchAssignType>("PLASTIC_PRED_STRETCH_ASSIGN")),
-      plastic_pred_rot_assign_type_(
-          matdata.parameters.get<PlasticPredictorRotAssignType>("PLASTIC_PRED_ROT_ASSIGN")),
-      use_last_pred_adapt_fact_(matdata.parameters.get<bool>("USE_LAST_PRED_ADAPT_FACT")),
-      use_optimal_pred_adapt_fact_(matdata.parameters.get<bool>("USE_OPTIMAL_PRED_ADAPT_FACT")),
-      check_consistency_pred_adapt_(matdata.parameters.get<bool>("CHECK_CONSISTENCY_PRED_ADAPT")),
-      precondition_matrices_pred_adapt_(
-          matdata.parameters.get<bool>("PRECONDITION_MATRICES_PRED_ADAPT")),
-      precondition_matrices_pred_adapt_num_tol_(
-          matdata.parameters.get<double>("PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL")),
+      use_lngi_(matdata.parameters.get<bool>("USE_LNGI")),
+      lngi_plastic_pred_stretch_assign_type_(
+          matdata.parameters.get<PlasticPredictorStretchAssignType>(
+              "LNGI_PLASTIC_PRED_STRETCH_ASSIGN")),
+      lngi_plastic_pred_rot_assign_type_(
+          matdata.parameters.get<PlasticPredictorRotAssignType>("LNGI_PLASTIC_PRED_ROT_ASSIGN")),
+      lngi_starting_point_type_(
+          matdata.parameters.get<LocalNewtonGuessInterpolationStartingPointType>(
+              "LNGI_STARTING_POINT_TYPE")),
+      lngi_starting_point_(matdata.parameters.get<double>("LNGI_STARTING_POINT")),
+      lngi_interval_scan_param_(matdata.parameters.get<double>("LNGI_INTERVAL_SCAN_PARAM")),
+      lngi_max_num_reinterp_(matdata.parameters.get<int>("LNGI_MAX_NUM_REINTERP")),
+      lngi_min_interp_interval_(matdata.parameters.get<double>("LNGI_MIN_INTERP_INTERVAL")),
+      lngi_reinterp_min_diff_lbound_(
+          matdata.parameters.get<double>("LNGI_REINTERP_MIN_DIFF_LBOUND")),
+      lngi_precondition_matrices_(matdata.parameters.get<bool>("LNGI_PRECONDITION_MATRICES")),
+      lngi_precondition_matrices_num_tol_(
+          matdata.parameters.get<double>("LNGI_PRECONDITION_MATRICES_NUM_TOL")),
+      lngi_check_consistency_(matdata.parameters.get<bool>("LNGI_CHECK_CONSISTENCY")),
       use_steepest_descent_update_correction_(
           matdata.parameters.get<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION")),
       use_line_search_(matdata.parameters.get<bool>("USE_LINE_SEARCH")),
@@ -929,12 +921,6 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<double>("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE")),
       use_substepping_(matdata.parameters.get<bool>("USE_SUBSTEPPING")),
       analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
-      user_pred_interp_fact_(matdata.parameters.get<double>("USER_PRED_INTERP_FACT")),
-      max_num_pred_adapt_(matdata.parameters.get<int>("MAX_NUM_PRED_ADAPT")),
-      init_guess_interp_min_interval_(
-          matdata.parameters.get<double>("INIT_GUESS_INTERP_MIN_INTERVAL")),
-      init_guess_reinterp_min_diff_lbound_(
-          matdata.parameters.get<double>("INIT_GUESS_REINTERP_MIN_DIFF_LBOUND")),
       max_substepping_halve_num_(matdata.parameters.get<int>("MAX_SUBSTEPPING_HALVE_NUM")),
       mat_exp_calc_method_(
           matdata.parameters.get<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD")),
@@ -946,23 +932,21 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       mat_log_deriv_calc_method_(
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD")),
-      use_csv_output_failed_local_newton_iter_(
-          matdata.parameters.get<bool>("USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER")),
-      use_csv_output_pred_adapt_micro_iter_(
-          matdata.parameters.get<bool>("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER")),
-      use_csv_output_line_search_micro_iter_(
-          matdata.parameters.get<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER")),
       local_newton_res_tol_(matdata.parameters.get<double>("LOCAL_NEWTON_RES_TOL")),
       local_newton_incr_tol_(matdata.parameters.get<double>("LOCAL_NEWTON_INCR_TOL")),
       local_newton_conv_check_(
           matdata.parameters.get<LocalNewtonConvCheck>("LOCAL_NEWTON_CONV_CHECK")),
       local_newton_diver_cont_(
-          matdata.parameters.get<LocalNewtonDiverCont>("LOCAL_NEWTON_DIVER_CONT"))
+          matdata.parameters.get<LocalNewtonDiverCont>("LOCAL_NEWTON_DIVER_CONT")),
+      use_csv_output_failed_local_newton_iter_(
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER")),
+      use_csv_output_lngi_micro_iter_(
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_LNGI_MICRO_ITER")),
+      use_csv_output_line_search_micro_iter_(
+          matdata.parameters.get<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER"))
 {
   // consistency checks
   if (max_substepping_halve_num_ < 0) FOUR_C_THROW("Parameter MAX_HALVE_NUM_SUBSTEP must be >= 0!");
-  if (use_last_pred_adapt_fact_ && use_optimal_pred_adapt_fact_)
-    FOUR_C_THROW("Cannot use both the last predictor adaptation factor and the optimal one!");
 }
 
 
@@ -1960,13 +1944,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       viscoplastic_law_(std::move(viscoplastic_law)),
       fiber_reader_(std::move(fiber_reader)),
       tensor_interpolator_{init_tensor_interpolator()},
-      lnl_guess_interpolation_(parameter()->user_pred_interp_fact(),
-          parameter()->max_num_pred_adapt(), parameter()->plastic_pred_stretch_assign_type(),
-          parameter()->plastic_pred_rot_assign_type(),
-          parameter()->init_guess_interp_min_interval()),
+      lnl_guess_interpolation_(parameter()->lngi_interval_scan_param(),
+          parameter()->lngi_max_num_reinterp(),
+          parameter()->lngi_plastic_pred_stretch_assign_type(),
+          parameter()->lngi_plastic_pred_rot_assign_type(),
+          parameter()->lngi_min_interp_interval()),
       globiter_(-1),  // initialized as -1, because this is called one time even
                       // prior to the first global predictor evaluation
-      csv_output_pred_adapt_micro_iter_data_{CSVOutputTrackingData{}},
+      csv_output_lngi_micro_iter_data_{CSVOutputTrackingData{}},
       csv_output_line_search_micro_iter_data_{CSVOutputTrackingData{}},
       lnl_data_(parameter()->local_newton_res_tol(), parameter()->local_newton_incr_tol(),
           parameter()->local_newton_conv_check(), parameter()->local_newton_diver_cont())
@@ -2085,47 +2070,51 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   // set current evaluation gp for the viscoplastic law
   viscoplastic_law_->pre_evaluate(params_, gp_);  // set last_substep <- last_
 
-  // set initial predictor interpolation factors for the predictor adaptation routine
-  if (parameter()->use_pred_adapt())
+  // set initial interpolation factors for the Local Newton Guess
+  // Interpolation routine
+  if (parameter()->use_lngi())
   {
-    // start predictor adaptation timer
+    // start Local Newton Guess Interpolation timer
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+    }
+
+    // set starting point of the Local Newton Guess Interpolation
+    switch (parameter()->lngi_starting_point_type())
+    {
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolationStartingPointType::user_set:
+      {
+        // get user-set starting point
+        const double sp{parameter()->lngi_starting_point()};
+
+        lnl_guess_interpolation_.set_curr_interp_point(
+            gp_, LocalNewtonGuessInterpolation::InterpolationPoint{sp, sp, {sp, sp, sp}});
+        break;
+      }
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolationStartingPointType::last_interpolation_point:
+      {
+        lnl_guess_interpolation_.set_curr_interp_point(
+            gp_, lnl_guess_interpolation_.get_last_interp_point(gp_));
+        break;
+      }
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolationStartingPointType::optimal_interpolation_point:
+      {
+        lnl_guess_interpolation_.set_curr_interp_point(
+            gp_, lnl_guess_interpolation_.get_optimal_interp_point(gp_));
+        break;
+      }
+      default:
+      {
+        FOUR_C_THROW("The starting point type {} is not yet supported!",
+            parameter()->lngi_starting_point_type());
+      }
     }
 
     // set to the last interpolation factor from the previous substep
-    // when specified so
-    if (parameter()->use_last_pred_adapt_fact())
-    {
-      lnl_guess_interpolation_.set_curr_interp_point(
-          gp_, lnl_guess_interpolation_.get_last_interp_point(gp_));
-    }
-    else if (parameter()->use_optimal_pred_adapt_fact())
-    {
-      lnl_guess_interpolation_.set_curr_interp_point(
-          gp_, lnl_guess_interpolation_.get_optimal_interp_point(gp_));
-    }
-    else
-    {
-      if (parameter()->check_elastic_pred())
-      {
-        lnl_guess_interpolation_.set_curr_interp_point(
-            gp_, LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 0.0,
-                     .xi_lambda_2_ = 0.0,
-                     .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}});
-      }
-      else
-      {
-        lnl_guess_interpolation_.set_curr_interp_point(gp_,
-            LocalNewtonGuessInterpolation::InterpolationPoint{
-                .xi_lambda_1_ = parameter()->user_pred_interp_fact(),
-                .xi_lambda_2_ = parameter()->user_pred_interp_fact(),
-                .xi_rel_eigenvect_rot_ = {parameter()->user_pred_interp_fact(),
-                    parameter()->user_pred_interp_fact(), parameter()->user_pred_interp_fact()}});
-      }
-    }
-
     // get inverse plastic deformation gradient within the plastic predictor
     Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad_plastic_pred =
         compute_inverse_plastic_defgrad_plastic_pred(defgrad,
@@ -2135,8 +2124,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
             time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_],
             time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp_],
             time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_],
-            parameter()->plastic_pred_stretch_assign_type(),
-            parameter()->plastic_pred_rot_assign_type());
+            parameter()->lngi_plastic_pred_stretch_assign_type(),
+            parameter()->lngi_plastic_pred_rot_assign_type());
 
 
 #ifdef DEBUG_PRED_ADAPT
@@ -2152,7 +2141,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
 
 
     // consistency check:
-    if (parameter()->check_consistency_pred_adapt())
+    if (parameter()->lngi_check_consistency())
     {
       // save the determinant of the deformation gradient
       const double detF = defgrad.determinant();
@@ -2207,7 +2196,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
 
       // stretch assignment: if eliminating the elastic stretch entirely: is the resulting
       // elastic right CG tensor (plastic predictor) a scaled identity matrix?
-      if (parameter()->plastic_pred_stretch_assign_type() ==
+      if (parameter()->lngi_plastic_pred_stretch_assign_type() ==
           InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorStretchAssignType::
               eliminate_elastic_stretch)
       {
@@ -2240,14 +2229,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
           std::cout << "It should actually equal: " << std::endl;
           id_3x3_scaled_det_Knp.print(std::cout);
 
-          FOUR_C_THROW("Failed consistency check for predictor adaptation");
+          FOUR_C_THROW("Failed consistency check for Local Newton Guess Interpolation");
         }
       }
-      else if (parameter()->plastic_pred_stretch_assign_type() ==
+      else if (parameter()->lngi_plastic_pred_stretch_assign_type() ==
                InelasticDefgradTransvIsotropElastViscoplastUtils::
                    PlasticPredictorStretchAssignType::maintain_elastic_stretch)
       {
-        if (parameter()->plastic_pred_rot_assign_type() ==
+        if (parameter()->lngi_plastic_pred_rot_assign_type() ==
             InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
                 trial_elastic_rotation)
         {
@@ -2278,7 +2267,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
             }
           }
         }
-        else if (parameter()->plastic_pred_rot_assign_type() ==
+        else if (parameter()->lngi_plastic_pred_rot_assign_type() ==
                  InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
                      preserve_plastic_rotation)
         {
@@ -2314,10 +2303,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
         else
         {
           FOUR_C_THROW("Unsupported plastic predictor rotation assignment type {}",
-              parameter()->plastic_pred_rot_assign_type());
+              parameter()->lngi_plastic_pred_rot_assign_type());
         }
       }
-      else if (parameter()->plastic_pred_stretch_assign_type() ==
+      else if (parameter()->lngi_plastic_pred_stretch_assign_type() ==
                InelasticDefgradTransvIsotropElastViscoplastUtils::
                    PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch)
       {
@@ -2328,7 +2317,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
                       time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_][2]);
         // compute ratio between current and previous defgrad determinants
         const double det_ratio = detF / det_last_F;
-
 
 
         // DEBUG
@@ -2441,22 +2429,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
       else
       {
         FOUR_C_THROW("Unsupported plastic predictor stretch assignment type {}",
-            parameter()->plastic_pred_stretch_assign_type());
+            parameter()->lngi_plastic_pred_stretch_assign_type());
       }
     }
 
-    // preevaluate predictor adaptation factors
-    if (parameter()->precondition_matrices_pred_adapt())
+    // preevaluate Local Newton Guess Interpolation factors
+    if (parameter()->lngi_precondition_matrices())
     {
       lnl_guess_interpolation_.pre_evaluate(gp_,
           precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
-              parameter()->precondition_matrices_pred_adapt_num_tol() *
+              parameter()->lngi_precondition_matrices_num_tol() *
                   time_step_quantities_.last_plastic_defgrad_inverse_[gp_].norm2()),
-          precondition_matrix(inv_plastic_defgrad_plastic_pred,
-              parameter()->precondition_matrices_pred_adapt_num_tol() *
-                  inv_plastic_defgrad_plastic_pred.norm2()),
           precondition_matrix(
-              defgrad, parameter()->precondition_matrices_pred_adapt_num_tol() * defgrad.norm2()));
+              inv_plastic_defgrad_plastic_pred, parameter()->lngi_precondition_matrices_num_tol() *
+                                                    inv_plastic_defgrad_plastic_pred.norm2()),
+          precondition_matrix(
+              defgrad, parameter()->lngi_precondition_matrices_num_tol() * defgrad.norm2()));
     }
     else
     {
@@ -2468,7 +2456,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     // consistency check: can we recover the inverse plastic deformation
     // gradient within the plastic predictor from its extract spectral-polar decomposed
     // parts?
-    if (parameter()->check_consistency_pred_adapt())
+    if (parameter()->lngi_check_consistency())
     {
       // compute input matrix from its components
       Core::LinAlg::Matrix<3, 3> recovered_matrix = compute_matrix_from_decomposed_components(
@@ -2480,7 +2468,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
           lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp_].Rmat_plast_pred_);
       // verify inverse inelastic deformation gradient
       Core::LinAlg::Matrix<3, 3> recovered_inv_plastic_defgrad{Core::LinAlg::Initialization::zero};
-      if (lnl_guess_interpolation_.get_defgrad_type(parameter()->plastic_pred_rot_assign_type()) ==
+      if (lnl_guess_interpolation_.get_defgrad_type(
+              parameter()->lngi_plastic_pred_rot_assign_type()) ==
           InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
               DefgradType::elastic_defgrad)
       {
@@ -2492,7 +2481,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
         recovered_inv_plastic_defgrad.multiply_nn(1.0, inv_defgrad, recovered_matrix, 0.0);
       }
       else if (lnl_guess_interpolation_.get_defgrad_type(
-                   parameter()->plastic_pred_rot_assign_type()) ==
+                   parameter()->lngi_plastic_pred_rot_assign_type()) ==
                InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
                    DefgradType::inv_plastic_defgrad)
       {
@@ -2501,7 +2490,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
       else
       {
         FOUR_C_THROW("Unsupported deformation gradient type {} for interpolation",
-            lnl_guess_interpolation_.get_defgrad_type(parameter()->plastic_pred_rot_assign_type()));
+            lnl_guess_interpolation_.get_defgrad_type(
+                parameter()->lngi_plastic_pred_rot_assign_type()));
       }
 
 
@@ -2538,15 +2528,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
         std::cout << "rotation matrix: " << std::endl;
         lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp_].Rmat_plast_pred_.print(
             std::cout);
-        FOUR_C_THROW("Failed consistency check for predictor adaptation");
+        FOUR_C_THROW("Failed consistency check for Local Newton Guess Interpolation");
       }
     }
 
-    // stop predictor adaptation timer
+    // stop Local Newton Guess Interpolation timer
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+      general_local_timint_analysis_utils.eval_time_lngi_ +=
+          general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
     }
   }
 
@@ -3490,29 +3480,28 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   }
   else  // predictor does not suffice
   {
-    // perform time integration via the Local Newton-Raphson Loop (LNL), using the elastic
-    // predictor
+    // perform time integration via the Local Newton-Raphson Loop (LNL)
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
     Core::LinAlg::Matrix<10, 1> x_adapted{x};
 
-    // adapt predictor
-    if (parameter()->use_pred_adapt())
+    // adapt predictor (interpolate Local Newton guess)
+    if (parameter()->use_lngi())
     {
-      x_adapted = adapt_predictor_local_newton_loop(x, FredM, parameter()->check_elastic_pred());
+      x_adapted = interpolate_local_newton_guess(x, FredM);
 
-      // start timer predictor adaptation
+      // start timer Local Newton Guess Interpolation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
       }
-      // increment the number of performed predictor adaptations
-      ++lnl_guess_interpolation_.num_of_pred_adapt_;
+      // increment the number of performed Local Newton Guess Interpolations
+      ++lnl_guess_interpolation_.num_of_lngi_;
 
-      // stop timer predictor adaptation
+      // stop timer Local Newton Guess Interpolation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+        general_local_timint_analysis_utils.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
       }
     }
 
@@ -3595,20 +3584,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // inelastic defgrad) used below for updating the last values
   Core::LinAlg::Matrix<3, 3> inv_mat_stretch{Core::LinAlg::Initialization::zero};
 
-  // initialize optimal predictor interpolation factors for all Gauss
+  // initialize optimal interpolation factors for all Gauss
   // points
   std::vector<double> optimal_xi_at_all_gp{};
 
-  // loop over Gauss points: compute the optimal predictor interpolation
+  // loop over Gauss points: compute the optimal interpolation
   // factors for each gp if specified by user
   for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrad_inverse_.size(); ++gp)
   {
-    if (parameter()->use_optimal_pred_adapt_fact())
+    if (parameter()->lngi_starting_point_type() ==
+        InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonGuessInterpolationStartingPointType::optimal_interpolation_point)
     {
-      // start timer for predictor adaptation
+      // start timer for Local Newton Guess Interpolation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
       }
 
       // ----------------------------------------------- //
@@ -3628,14 +3619,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       // else: set all optimal values to 0.0 = elastic predictor
       if (std::abs(current_state_quantities.curr_equiv_plastic_strain_rate_) > 0.0)
       {
-        if (parameter()->precondition_matrices_pred_adapt())
+        if (parameter()->lngi_precondition_matrices())
         {
           lnl_guess_interpolation_.compute_optimal_interp_factors(gp,
               precondition_matrix(time_step_quantities_.current_plastic_defgrad_inverse_[gp],
-                  parameter()->precondition_matrices_pred_adapt_num_tol() *
+                  parameter()->lngi_precondition_matrices_num_tol() *
                       time_step_quantities_.current_plastic_defgrad_inverse_[gp].norm2()),
               precondition_matrix(time_step_quantities_.current_defgrad_[gp],
-                  parameter()->precondition_matrices_pred_adapt_num_tol() *
+                  parameter()->lngi_precondition_matrices_num_tol() *
                       time_step_quantities_.current_defgrad_[gp].norm2()));
         }
         else
@@ -3689,12 +3680,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
                     .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}});
       }
 
-      // stop timer for predictor adaptation
+      // stop timer for Local Newton Guess Interpolation
       if (parameter()->analyze_timint())
       {
         // general local time integration analysis: stop timer
-        general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+        general_local_timint_analysis_utils.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
       }
     }
   }
@@ -3709,14 +3700,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       Core::LinAlg::Initialization::zero};
 
   // loop over Gauss points:  update of the material stretch and the rotation of
-  // the inverse inelastic defgrad for the predictor adaptation (last_ values are updated,
-  // but we use the current_ values since they were not updated yet)
-  if (parameter()->use_pred_adapt())
+  // the inverse inelastic defgrad for the Local Newton Guess Interpolation (last_ values are
+  // updated, but we use the current_ values since they were not updated yet)
+  if (parameter()->use_lngi())
   {
-    // start timer for predictor adaptation
+    // start timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
     }
 
     for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrad_inverse_.size(); ++gp)
@@ -3753,11 +3744,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
           time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp], 0.0);
     }
 
-    // stop timer for predictor adaptation
+    // stop timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+      general_local_timint_analysis_utils.eval_time_lngi_ +=
+          general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
     }
   }
 
@@ -3771,22 +3762,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
   // call update method of the viscoplastic law
   viscoplastic_law_->update();
 
-  // call update method of the predictor interpolation factors
-  if (parameter()->use_pred_adapt())
+  // call update method of the interpolation factors
+  if (parameter()->use_lngi())
   {
-    // start timer for predictor adaptation
+    // start timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
     }
 
     lnl_guess_interpolation_.update();
 
-    // stop timer for predictor adaptation
+    // stop timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+      general_local_timint_analysis_utils.eval_time_lngi_ +=
+          general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
     }
   }
 
@@ -3802,31 +3793,31 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       LocalNewtonGuessInterpolation::InterpolationPoint optimal_interp_point =
           lnl_guess_interpolation_.get_optimal_interp_point(gp_);
 
-      // general local time integration analysis: set predictor interpolation factors (the
-      // one obtained from the predictor adaptation and the optimal one)
-      general_local_timint_analysis_utils.curr_pred_interp_factor_lambda_1_ =
+      // general local time integration analysis: set interpolation factors (the
+      // one obtained from the Local Newton Guess Interpolation and the optimal one)
+      general_local_timint_analysis_utils.curr_lngi_factor_lambda_1_ =
           curr_interp_point.xi_lambda_1_;
-      general_local_timint_analysis_utils.curr_pred_interp_factor_lambda_2_ =
+      general_local_timint_analysis_utils.curr_lngi_factor_lambda_2_ =
           curr_interp_point.xi_lambda_2_;
-      general_local_timint_analysis_utils.curr_pred_interp_factor_eigenvect_rot_comp_0_ =
+      general_local_timint_analysis_utils.curr_lngi_factor_eigenvect_rot_comp_0_ =
           curr_interp_point.xi_rel_eigenvect_rot_[0];
-      general_local_timint_analysis_utils.curr_pred_interp_factor_eigenvect_rot_comp_1_ =
+      general_local_timint_analysis_utils.curr_lngi_factor_eigenvect_rot_comp_1_ =
           curr_interp_point.xi_rel_eigenvect_rot_[1];
-      general_local_timint_analysis_utils.curr_pred_interp_factor_eigenvect_rot_comp_2_ =
+      general_local_timint_analysis_utils.curr_lngi_factor_eigenvect_rot_comp_2_ =
           curr_interp_point.xi_rel_eigenvect_rot_[2];
-      general_local_timint_analysis_utils.optimal_pred_interp_factor_lambda_1_ =
+      general_local_timint_analysis_utils.optimal_lngi_factor_lambda_1_ =
           optimal_interp_point.xi_lambda_1_;  // only for the 0-th Gauss point in the
                                               // time integration analysis
-      general_local_timint_analysis_utils.optimal_pred_interp_factor_lambda_2_ =
+      general_local_timint_analysis_utils.optimal_lngi_factor_lambda_2_ =
           optimal_interp_point.xi_lambda_2_;  // only for the 0-th Gauss point in the
                                               // time integration analysis
-      general_local_timint_analysis_utils.optimal_pred_interp_factor_eigenvect_rot_comp_0_ =
+      general_local_timint_analysis_utils.optimal_lngi_factor_eigenvect_rot_comp_0_ =
           optimal_interp_point.xi_rel_eigenvect_rot_[0];  // only for the 0-th Gauss point in
                                                           // the time integration analysis
-      general_local_timint_analysis_utils.optimal_pred_interp_factor_eigenvect_rot_comp_1_ =
+      general_local_timint_analysis_utils.optimal_lngi_factor_eigenvect_rot_comp_1_ =
           optimal_interp_point.xi_rel_eigenvect_rot_[1];  // only for the 0-th Gauss point in
                                                           // the time integration analysis
-      general_local_timint_analysis_utils.optimal_pred_interp_factor_eigenvect_rot_comp_2_ =
+      general_local_timint_analysis_utils.optimal_lngi_factor_eigenvect_rot_comp_2_ =
           optimal_interp_point.xi_rel_eigenvect_rot_[2];  // only for the 0-th Gauss point in
                                                           // the time integration analysis
 
@@ -3906,18 +3897,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   // call corresponding method of the viscoplastic law
   viscoplastic_law_->setup(numgp, fibers, coord_system);
 
-  // start timer for predictor adaptation
+  // start timer for Local Newton Guess Interpolation
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+    general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
   }
-  // call setup method of the predictor interpolation factors
+  // call setup method of the Local Newton Guess Interpolation
   lnl_guess_interpolation_.setup(numgp);
-  // stop timer for predictor adaptation
+  // stop timer for Local Newton Guess Interpolation
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-        general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+    general_local_timint_analysis_utils.eval_time_lngi_ +=
+        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
   }
 
 
@@ -3954,7 +3945,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pack_inelastic(
     // pack viscoplastic law
     viscoplastic_law_->pack_viscoplastic_law(data);
 
-    // pack predictor interpolation factors
+    // pack interpolation factors
     lnl_guess_interpolation_.pack(data);
 
     // pack fiber direction
@@ -3988,7 +3979,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::unpack_inelastic(
     // unpack viscoplastic law
     viscoplastic_law_->unpack_viscoplastic_law(buffer);
 
-    // unpack predictor interpolation factors
+    // unpack interpolation factors
     lnl_guess_interpolation_.unpack(buffer);
 
     // unpack fiber direction
@@ -4584,10 +4575,6 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           // line search algorithm deviates from 1.0 in the last iter
           if (std::abs(alpha - 1.0) > 1.0e-8)
             general_local_timint_analysis_utils.eval_num_of_alpha_neq_1_last_iter += 1;
-
-          // add number of first iteration convergences
-          if (lnl_data_.iter_ == 1)
-            general_local_timint_analysis_utils.eval_num_of_first_iter_convergences += 1;
         }
 
         // break out of the substep NR loop
@@ -5040,16 +5027,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<10, 1>
-Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_loop(
-    const Core::LinAlg::Matrix<10, 1>& original_pred, const Core::LinAlg::Matrix<3, 3>& FM,
-    const bool check_elastic_pred)
+Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_guess(
+    const Core::LinAlg::Matrix<10, 1>& current_initial_guess, const Core::LinAlg::Matrix<3, 3>& FM)
 {
 #ifdef DEBUG_PRED_ADAPT
   if (debug_mode(ele_gid_, gp_))
   {
     std::cout << "Adapt predictor for ele_gid_ " << ele_gid_ << " and gp " << gp_ << std::endl;
     std::cout << "initial: " << std::endl;
-    original_pred.print(std::cout);
+    current_initial_guess.print(std::cout);
   }
 #endif
 
@@ -5058,22 +5044,22 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   if (parameter()->analyze_timint())
   {
     // general local time integration analysis: start timer
-    general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+    general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
 
-    // general local time integration analysis: start repredictorization timer if this is
+    // general local time integration analysis: start reinterpolation timer if this is
     // the case
-    if (lnl_guess_interpolation_.num_of_pred_adapt_ >= 1)
+    if (lnl_guess_interpolation_.num_of_lngi_ >= 1)
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_repredict_.start(true);
+      general_local_timint_analysis_utils.eval_teuchos_timer_reinterp_.start(true);
     }
   }
 
   // csv runtime output
-  if (parameter()->use_csv_output_pred_adapt_micro_iter())
+  if (parameter()->use_csv_output_lngi_micro_iter())
   {
     // initialize micro iteration data for all microiterations
-    // of the subsequent predictor adaptation, to be written to csv
-    csv_output_pred_adapt_micro_iter_data_ =
+    // of the subsequent Local Newton Guess Interpolation, to be written to csv
+    csv_output_lngi_micro_iter_data_ =
         CSVOutputPredAdaptMicroIterData{CSVOutputTrackingData{.ele_gid_ = ele_gid_,
             .gp_ = gp_,
             .tn_ = (time_step_tracker_.tnp_ - time_step_tracker_.dt_),
@@ -5095,29 +5081,26 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   Core::LinAlg::Matrix<3, 3> iFin_adapt_pred{Core::LinAlg::Initialization::zero};
   double plastic_strain_adapt_pred{0.0};
 
-  // boolean: check if we need to evaluate the elastic predictor
-  //          --> If specified by the user,
-  //          we check this directly.
-  //          We also evaluate the elastic predictor in the case where the current
+  // boolean: check if we need to evaluate the elastic predictor.
+  // We evaluate the elastic predictor in the case where the current
   //          interpolation factors are all 0.
-  bool eval_elastic_pred =
-      check_elastic_pred || (lnl_guess_interpolation_.verify_interp_factors_elast_pred(gp_));
+  bool eval_elastic_pred = lnl_guess_interpolation_.verify_interp_factors_elast_pred(gp_);
 
   if (eval_elastic_pred)
   {
-    iFin_adapt_pred = extract_inverse_inelastic_defgrad(original_pred);
-    plastic_strain_adapt_pred = original_pred(9);
+    iFin_adapt_pred = extract_inverse_inelastic_defgrad(current_initial_guess);
+    plastic_strain_adapt_pred = current_initial_guess(9);
     // check if the original predictor can be evaluated
     state_quantities_ = evaluate_state_quantities(CM,
-        extract_inverse_inelastic_defgrad(original_pred), original_pred(9, 0), err_status,
-        time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+        extract_inverse_inelastic_defgrad(current_initial_guess), current_initial_guess(9, 0),
+        err_status, time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
 
     // set micro iteration data for the current evaluation
-    if (parameter()->use_csv_output_pred_adapt_micro_iter())
+    if (parameter()->use_csv_output_lngi_micro_iter())
     {
       const LocalNewtonGuessInterpolation::InterpolationPoint curr_interp_point =
           lnl_guess_interpolation_.get_curr_interp_point(gp_);
-      csv_output_pred_adapt_micro_iter_data_.append_micro_iter_data(
+      csv_output_lngi_micro_iter_data_.append_micro_iter_data(
           {
               .current_xi_lambda_1_ = curr_interp_point.xi_lambda_1_,
               .current_xi_lambda_2_ = curr_interp_point.xi_lambda_2_,
@@ -5139,27 +5122,27 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
       lnl_guess_interpolation_.set_curr_interp_point(gp_,
           LocalNewtonGuessInterpolation::InterpolationPoint{
               .xi_lambda_1_ = 0.0, .xi_lambda_2_ = 0.0, .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}});
-      lnl_guess_interpolation_.guess_inv_plast_defgrad_ = original_pred;
+      lnl_guess_interpolation_.guess_inv_plast_defgrad_ = current_initial_guess;
 
       // general local time integration analysis actions
       if (parameter()->analyze_timint())
       {
         // general local time integration analysis: stop timer
-        general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+        general_local_timint_analysis_utils.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
 
-        // general local time integration analysis: stop timer for for
-        // repredictorization, if this is the case
-        if (lnl_guess_interpolation_.num_of_pred_adapt_ >= 1)
+        // general local time integration analysis: stop timer for LNGI
+        // reinterpolation, if this is the case
+        if (lnl_guess_interpolation_.num_of_lngi_ >= 1)
         {
-          general_local_timint_analysis_utils.eval_time_repredict_ +=
-              general_local_timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
+          general_local_timint_analysis_utils.eval_time_reinterp_ +=
+              general_local_timint_analysis_utils.eval_teuchos_timer_reinterp_.stop();
         }
       }
 
       // write micro iteration data to csv
-      if (parameter()->use_csv_output_pred_adapt_micro_iter())
-        csv_output_pred_adapt_micro_iter_data_.write_pred_adapt_micro_iter_data_to_csv();
+      if (parameter()->use_csv_output_lngi_micro_iter())
+        csv_output_lngi_micro_iter_data_.write_lngi_micro_iter_data_to_csv();
 
 #ifdef DEBUG_PRED_ADAPT
       if (debug_mode(ele_gid_, gp_))
@@ -5191,13 +5174,13 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     // set micro iteration data for the current evaluation (0-th
     // microiteration has to be set here already, we start with 1 in
     // the subsequent iterative procedure)
-    if (parameter()->use_csv_output_pred_adapt_micro_iter())
-      csv_output_pred_adapt_micro_iter_data_.append_micro_iter_data({}, 0);
+    if (parameter()->use_csv_output_lngi_micro_iter())
+      csv_output_lngi_micro_iter_data_.append_micro_iter_data({}, 0);
   }
 
-  // set maximum number of predictor adaptation steps and specific
+  // set maximum number of Local Newton Guess Interpolation steps and specific
   // counter
-  unsigned int pred_adapt_step_counter = 0;
+  unsigned int lngi_step_counter = 0;
 
 
   // compute inverse defgrad
@@ -5213,16 +5196,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   while (state_quantities_.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_ <= 0.0 ||
          err_status != ErrorType::no_errors)
   {
-    ++pred_adapt_step_counter;
+    ++lngi_step_counter;
 
 
     // check whether interpolation is still possible
 
-    if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, pred_adapt_step_counter))
+    if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, lngi_step_counter))
     {
       // write micro iteration data to csv
-      if (parameter()->use_csv_output_pred_adapt_micro_iter())
-        csv_output_pred_adapt_micro_iter_data_.write_pred_adapt_micro_iter_data_to_csv();
+      if (parameter()->use_csv_output_lngi_micro_iter())
+        csv_output_lngi_micro_iter_data_.write_lngi_micro_iter_data_to_csv();
 
       std::cout << debug_get_error_info("Could not determine an initial guess!") << std::endl;
       FOUR_C_THROW("See above");
@@ -5234,14 +5217,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
 
     // evaluate interpolated inverse plastic defgrad with original plastic
     // strain as initial guess
-    is_valid_local_newton_initial_guess(FM, inv_FM, CM, iFin_adapt_pred, original_pred(9),
+    is_valid_local_newton_initial_guess(FM, inv_FM, CM, iFin_adapt_pred, current_initial_guess(9),
         err_status, state_quantities_, state_quantity_derivatives_);
 
 
 #ifdef DEBUG_PRED_ADAPT
     if (debug_mode(ele_gid_, gp_))
     {
-      std::cout << "Interpolation step: " << pred_adapt_step_counter << " / "
+      std::cout << "Interpolation step: " << lngi_step_counter << " / "
                 << LocalNewtonGuessInterpolation::MAX_NUM_PRED_ADAPT_ITERS << std::endl;
       const LocalNewtonGuessInterpolation::InterpolationPoint interp_point_lower =
           lnl_guess_interpolation_.get_lower_bound_interp_point(gp_);
@@ -5300,11 +5283,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
     if (err_status != ErrorType::no_errors)
     {
       // set micro iteration data for the current evaluation
-      if (parameter()->use_csv_output_pred_adapt_micro_iter())
+      if (parameter()->use_csv_output_lngi_micro_iter())
       {
         const LocalNewtonGuessInterpolation::InterpolationPoint curr_interp_point =
             lnl_guess_interpolation_.get_curr_interp_point(gp_);
-        csv_output_pred_adapt_micro_iter_data_.append_micro_iter_data(
+        csv_output_lngi_micro_iter_data_.append_micro_iter_data(
             {
                 .current_xi_lambda_1_ = curr_interp_point.xi_lambda_1_,
                 .current_xi_lambda_2_ = curr_interp_point.xi_lambda_2_,
@@ -5313,7 +5296,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
                 .current_plastic_strain_ = plastic_strain_adapt_pred,
                 .current_error_status_ = err_status,
             },
-            pred_adapt_step_counter);
+            lngi_step_counter);
       }
 
 
@@ -5333,28 +5316,28 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
   if (parameter()->analyze_timint())
   {
     // general local time integration analysis: stop timer
-    general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-        general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+    general_local_timint_analysis_utils.eval_time_lngi_ +=
+        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
 
     // general local time integration analysis: save number of performed iterations
-    general_local_timint_analysis_utils.eval_num_of_pred_adapt_iters_ += pred_adapt_step_counter;
+    general_local_timint_analysis_utils.eval_num_of_lngi_iters_ += lngi_step_counter;
 
     // general local time integration analysis: perform the same actions for
-    // repredictorization, if this is the case
-    if (lnl_guess_interpolation_.num_of_pred_adapt_ >= 1)
+    // reinterpolation, if this is the case
+    if (lnl_guess_interpolation_.num_of_lngi_ >= 1)
     {
-      general_local_timint_analysis_utils.eval_num_of_repredict_iters_ += pred_adapt_step_counter;
-      general_local_timint_analysis_utils.eval_time_repredict_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_repredict_.stop();
+      general_local_timint_analysis_utils.eval_num_of_reinterp_iters_ += lngi_step_counter;
+      general_local_timint_analysis_utils.eval_time_reinterp_ +=
+          general_local_timint_analysis_utils.eval_teuchos_timer_reinterp_.stop();
     }
   }
   // append micro iteration data for the last micro iteration which
   // was successful
-  if (parameter()->use_csv_output_pred_adapt_micro_iter())
+  if (parameter()->use_csv_output_lngi_micro_iter())
   {
     const LocalNewtonGuessInterpolation::InterpolationPoint curr_interp_point =
         lnl_guess_interpolation_.get_curr_interp_point(gp_);
-    csv_output_pred_adapt_micro_iter_data_.append_micro_iter_data(
+    csv_output_lngi_micro_iter_data_.append_micro_iter_data(
         {
             .current_xi_lambda_1_ = curr_interp_point.xi_lambda_1_,
             .current_xi_lambda_2_ = curr_interp_point.xi_lambda_2_,
@@ -5363,12 +5346,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::adapt_predictor_local_newton_
             .current_plastic_strain_ = plastic_strain_adapt_pred,
             .current_error_status_ = err_status,
         },
-        pred_adapt_step_counter);
+        lngi_step_counter);
   }
 
   // write micro iteration data to csv
-  if (parameter()->use_csv_output_pred_adapt_micro_iter())
-    csv_output_pred_adapt_micro_iter_data_.write_pred_adapt_micro_iter_data_to_csv();
+  if (parameter()->use_csv_output_lngi_micro_iter())
+    csv_output_lngi_micro_iter_data_.write_lngi_micro_iter_data_to_csv();
 
 #ifdef DEBUG_PRED_ADAPT
   if (debug_mode(ele_gid_, gp_))
@@ -5444,7 +5427,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
             .globiter_ = globiter_,
             .lnl_iter_ = lnl_data_.iter_ - 1}
         // we subtract 1 from the current local iteration number to start with 0, and
-        // make this consistent with the output of the predictor adaptation
+        // make this consistent with the output of the Local Newton Guess Interpolation
     };
   }
 
@@ -5772,25 +5755,27 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
   }
 
   // ERROR MANAGEMENT STRATEGY 2: reset predictor of the solution
-  if (parameter()->use_pred_adapt())
+  if (parameter()->use_lngi())
   {
-    // start timer for predictor adaptation
+    // start timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.start(true);
+      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
     }
 
-    // increment number of predictor adaptations / repredictorizations
-    ++lnl_guess_interpolation_.num_of_pred_adapt_;
-    // check whether predictor adaptation still possible
+    // increment number of Local Newton Guess Interpolations / Reinterpolations
+    ++lnl_guess_interpolation_.num_of_lngi_;
+    // check whether Local Newton Guess Interpolation still possible
     if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, 0))
     {
       std::cout << debug_get_error_info("Reinterpolation not possible") << std::endl;
       return ErrorAction::return_solution_with_errors;
     }
 
-    // general local time integration analysis: increment number of repredictorizations
-    if (parameter()->analyze_timint()) ++general_local_timint_analysis_utils.eval_num_of_repredict_;
+    // general local time integration analysis: increment number of
+    // reinterpolations
+    if (parameter()->analyze_timint())
+      ++general_local_timint_analysis_utils.eval_num_of_lngi_reinterp_;
 
 
 
@@ -5824,7 +5809,7 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     bool is_init_guess = true;
     // check if it is too near to the lower bound, and if not, then properly
     // evaluate as initial guess
-    if (next_min_lbound < parameter()->init_guess_reinterp_min_diff_lbound())
+    if (next_min_lbound < parameter()->lngi_reinterp_min_diff_lbound())
     {
       is_init_guess = false;
     }
@@ -5897,17 +5882,17 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
           gp_, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::overflow_error);
       lnl_guess_interpolation_.adapt_interpolation_parameters(gp_);
 
-      // stop predictor adaptation timer at this stage, since next function
-      // call times predictor adaptation itself already
+      // stop Local Newton Guess Interpolation timer at this stage, since next function
+      // call times Local Newton Guess Interpolation itself already
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_pred_adapt_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_pred_adapt_.stop();
+        general_local_timint_analysis_utils.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
       }
 
-      // adapt initial guess: separate time tracking for predictor adaptation
-      sol = adapt_predictor_local_newton_loop(lnl_guess_interpolation_.guess_inv_plast_defgrad_,
-          time_step_quantities_.current_defgrad_[gp_], false);
+      // adapt initial guess: separate time tracking for Local Newton Guess Interpolation
+      sol = interpolate_local_newton_guess(lnl_guess_interpolation_.guess_inv_plast_defgrad_,
+          time_step_quantities_.current_defgrad_[gp_]);
     }
 
     // go to next iteration
@@ -5988,38 +5973,38 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_get_error_i
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
   extended_error_string += viscoplastic_law_->debug_get_error_info(gp_);
-  extended_error_string += "last_xi_lambda_1 (predictor adaptation): \n";
+  extended_error_string += "last_xi_lambda_1 (Local Newton Guess Interpolation): \n";
   extended_error_string += "Double<1,1> \n";
   const LocalNewtonGuessInterpolation::InterpolationPoint last_interp_point =
       lnl_guess_interpolation_.get_last_interp_point(gp_);
   temp_ostream << last_interp_point.xi_lambda_1_ << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
-  extended_error_string += "last_xi_lambda_2 (predictor adaptation): \n";
+  extended_error_string += "last_xi_lambda_2 (Local Newton Guess Interpolation): \n";
   extended_error_string += "Double<1,1> \n";
   temp_ostream << last_interp_point.xi_lambda_2_ << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
-  extended_error_string += "last_xi_eigenvect_rot (predictor adaptation): \n";
+  extended_error_string += "last_xi_eigenvect_rot (Local Newton Guess Interpolation): \n";
   extended_error_string += "array<3,1> \n";
   temp_ostream << last_interp_point.xi_rel_eigenvect_rot_[0] << std::endl;
   temp_ostream << last_interp_point.xi_rel_eigenvect_rot_[1] << std::endl;
   temp_ostream << last_interp_point.xi_rel_eigenvect_rot_[2] << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
-  extended_error_string += "optimal_xi_lambda_1 (predictor adaptation): \n";
+  extended_error_string += "optimal_xi_lambda_1 (Local Newton Guess Interpolation): \n";
   extended_error_string += "Double<1,1> \n";
   const LocalNewtonGuessInterpolation::InterpolationPoint optimal_interp_point =
       lnl_guess_interpolation_.get_optimal_interp_point(gp_);
   temp_ostream << optimal_interp_point.xi_lambda_1_ << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
-  extended_error_string += "optimal_xi_lambda_2 (predictor adaptation): \n";
+  extended_error_string += "optimal_xi_lambda_2 (Local Newton Guess Interpolation): \n";
   extended_error_string += "Double<1,1> \n";
   temp_ostream << optimal_interp_point.xi_lambda_2_ << std::endl;
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
-  extended_error_string += "optimal_xi_eigenvect_rot (predictor adaptation): \n";
+  extended_error_string += "optimal_xi_eigenvect_rot (Local Newton Guess Interpolation): \n";
   extended_error_string += "array<3,1> \n";
   temp_ostream << optimal_interp_point.xi_rel_eigenvect_rot_[0] << std::endl;
   temp_ostream << optimal_interp_point.xi_rel_eigenvect_rot_[1] << std::endl;
@@ -6308,280 +6293,6 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   lnl_data_.is_Gauss_point_output_every_global_iter_ = true;
 
   return viscoplastic_law_->evaluate_output_data(name, data);
-}
-
-/*--------------------------------------------------------------------*
- *--------------------------------------------------------------------*/
-double Mat::InelasticDefgradTransvIsotropElastViscoplast::compute_optimal_pred_interp_factor_legacy(
-    const int gp, const double newton_starting_point)
-{
-  // Note on the general algorithm: we assume a 1D case where the
-  // inelastic deformation gradient is a diagonal matrix (AND it should
-  // also be isotropic / transversely isotropic with axis of symmetry =
-  // axis load, but we don't check for that currently). This is an
-  // utility of the time integration analysis framework and should only
-  // be employed in these cases. Then we take
-  // the current inelastic deformation gradient as the reference
-  // solution and try to determine the optimal interpolation factor
-  // which leads to this current inelastic deformation gradient. Since
-  // the involved matrices are diagonal and due to the plastic
-  // incompressibility assumption, we can simply take
-  // the first stretch component (xx-component) for the determination of this optimal
-  // interpolation factor. All other components consistently follow the same interpolation
-  // factor (1D plastic incompressibility).
-
-  // check diagonality of the last and current inverse inelastic defgrads
-  FOUR_C_ASSERT_ALWAYS(check_3x3_diagonal(time_step_quantities_.last_plastic_defgrad_inverse_[gp]),
-      "You should only use the optimal interpolation factor computation for diagonal, 1D "
-      "cases! "
-      "This is not the case for your last inelastic defgrad!");
-  FOUR_C_ASSERT_ALWAYS(
-      check_3x3_diagonal(time_step_quantities_.current_plastic_defgrad_inverse_[gp]),
-      "You should only use the optimal interpolation factor computation for diagonal, 1D "
-      "cases! "
-      "This is not the case for your current inelastic defgrad!");
-
-  // get predictor interpolation bounds (reference matrices: inelastic
-  // defgrad of the elastic and plastic deformation gradient)
-  Core::LinAlg::Matrix<3, 3> aplast_iFinM = compute_inverse_plastic_defgrad_plastic_pred(
-      time_step_quantities_.current_defgrad_[gp], time_step_quantities_.last_defgrad_[gp],
-      time_step_quantities_.last_plastic_defgrad_inverse_[gp],
-      time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp],
-      time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp],
-      time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp_],
-      time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_],
-      parameter()->plastic_pred_stretch_assign_type(), parameter()->plastic_pred_rot_assign_type());
-  FOUR_C_ASSERT_ALWAYS(check_3x3_diagonal(aplast_iFinM),
-      "You should only use the optimal interpolation factor computation for diagonal, 1D "
-      "cases! "
-      "This is not the case for your almost plastic predictor!");
-
-  std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
-      time_step_quantities_.last_plastic_defgrad_inverse_[gp], aplast_iFinM};
-  std::vector<double> ref_locs{0.0, 1.0};
-
-
-  // get material stretch tensor of the inverse inelastic defgrad of the
-  // elastic predictor
-  Core::LinAlg::Matrix<3, 3> elast_U = Core::LinAlg::matrix_3x3_material_stretch(ref_matrices[0]);
-  // get the first stretch component of the elastic predictor
-  const double elast_first_stretch = elast_U(0, 0);
-
-  // get material stretch tensor of the inverse inelastic defgrad of the
-  // almost plastic predictor
-  Core::LinAlg::Matrix<3, 3> aplast_U = Core::LinAlg::matrix_3x3_material_stretch(ref_matrices[1]);
-  // get the first stretch component of the almost plastic predictor
-  const double aplast_first_stretch = aplast_U(0, 0);
-
-  // get material stretch tensor of the current inverse inelastic
-  // defgrad  (reference)
-  Core::LinAlg::Matrix<3, 3> ref_U = Core::LinAlg::matrix_3x3_material_stretch(
-      time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
-  // get the first stretch component of the current inverse inelastic
-  // defgrad
-  const double ref_first_stretch = ref_U(0, 0);
-
-  // check whether the reference stretch is within the interval posed
-  // by the predictor interpolation bounds
-  FOUR_C_ASSERT_ALWAYS(ref_first_stretch <= std::max(elast_first_stretch, aplast_first_stretch) &&
-                           std::min(elast_first_stretch, aplast_first_stretch) <= ref_first_stretch,
-      "Something is wrong with the predictor interpolation of gp {}: the reference "
-      "solution "
-      "(first "
-      "eigenvalue of the inverse inelastic defgrad) is {}, and it "
-      "does not lie between the elastic predictor ({}) and the almost plastic predictor "
-      "({})",
-      gp, ref_first_stretch, elast_first_stretch, aplast_first_stretch);
-
-  // declare interpolated inverse inelastic defgrad and the corresponding polar
-  // decomposition utilities
-  Core::LinAlg::Matrix<3, 3> interp_iFinM{Core::LinAlg::Initialization::zero};
-  Core::LinAlg::Matrix<3, 3> interp_U{Core::LinAlg::Initialization::zero};
-  double interp_first_stretch = 0.0;
-  Core::LinAlg::TensorInterpolationErrorType err_type =
-      Core::LinAlg::TensorInterpolationErrorType::NoErrors;
-
-  // set loop settings
-  unsigned int iter = 0;
-  const unsigned int max_iter = 200;
-  const double tol = 1.0e-8;
-  // set initial value (predictor) for the optimal interpolation
-  // factor
-  double optimal_interp_factor = newton_starting_point;
-  // declare residual and jacobian
-  double residual = 1.0e10;
-  double jacobian = 1.0e10;
-
-  // auxiliary variable used below for bound checking
-  double temp;
-
-  // Newton-Raphson loop for the determination of the optimal
-  // interpolation factor
-  while (true)
-  {
-    // increment iteration count
-    ++iter;
-
-    // check whether the maximum number of iterations was reached
-    FOUR_C_ASSERT_ALWAYS(iter <= max_iter,
-        "The maximum number of iterations was reached without finding an optimal "
-        "interpolation "
-        "factor for gp {}",
-        gp);
-
-    // interpolate the inverse inelastic defgrad
-    interp_iFinM = tensor_interpolator_.get_interpolated_matrix(
-        ref_matrices, ref_locs, optimal_interp_factor, err_type);
-    FOUR_C_ASSERT_ALWAYS(err_type == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
-        "Could not interpolate inverse inelastic defgrad for interpolation factor {} "
-        "within "
-        "the "
-        "optimal interpolation factor computation of gp {}",
-        optimal_interp_factor, gp);
-    // get first stretch component of the interpolated inverse inelastic
-    // defgrad
-    interp_U = Core::LinAlg::matrix_3x3_material_stretch(interp_iFinM);
-    interp_first_stretch = interp_U(0, 0);
-
-    // compute the residual
-    residual = interp_first_stretch - ref_first_stretch;
-
-    // check convergence
-    if (std::abs(residual) < tol)
-    {
-      // break out of loop
-      break;
-    }
-
-    // compute the jacobian
-    jacobian = tensor_interpolator_.get_interpolation_gradient(
-        ref_matrices, ref_locs, optimal_interp_factor, err_type)(0,
-        0);  // due to diagonality, this should be the first component of the interpolation
-             // gradient
-    FOUR_C_ASSERT_ALWAYS(err_type == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
-        "Could not compute the jacobian of the interpolation for interpolation factor {} "
-        "within "
-        "the "
-        "optimal interpolation factor computation of gp {}",
-        optimal_interp_factor, gp);
-
-
-    // check if the jacobian is 0 (is the case in the neighbourhoods of
-    // the reference locations 0 and 1) - in that case, we set the interpolation factor to
-    // the mid zone 0.5
-    if (std::abs(jacobian) < 1.0e-16)
-    {
-      optimal_interp_factor = 0.5;
-      continue;
-    }
-
-
-    // check if the optimal interpolation factor is out of the interval
-    // posed by ref_locs: in that case, we reset it to the middle of the interval.
-    // Otherwise, we perform the Newton update.
-    temp = optimal_interp_factor - residual / jacobian;
-    if (temp < 0.0 || temp > 1.0)
-    {
-      optimal_interp_factor = 0.5;
-    }
-    else
-    {
-      optimal_interp_factor = temp;
-    }
-  }
-
-  /*
-
-  // -------------------- Consistency Check --------------------  //
-  // compute optimal predictor interpolation factor (for GP 0), get corresponding solution
-  vector
-  // and check whether the residual is smaller than the tolerance of the LNL!
-  // -------------------------------------------------------------//
-
-
-  // save current state quantities and their derivatives (they may
-  // get affected during the following procedure: we can then
-  // simply reinstate them)
-  StateQuantities saved_state_quantities = state_quantities_;
-  StateQuantityDerivatives saved_state_quantity_derivs = state_quantity_derivatives_;
-
-  // interpolate inverse inelastic defgrad solution between the
-  // elastic and the almost plastic predictor with the optimal
-  // interpolation factor
-  Core::LinAlg::Matrix<3, 3> optimal_iFin = tensor_interpolator_.get_interpolated_matrix(
-      ref_matrices, ref_locs, optimal_interp_factor, err_type);
-  FOUR_C_ASSERT_ALWAYS(err_type == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
-      "Consistency check for the optimal interpolation factor: tensor interpolation "
-      "failed!");
-
-  // declare evaluation errors required below for computing the state
-  // quantities and their derivatives
-  ErrorType eval_err_type{ErrorType::no_errors};
-
-  // evaluate the equivalent stress given by this optimal
-  // inverse inelastic defgrad
-  StateQuantities optimal_state_quantities =
-      evaluate_state_quantities(time_step_quantities_.current_rightCG_[gp],
-  optimal_iFin, 1.0e8, eval_err_type, time_step_tracker_.dt_,
-          StateQuantityEvalType::PlasticStrainRateOnly);  // we use a large value for the
-                                                          // plastic strain to make the
-  plastic
-                                                          // strain rate evaluable
-  FOUR_C_ASSERT_ALWAYS(
-      eval_err_type ==
-  InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Consistency
-  check for the optimal interpolation factor: computation of state " "failed!");
-
-  // consistently compute the equivalent plastic strain via
-  // integration of the flow rule based on
-  // this optimal inverse inelastic defgrad
-  double optimal_plastic_strain =
-      integrate_plastic_strain(optimal_state_quantities.curr_equiv_stress_,
-          time_step_quantities_.last_plastic_strain_[0], time_step_tracker_.dt_,
-  eval_err_type); FOUR_C_ASSERT_ALWAYS( eval_err_type ==
-  InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Consistency
-  check for the optimal interpolation factor: computation of consistent " "plastic strain "
-      "failed!");
-
-  // create common optimal solution vector
-  Core::LinAlg::Matrix<10, 1> optimal_sol = wrap_unknowns(optimal_iFin,
-  optimal_plastic_strain);
-
-  // compute residual of the optimal solution
-  Core::LinAlg::Matrix<10, 1> optimal_res =
-      calculate_local_newton_loop_residual(time_step_quantities_.current_rightCG_[gp],
-  optimal_sol, time_step_quantities_.last_plastic_defgrad_inverse_[0],
-          time_step_quantities_.last_plastic_strain_[0], time_step_tracker_.dt_,
-  eval_err_type); FOUR_C_ASSERT_ALWAYS( eval_err_type ==
-  InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors, "Consistency
-  check for the optimal interpolation factor: residual computation failed!");
-
-  // general local time integration analysis: save the LNL residual (has to be done here
-  because
-  // we only have this residual here
-  if (parameter()->analyze_timint())
-  {
-    general_local_timint_analysis_utils.lnl_res_optimal_pred_interp_factor_ =
-  optimal_res.norm2();
-  }
-
-  // assert whether the residual is smaller than the tolerance
-  // of the LNL! The check is currently DISABLED via multiplication of
-  // the tolerance with a high number - to be able to determine and
-  // output all computed residual values
-  FOUR_C_ASSERT_ALWAYS(optimal_res.norm2() <= (lnl_data_.tol_ * 1e8),
-      "The determined optimal solution doesn't satisfy the LNL equations! The residual "
-      "norm is {} > {} (LNL tolerance)!",
-      optimal_res.norm2(), std::to_string(lnl_data_.tol_));
-
-
-
-  // reinstate saved quantities
-  state_quantities_ = saved_state_quantities;
-  state_quantity_derivatives_ = saved_state_quantity_derivs;
-*/
-
-  return optimal_interp_factor;
 }
 
 /*--------------------------------------------------------------------*

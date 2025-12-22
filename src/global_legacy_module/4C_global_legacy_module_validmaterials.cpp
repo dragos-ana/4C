@@ -2788,50 +2788,70 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "evolution equation for the plastic deformation gradient)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         TimIntType::logarithmic}),
-            parameter<bool>("USE_PRED_ADAPT",
-                {.description = "boolean: use predictor adaptation before and in the "
-                                "Local Newton Loop? (true: yes, false: "
-                                "no)",
-                    .default_value = true}),
-            parameter<bool>("CHECK_ELASTIC_PRED",
-                {.description = "boolean: verify whether elastic predictor is numerically "
-                                "evaluable as an initial step of the predictor adaptation?",
+            parameter<bool>("USE_LNGI",
+                {.description = "boolean: use Local Newton Guess Interpolation algorithm?",
                     .default_value = true}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    PlasticPredictorStretchAssignType>("PLASTIC_PRED_STRETCH_ASSIGN",
-                {.description = "type of plastic predictor stretch assignment: maintain elastic "
-                                "stretch from previous "
-                                "time instant | rotate elastic stretch eigenvectors to match "
-                                "eigenvectors within trial "
-                                "state | eliminate elastic stretch entirely (only "
-                                "meaningful for no-yield-surface viscoplasticity laws)",
+                    PlasticPredictorStretchAssignType>("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
+                {.description = "type of plastic predictor stretch assignment (Local Newton Guess "
+                                "Interpolation)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    PlasticPredictorRotAssignType>("PLASTIC_PRED_ROT_ASSIGN",
-                {.description =
-                        "type of plastic predictor rotation assignment: elastic rotation = trial "
-                        "elastic rotation (for isotropic materials generally the right choice) | "
-                        "plastic rotation = plastic rotation from previous time instant",
+                    PlasticPredictorRotAssignType>("LNGI_PLASTIC_PRED_ROT_ASSIGN",
+                {.description = "type of plastic predictor rotation assignment (Local Newton Guess "
+                                "Interpolation)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         PlasticPredictorRotAssignType::trial_elastic_rotation}),
-            parameter<bool>("CHECK_CONSISTENCY_PRED_ADAPT",
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    LocalNewtonGuessInterpolationStartingPointType>("LNGI_STARTING_POINT_TYPE",
+                {.description = "Starting point type for the Local Newton Guess Interpolation",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        LocalNewtonGuessInterpolationStartingPointType::user_set}),
+            parameter<double>("LNGI_STARTING_POINT",
+                {.description = "Value for the starting point of the Local Newton Guess "
+                                "Interpolation to be used for the user_set starting point type.",
+                    .default_value = 0.0}),
+            parameter<double>("LNGI_INTERVAL_SCAN_PARAM",
+                {.description = "interval scanning parameter $ k_{\\text{can}}$ utilized within "
+                                "the Local Newton Guess Interpolation",
+                    .default_value = 0.5}),
+            parameter<int>("LNGI_MAX_NUM_REINTERP",
+                {.description = "maximum number of Local Newton Guess Reinterpolations allowed in "
+                                "a single Local Newton Loop until error is thrown",
+                    .default_value = 10}),
+            parameter<double>("LNGI_MIN_INTERP_INTERVAL",
+                {.description = "Local Newton Guess Interpolation: minimum interpolation interval "
+                                "| xi_upper - xi_lower | (2-norm of "
+                                "interpolation points in interpolation space) for which further "
+                                "interpolation is not possible / feasible",
+                    .default_value = 1.0e-5}),
+            parameter<double>("LNGI_REINTERP_MIN_DIFF_LBOUND",
                 {.description =
-                        "boolean: check the consistency of the matrices determined in the "
-                        "predictor adaptation algorithm, i.e., whether the extracted components "
-                        "recover the input matrices, and if the product of the elastic and plastic "
-                        "deformation gradients leads to the given deformation gradient",
+                        "Local Newton Guess Interpolation: minimum difference between current "
+                        "interpolation point xi  and its lower "
+                        "bound xi_lower as | xi - xi_lower | (2-norm of interpolation points in "
+                        "interpolation space), "
+                        "upon which xi_lower is set as xi in the reinterpolation routine",
+                    .default_value = 1.0e-2}),
+            parameter<bool>("LNGI_PRECONDITION_MATRICES",
+                {.description = "Local Newton Guess Interpolation: precondition the matrices i.e., "
+                                "set components smaller than a set numerical tolerance to 0?",
                     .default_value = true}),
-            parameter<bool>("PRECONDITION_MATRICES_PRED_ADAPT",
-                {.description = "boolean: precondition the matrices for predictor adaptation, "
-                                "i.e., set components smaller than a set numerical tolerance to 0?",
-                    .default_value = true}),
-            parameter<double>("PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL",
-                {.description = "numerical tolerance used to precondition the matrices for "
-                                "predictor adaptation, "
+            parameter<double>("LNGI_PRECONDITION_MATRICES_NUM_TOL",
+                {.description = "Local Newton Guess Interpolation: numerical tolerance used to "
+                                "precondition the matrices "
                                 "i.e., set components smaller than (numerical tolerance * "
                                 "2-norm of input matrix) to 0?",
                     .default_value = 1.0e-13}),
+            parameter<bool>("LNGI_CHECK_CONSISTENCY",
+                {.description =
+                        "Local Newton Guess Interpolation: check the consistency of the matrices "
+                        "determined, i.e., whether the extracted components "
+                        "recover the input matrices, and if the product of the elastic and plastic "
+                        "deformation gradients leads to the given deformation gradient",
+                    .default_value = true}),
+
             parameter<bool>("USE_STEEPEST_DESCENT_UPDATE_CORRECTION",
                 {.description = "boolean: use steepest descent direction in single Local Newton "
                                 "iterations if the Newton direction is not a descent direction?"
@@ -2875,48 +2895,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "\\overline{\\sigma}  \\right\\}$ , used for checking possible overflow "
                         "errors",
                     .default_value = std::exp(30.0)}),
-            parameter<double>("USER_PRED_INTERP_FACT",
-                {.description =
-                        "interpolation factor $ \\xi_{\\text{user}}$ utilized in the predictor "
-                        "adaptation for scanning the interval of the predictor extrema (default: "
-                        "0.5)",
-                    .default_value = 0.5}),
-            parameter<int>("MAX_NUM_PRED_ADAPT",
-                {.description =
-                        "maximum number of predictor adaptations and repredictorizations allowed "
-                        "in a single Local Newton Loop"
-                        "until error is thrown (default: 10)",
-                    .default_value = 10}),
-            parameter<double>("INIT_GUESS_INTERP_MIN_INTERVAL",
-                {.description = "minimum interpolation interval | xi_upper - xi_lower | (2-norm of "
-                                "interpolation points in interpolation space) for which further "
-                                "interpolation is not possible / feasible",
-                    .default_value = 1.0e-5}),
-            parameter<double>("INIT_GUESS_REINTERP_MIN_DIFF_LBOUND",
-                {.description =
-                        "minimum difference between current interpolation point xi  and its lower "
-                        "bound xi_lower as | xi - xi_lower | (2-norm of interpolation points in "
-                        "interpolation space), "
-                        "upon which xi_lower is set as xi in the reinterpolation routine",
-                    .default_value = 1.0e-2}),
-            parameter<bool>("USE_LAST_PRED_ADAPT_FACT",
-                {.description = "utilize the predictor interpolation factor from the last "
-                                "predictor adaptation "
-                                "of the "
-                                "previous time step at each GP to boost the predictor adaptation? "
-                                "(default: true)",
-                    .default_value = true}),
-            parameter<bool>("USE_OPTIMAL_PRED_ADAPT_FACT",
-                {.description = "utilize the optimal predictor adaptation/interpolation factor, "
-                                "determined after each converged time step at each GP; this factor "
-                                "is determined using a Newton-Raphson loop such that the solution "
-                                "of the previous/last Local Newton Loop at the GP is obtained; "
-                                "experimental, therefore the default value is false.",
-                    .default_value = false}),
             parameter<bool>("ANALYZE_TIMINT",
                 {.description = "boolean: analyze the time integration scheme in regards "
                                 "to the implemented features "
-                                "(predictor adaptation, line search, substepping) by "
+                                "(Local Newton Guess Interpolation, line search, substepping) by "
                                 "writing key performance factors (e.g. "
                                 "number of iterations, number of substeps, ...) to a csv "
                                 "file? If true: yes, false: no",
@@ -2952,9 +2934,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "Local Newton loop"
                                 "to a dedicated csv file?",
                     .default_value = false}),
-            parameter<bool>("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER",
-                {.description = "output relevant data from each microiteration of the predictor "
-                                "adaptation(s) to a dedicated csv file?",
+            parameter<bool>("USE_CSV_OUTPUT_LNGI_MICRO_ITER",
+                {.description =
+                        "output relevant data from each microiteration of the Local Newton Guess "
+                        "Interpolation (and Reinterpolations) to a dedicated csv file?",
                     .default_value = false}),
             parameter<bool>("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER",
                 {.description = "output relevant data from each microiteration of the line search "
