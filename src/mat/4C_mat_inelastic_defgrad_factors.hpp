@@ -331,63 +331,70 @@ namespace Mat
       [[nodiscard]] double yield_cond_f() const { return yield_cond_f_; };
       //! get material behavior
       [[nodiscard]] MatBehavior mat_behavior() const { return mat_behavior_; };
-      //! get boolean: use predictor adaptation before and in the Local
-      //! Newton Loop? (true: yes, false: no)
-      [[nodiscard]] bool use_pred_adapt() const { return use_pred_adapt_; };
-      //! get boolean: check whether the elastic predictor can be
-      //! evaluated numerically as an initial step of
-      //! the predictor adaptation? (true: yes, false: no)
-      [[nodiscard]] bool check_elastic_pred() const { return check_elastic_pred_; };
+      //! get boolean: should Local Newton Guess Interpolation be used?
+      [[nodiscard]] bool use_lngi() const { return use_lngi_; };
       //! get type of plastic predictor stretch assignment
-      [[nodiscard]] PlasticPredictorStretchAssignType plastic_pred_stretch_assign_type() const
+      [[nodiscard]] PlasticPredictorStretchAssignType lngi_plastic_pred_stretch_assign_type() const
       {
-        return plastic_pred_stretch_assign_type_;
+        return lngi_plastic_pred_stretch_assign_type_;
       };
       //! get type of plastic predictor rotation assignment
-      [[nodiscard]] PlasticPredictorRotAssignType plastic_pred_rot_assign_type() const
+      [[nodiscard]] PlasticPredictorRotAssignType lngi_plastic_pred_rot_assign_type() const
       {
-        return plastic_pred_rot_assign_type_;
+        return lngi_plastic_pred_rot_assign_type_;
       };
       //! get boolean: check consistency of the matrices and their
-      //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
-      [[nodiscard]] bool check_consistency_pred_adapt() const
+      //! components determined and analyzed during Local Newton Guess Interpolation? (true: yes,
+      //! false: no)
+      [[nodiscard]] bool lngi_check_consistency() const { return lngi_check_consistency_; };
+      //! get boolean: precondition matrices for the Local Newton Guess Interpolation, i.e., set
+      //! components smaller than a set numerical tolerance to 0? (true: yes, false: no)
+      [[nodiscard]] bool lngi_precondition_matrices() const { return lngi_precondition_matrices_; };
+      //! get numerical tolerance used to precondition matrices for the Local Newton Guess
+      //! Interpolation, i.e., set components smaller than (numerical tolerance * 2-norm of input
+      //! matrix) to 0?
+      [[nodiscard]] double lngi_precondition_matrices_num_tol() const
       {
-        return check_consistency_pred_adapt_;
+        return lngi_precondition_matrices_num_tol_;
       };
-      //! get boolean: precondition matrices for the predictor adaptation
-      //! algorithm, i.e., set components smaller than a set numerical
-      //! tolerance to 0? (true: yes, false: no)
-      [[nodiscard]] bool precondition_matrices_pred_adapt() const
+      //! get starting point type for the Local Newton Guess Interpolation
+      [[nodiscard]] LocalNewtonGuessInterpolationStartingPointType lngi_starting_point_type() const
       {
-        return precondition_matrices_pred_adapt_;
+        return lngi_starting_point_type_;
       };
-      //! get numerical tolerance used to precondition matrices for the predictor adaptation
-      //! algorithm, i.e., set components smaller than (numerical
-      //! tolerance * 2-norm of input matrix) to 0?
-      [[nodiscard]] double precondition_matrices_pred_adapt_num_tol() const
+      //! get user-specified starting point for Local Newton Guess Interpolation, when using the
+      //! user_set starting point type
+      [[nodiscard]] double lngi_starting_point() const { return lngi_starting_point_; }
+      //! get user-specified interval scanning parameter for the Local
+      // Newton Guess Interpolation
+      [[nodiscard]] double lngi_interval_scan_param() const { return lngi_interval_scan_param_; }
+      //! get maximum number of Local Newton Guess Reinterpolations to be used within a
+      //! single Local Newton Loop
+      [[nodiscard]] int lngi_max_num_reinterp() const { return lngi_max_num_reinterp_; }
+      //! get minimum interpolation interval | xi_upper - xi_lower | (2-norm in
+      //! interpolation space) for the Local Newton Guess Interpolation, for which further
+      //! interpolation is not possible / feasible
+      [[nodiscard]] double lngi_min_interp_interval() const { return lngi_min_interp_interval_; }
+      //! get minimum difference between current interpolation point and its lower bound  | xi -
+      //! xi_lower | (2-norm in interpolation space) for the Local Newton Guess Reinterpolation,
+      //! upon which xi_lower is set as xi in the reinterpolation routine
+      [[nodiscard]] double lngi_reinterp_min_diff_lbound() const
       {
-        return precondition_matrices_pred_adapt_num_tol_;
-      };
-      //! get boolean: use the predictor interpolation factor from the predictor adaptation
-      //! performed in the previous step at each GP to boost the
-      //! performance of the predictor adaptation? (true: yes, false: no)
-      [[nodiscard]] bool use_last_pred_adapt_fact() const { return use_last_pred_adapt_fact_; };
-      //! get boolean: use the optimal predictor interpolation factor
-      //! determined after the previous timestep (which gives the solution
-      //! of the previous LNL) to boost the performance of the predictor
-      //! adaptation?
-      //! (true: yes, false: no)
-      [[nodiscard]] bool use_optimal_pred_adapt_fact() const
+        return lngi_reinterp_min_diff_lbound_;
+      }
+      //! get boolean: output relevant data from each microiteration of the Local Newton Guess
+      //! Interpolation (and Reinterpolations) to a dedicated csv file?
+      [[nodiscard]] bool use_csv_output_lngi_micro_iter()
       {
-        return use_optimal_pred_adapt_fact_;
-      };
+        return use_csv_output_lngi_micro_iter_;
+      }
+
       //! get boolean:       use steepest descent direction if the Newton
       //! direction fails in single Local Newton iterations? (true: yes, false: no)
       [[nodiscard]] bool use_steepest_descent_update_correction() const
       {
         return use_steepest_descent_update_correction_;
       }
-
       //! get boolean: use line search to avoid negative plastic strains
       //! in the Local Newton Loop? (true: yes, false: no)
       [[nodiscard]] bool use_line_search() const { return use_line_search_; };
@@ -428,24 +435,6 @@ namespace Mat
       {
         return max_plastic_strain_deriv_incr_;
       }
-      //! get user-specified interpolation factor for the predictor adaptation
-      [[nodiscard]] double user_pred_interp_fact() const { return user_pred_interp_fact_; }
-      //! get maximum number of reinterpolations set by the user
-      [[nodiscard]] int max_num_pred_adapt() const { return max_num_pred_adapt_; }
-      //! get minimum interpolation interval | xi_upper - xi_lower | (2-norm in
-      //! interpolation space), for which further interpolation is not possible /
-      //! feasible
-      [[nodiscard]] double init_guess_interp_min_interval() const
-      {
-        return init_guess_interp_min_interval_;
-      }
-      //! get minimum difference between current interpolation point and its lower bound  | xi -
-      //! xi_lower | (2-norm in interpolation space), upon which xi_lower is set as xi in the
-      //! reinterpolation routine
-      [[nodiscard]] double init_guess_reinterp_min_diff_lbound() const
-      {
-        return init_guess_reinterp_min_diff_lbound_;
-      }
       //! get computation method for the matrix exponential
       [[nodiscard]] Core::LinAlg::MatrixExpCalcMethod mat_exp_calc_method() const
       {
@@ -471,13 +460,6 @@ namespace Mat
       [[nodiscard]] bool use_csv_output_failed_local_newton_iter() const
       {
         return use_csv_output_failed_local_newton_iter_;
-      }
-
-      //! get boolean: output relevant data from each microiteration of the predictor
-      //! adaptation(s) to a dedicated csv file?
-      [[nodiscard]] bool use_csv_output_pred_adapt_micro_iter()
-      {
-        return use_csv_output_pred_adapt_micro_iter_;
       }
 
       //! get boolean: output relevant data from each microiteration of the line
@@ -538,42 +520,54 @@ namespace Mat
       //! plastic strain derivatives (time_step * derivative)
       const double max_plastic_strain_deriv_incr_;
 
-      //! boolean: use predictor adaptation? (true: yes, false: no)
-      const bool use_pred_adapt_;
+      //! boolean: use Local Newton Guess Interpolation?
+      const bool use_lngi_;
 
-      //! boolean: check whether elastic predictor is numerically evaluable as an initial step of
-      //! the predictor adaptation? (true: yes, false: no)
-      const bool check_elastic_pred_;
+      //! Local Newton Guess Interpolation: type of plastic predictor stretch assignment
+      const PlasticPredictorStretchAssignType lngi_plastic_pred_stretch_assign_type_;
 
-      //! type of plastic predictor stretch assignment
-      const PlasticPredictorStretchAssignType plastic_pred_stretch_assign_type_;
+      //! Local Newton Guess Interpolation: type of plastic predictor rotation assignment
+      const PlasticPredictorRotAssignType lngi_plastic_pred_rot_assign_type_;
 
-      //! type of plastic predictor rotation assignment:
-      const PlasticPredictorRotAssignType plastic_pred_rot_assign_type_;
+      //! Local Newton Guess Interpolation: type of starting point
+      const LocalNewtonGuessInterpolationStartingPointType lngi_starting_point_type_;
 
-      //! boolean: use predictor adaptation factor from the previous time step at the GP as a
-      //! performance-boost?
-      const bool use_last_pred_adapt_fact_;
+      //! Local Newton Guess Interpolation: value for the starting
+      // point of the Local Newton Guess Interpolation to be used for the
+      // user_set starting point type.
+      const double lngi_starting_point_;
 
-      //! boolean: use the optimal predictor interpolation factor
-      //! determined after the previous timestep (which gives the solution
-      //! of the previous LNL) to boost the performance of the predictor
-      //! adaptation?
-      const bool use_optimal_pred_adapt_fact_;
+      //! Local Newton Guess Interpolation: interval scanning parameter $k_\mathrm{scan}$
+      const double lngi_interval_scan_param_;
 
-      //! boolean: check consistency of the matrices and their
-      //! components determined and analyzed during predictor adaptation? (true: yes, false: no)
-      const bool check_consistency_pred_adapt_;
+      //! Local Newton Guess Interpolation: maximum number of Local Newton Guess Reinterpolations
+      //! allowed in a single Local Newton Loop until error is thrown
+      const int lngi_max_num_reinterp_;
 
-      //! boolean: precondition matrices for the predictor adaptation
-      //! algorithm, i.e., set components smaller than a set numerical
+      //! Local Newton Guess Interpolation: minimum interpolation interval | xi_upper - xi_lower |
+      //! (2-norm in interpolation space), for which further interpolation is not possible /
+      //! feasible
+      const double lngi_min_interp_interval_;
+
+      //! Local Newton Guess Interpolation: minimum difference between current interpolation point
+      //! and its lower bound  | xi - xi_lower | (2-norm in interpolation space), upon which
+      //! xi_lower is set as xi in the reinterpolation routine
+      const double lngi_reinterp_min_diff_lbound_;
+
+      //! Local Newton Guess Interpolation: precondition matrices,
+      //! i.e., set components smaller than a set numerical
       //! tolerance to 0? (true: yes, false: no)
-      const bool precondition_matrices_pred_adapt_;
+      const bool lngi_precondition_matrices_;
 
-      //! numerical tolerance used to precondition matrices for the predictor adaptation
-      //! algorithm, i.e., set components smaller than (numerical
-      //! tolerance * 2-norm of input matrix) to 0? (true: yes, false: no)
-      const double precondition_matrices_pred_adapt_num_tol_;
+      //! Local Newton Guess Interpolation: numerical tolerance used to precondition matrices, i.e.,
+      //! set components smaller than (numerical tolerance
+      //! * 2-norm of input matrix) to 0? (true: yes, false: no)
+      const double lngi_precondition_matrices_num_tol_;
+
+      //! Local Newton Guess Interpolation: check consistency of the matrices and their
+      //! components determined and analyzed during the interpolation algorithm? (true: yes, false:
+      //! no)
+      const bool lngi_check_consistency_;
 
       //! boolean: use steepest descent direction if the Newton
       //! direction fails in single Local Newton iterations? (true: yes, false: no)
@@ -599,25 +593,6 @@ namespace Mat
       //! boolean: analyze time integration and write output to csv?
       const bool analyze_timint_;
 
-      //! user-specified interpolation factor \f$ \xi_{\mathrm{user}}
-      //! \f$ utilized in the predictor adaptation
-      const double user_pred_interp_fact_;
-
-      //! maximum number of predictor adaptations and
-      //! repredictorizations allowed in a single Local Newton Loop
-      //! until error is thrown
-      const int max_num_pred_adapt_;
-
-      //! minimum interpolation interval | xi_upper - xi_lower | (2-norm in
-      //! interpolation space), for which further interpolation is not possible /
-      //! feasible
-      const double init_guess_interp_min_interval_;
-
-      //! minimum difference between current interpolation point and its lower bound  | xi -
-      //! xi_lower | (2-norm in interpolation space), upon which xi_lower is set as xi in the
-      //! reinterpolation routine
-      const double init_guess_reinterp_min_diff_lbound_;
-
       //! maximum number of times the given time step can be halved before reaching the minimum
       //! allowed substep length
       const int max_substepping_halve_num_;
@@ -634,18 +609,6 @@ namespace Mat
       //! utilized computation method for the first derivative of the matrix logarithm
       const Core::LinAlg::GenMatrixLogFirstDerivCalcMethod mat_log_deriv_calc_method_;
 
-      //! output relevant data from each iteration of the last, failed Local Newton
-      //! loop to a dedicated csv file
-      const bool use_csv_output_failed_local_newton_iter_;
-
-      //! output relevant data from each microiteration of the predictor
-      //! adaptation(s) to a dedicated csv file
-      const bool use_csv_output_pred_adapt_micro_iter_;
-
-      //! output relevant data from each microiteration of the line
-      //! search algorithm(s) to a dedicated csv file
-      const bool use_csv_output_line_search_micro_iter_;
-
       //! convergence tolerance for the Local Newton-Raphson scheme
       //! (absolute residual value)
       const double local_newton_res_tol_;
@@ -659,6 +622,18 @@ namespace Mat
 
       //! strategy in case of divergence of the Local Newton-Raphson scheme
       const LocalNewtonDiverCont local_newton_diver_cont_;
+
+      //! output relevant data from each iteration of the last, failed Local Newton
+      //! loop to a dedicated csv file
+      const bool use_csv_output_failed_local_newton_iter_;
+
+      //! output relevant data from each microiteration of the Local Newton Guess Interpolation (and
+      //! Reinterpolations) to a dedicated csv file
+      const bool use_csv_output_lngi_micro_iter_;
+
+      //! output relevant data from each microiteration of the line
+      //! search algorithm(s) to a dedicated csv file
+      const bool use_csv_output_line_search_micro_iter_;
     };
   }  // namespace PAR
 
@@ -1745,8 +1720,8 @@ namespace Mat
     unsigned int globiter_;
 
     //! micro iteration data for all microiterations
-    //! of the predictor adaptation, to be written to csv
-    CSVOutputPredAdaptMicroIterData csv_output_pred_adapt_micro_iter_data_;
+    //! of the Local Newton Guess Interpolation, to be written to csv
+    CSVOutputPredAdaptMicroIterData csv_output_lngi_micro_iter_data_;
 
     //! micro iteration data for all microiterations
     //! of the line search, to be written to csv
@@ -1837,33 +1812,35 @@ namespace Mat
         const double last_plastic_strain, const double dt, ErrorType& err_status);
 
     /*!
-     * @brief Adapt the predictor of the Local Newton Loop to yield
-     * a numerically evaluable state
+     * @brief Interpolate a valid initial guess for the Local Newton Loop,
+     * provided a current initial guess
      *
+     * @note If the current initial guess is a valid initial guess (i.e.,
+     * numerically evaluable and leads to plastic flow), then it is directly
+     * return without further interpolation
      * @param[in] FM deformation gradient
-     * @param[in] original_pred original predictor consisting of the
+     * @param[in] current_initial_guess current initial guess consisting of the
      * Voigt representation of the inverse plastic deformation gradient
      * \f$ \boldsymbol{F}^{\text{p}^{-1}} \f$ (components 0 to 8), and
      * the plastic strain \f$ \varepsilon^{\text{p}} \f$
-     * @param[in] check_elastic_pred check whether the elastic
-     * predictor is numerically evaluable? (true: yes, false: no)
-     * @return adapted predictor with the same structure as the original
-     * predictor
+     * @return interpolated initial guess with the same structure as the current
+     * initial guess
      */
-    Core::LinAlg::Matrix<10, 1> adapt_predictor_local_newton_loop(
-        const Core::LinAlg::Matrix<10, 1>& original_pred, const Core::LinAlg::Matrix<3, 3>& FM,
-        const bool check_elastic_pred);
+    Core::LinAlg::Matrix<10, 1> interpolate_local_newton_guess(
+        const Core::LinAlg::Matrix<10, 1>& current_initial_guess,
+        const Core::LinAlg::Matrix<3, 3>& FM);
 
     /*!
      * @brief Local Newton Loop in order to calculate the current inverse plastic deformation
      * gradient and the current plastic strain value
      *
      * @param[in] defgrad deformation gradient \f$ \boldsymbol{F} \f$ in matrix form
-     * @param[in] x predictor of Local Newton Loop, composed of the components of the
+     * @param[in] x initial guess of Local Newton Loop, composed of the components of the
      *              inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$
      *              and plastic strain \f$ \varepsilon_{\text{p}} \f$
      * @param[out] err_status error status
-     * @return solution vector of the Local Newton Loop, structured analogously to the predictor x
+     * @return solution vector of the Local Newton Loop, structured analogously to the initial guess
+     * x
      */
     Core::LinAlg::Matrix<10, 1> local_newton_loop(const Core::LinAlg::Matrix<3, 3>& defgrad,
         const Core::LinAlg::Matrix<10, 1>& x, ErrorType& err_status);
@@ -1971,7 +1948,8 @@ namespace Mat
     /*!
      * @brief Routine utilized during the Local Newton Loop
      * evaluations. The performed steps depend on the input error status
-     * and the user settings (e.g. substepping, repredictorization, ...).
+     * and the user settings (e.g. substepping, Local Newton Guess
+     * Reinterpolations, ...).
      *
      *
      * @param[in] err_status error status
@@ -2009,29 +1987,6 @@ namespace Mat
     void evaluate_additional_cmat_perturb_based(const Core::LinAlg::Matrix<3, 3>& FredM,
         Core::LinAlg::Matrix<6, 6>& cmatadd, const Core::LinAlg::Matrix<3, 3>& iFin_other,
         const Core::LinAlg::Matrix<6, 9>& dSdiFinj);
-
-    /*!
-     * @brief Compute optimal predictor interpolation factor of the current time step for given
-     * Gauss point.
-     * @note Called within
-     * the update method, since the time step solution is only
-     * known there for all GP. Currently, we regard this as relevant for
-     * the time integration analysis of the 1D simulations,
-     * where the optimal predictor interpolation factor can really be determined
-     * in a consistent manner. Inside the function, we also check
-     * whether the determined optimal predictor interpolation factor is
-     * consistent, i.e., if it satisfies the Local Newton Loop
-     * equations.
-     * @note legacy method, only suited for 1D simulations
-     *
-     * @param[in] gp Gauss Point
-     * @param[in] newton_starting_point Starting point for the interpolation factor \f$ \xi \f$ to
-     * be used in the Newton-Raphson method utilized herein.
-     *
-     */
-    double compute_optimal_pred_interp_factor_legacy(
-        const int gp, const double newton_starting_point);
-
 
     /*!
      * @brief Get an extensive error message to be displayed when the
