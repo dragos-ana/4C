@@ -1361,6 +1361,8 @@ namespace Mat
       FullEval,  ///< full evaluation (full call of the evaluate_state_quantities method)
       PlasticStrainRateOnly,  ///< return in evaluate_state_quantities once the plastic strain
                               ///< rate has been evaluated
+      EquivStressOnly,        ///< return in evaluate_state_quantities once the
+                              ///< equivalent stress has been evaluated
     };
 
     /// enum class for evaluations of the state quantity derivatives in
@@ -1374,6 +1376,8 @@ namespace Mat
       PlasticStrainRateDerivsOnly,  ///< return in evaluate_state_quantity_derivatives once the
                                     ///< derivatives of the plastic strain rate have been
                                     ///< evaluated
+      EquivStressDerivsOnly,  ///< return in evaluate_state_quantities once the derivatives of the
+                              ///< equivalent stress has been evaluated
     };
 
     //! struct holding relevant tracking data when writing to csv
