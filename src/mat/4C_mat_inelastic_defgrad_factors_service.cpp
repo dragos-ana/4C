@@ -400,12 +400,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_pred_adapt,
+    LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_reinterp,
         const PlasticPredictorStretchAssignType stretch_assign_type,
         const PlasticPredictorRotAssignType rot_assign_type, const double min_interp_interval)
     : k_scan_(k_scan),
-      num_of_pred_adapt_(0),
-      max_num_pred_adapt_(max_num_pred_adapt),
+      num_of_lngi_(0),
+      max_num_lngi_(max_num_reinterp),
       min_interp_interval_(min_interp_interval),
       guess_inv_plast_defgrad_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}},
       defgrad_type_(get_defgrad_type(rot_assign_type)),
@@ -482,7 +482,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   // clear initial guess for inverse plastic defgrad, and the number of
   // performed interpolations
   guess_inv_plast_defgrad_.clear();
-  num_of_pred_adapt_ = 0;
+  num_of_lngi_ = 0;
 
   // decompose the deformation gradients involved in the elastic and plastic predictors
   perform_predictor_decomposition(
@@ -934,9 +934,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
       my_rank, *Global::Problem::instance()->output_control_file(), "timint_output");
   csv_writer_->register_data_vector("Eval. steps (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. iterations (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Eval. repredictorizations (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Eval. iterations (predictor adaptation)", 1, 16);
-  csv_writer_->register_data_vector("Eval. iterations (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Eval. reinterpolations (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Eval. iterations (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Eval. iterations (LNGI reinterpolation)", 1, 16);
   csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
   /*
@@ -945,15 +945,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);*/
   csv_writer_->register_data_vector("Eval. time (inelastic defgrad)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Eval. time (predictor adaptation)", 1, 16);
-  csv_writer_->register_data_vector("Eval. time (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (LNGI reinterpolation)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (line search)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (additional cmat)", 1, 16);
   csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Total repredictorizations (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Total iterations (predictor adaptation)", 1, 16);
-  csv_writer_->register_data_vector("Total iterations (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Total reinterpolations (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Total iterations (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Total iterations (LNGI reinterpolation)", 1, 16);
   csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
   /*
@@ -963,8 +963,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   convergences", 1, 16); */
   csv_writer_->register_data_vector("Total time (inelastic defgrad)", 1, 16);
   csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Total time (predictor adaptation)", 1, 16);
-  csv_writer_->register_data_vector("Total time (repredictorization)", 1, 16);
+  csv_writer_->register_data_vector("Total time (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Total time (LNGI reinterpolation)", 1, 16);
   csv_writer_->register_data_vector("Total time (line search)", 1, 16);
   csv_writer_->register_data_vector("Total time (additional cmat)", 1, 16);
   csv_writer_->register_data_vector(
@@ -1030,20 +1030,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 {
   eval_num_of_LNL_steps_ = 0;
   eval_num_of_iters_ = 0;
-  eval_num_of_repredict_ = 0;
-  eval_num_of_pred_adapt_iters_ = 0;
-  eval_num_of_repredict_iters_ = 0;
+  eval_num_of_lngi_reinterp_ = 0;
+  eval_num_of_lngi_iters_ = 0;
+  eval_num_of_reinterp_iters_ = 0;
   eval_num_of_line_search_ = 0;
   eval_num_of_line_search_iters_ = 0;
   eval_teuchos_timer_inelastic_defgrad_.reset();
   eval_teuchos_timer_LNL_.reset();
-  eval_teuchos_timer_pred_adapt_.reset();
-  eval_teuchos_timer_repredict_.reset();
+  eval_teuchos_timer_lngi_.reset();
+  eval_teuchos_timer_reinterp_.reset();
   eval_teuchos_timer_line_search_.reset();
   eval_time_inelastic_defgrad_ = 0;
   eval_time_LNL_ = 0;
-  eval_time_pred_adapt_ = 0;
-  eval_time_repredict_ = 0;
+  eval_time_lngi_ = 0;
+  eval_time_reinterp_ = 0;
   eval_time_line_search_ = 0;
   eval_error_map_ = {
       {ErrorType::negative_plastic_strain, 0},
@@ -1060,23 +1060,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   };
   eval_num_of_alpha_neq_1 = 0;
   eval_num_of_alpha_neq_1_last_iter = 0;
-  eval_num_of_first_iter_convergences = 0;
-  curr_pred_interp_factor_lambda_1_ = -1.0;
-  curr_pred_interp_factor_lambda_2_ = -1.0;
-  curr_pred_interp_factor_eigenvect_rot_comp_0_ = -1.0;
-  curr_pred_interp_factor_eigenvect_rot_comp_1_ = -1.0;
-  curr_pred_interp_factor_eigenvect_rot_comp_2_ = -1.0;
-  curr_max_pred_interp_factor_lambda_1_ = -1.0;
-  curr_max_pred_interp_factor_lambda_2_ = -1.0;
-  curr_max_pred_interp_factor_eigenvect_rot_comp_0_ = -1.0;
-  curr_max_pred_interp_factor_eigenvect_rot_comp_1_ = -1.0;
-  curr_max_pred_interp_factor_eigenvect_rot_comp_2_ = -1.0;
-  optimal_pred_interp_factor_lambda_1_ = -1.0;
-  optimal_pred_interp_factor_lambda_2_ = -1.0;
-  optimal_pred_interp_factor_eigenvect_rot_comp_0_ = -1.0;
-  optimal_pred_interp_factor_eigenvect_rot_comp_1_ = -1.0;
-  optimal_pred_interp_factor_eigenvect_rot_comp_2_ = -1.0;
-  lnl_res_optimal_pred_interp_factor_ = -1.0;
+  curr_lngi_factor_lambda_1_ = -1.0;
+  curr_lngi_factor_lambda_2_ = -1.0;
+  curr_lngi_factor_eigenvect_rot_comp_0_ = -1.0;
+  curr_lngi_factor_eigenvect_rot_comp_1_ = -1.0;
+  curr_lngi_factor_eigenvect_rot_comp_2_ = -1.0;
+  curr_max_lngi_factor_lambda_1_ = -1.0;
+  curr_max_lngi_factor_lambda_2_ = -1.0;
+  curr_max_lngi_factor_eigenvect_rot_comp_0_ = -1.0;
+  curr_max_lngi_factor_eigenvect_rot_comp_1_ = -1.0;
+  curr_max_lngi_factor_eigenvect_rot_comp_2_ = -1.0;
+  optimal_lngi_factor_lambda_1_ = -1.0;
+  optimal_lngi_factor_lambda_2_ = -1.0;
+  optimal_lngi_factor_eigenvect_rot_comp_0_ = -1.0;
+  optimal_lngi_factor_eigenvect_rot_comp_1_ = -1.0;
+  optimal_lngi_factor_eigenvect_rot_comp_2_ = -1.0;
+  lnl_res_optimal_lngi_factor_ = -1.0;
 }
 
 /*--------------------------------------------------------------------*
@@ -1086,17 +1085,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 {
   total_num_of_LNL_steps_ += eval_num_of_LNL_steps_;
   total_num_of_iters_ += eval_num_of_iters_;
-  total_num_of_repredict_ += eval_num_of_repredict_;
-  total_num_of_pred_adapt_iters_ += eval_num_of_pred_adapt_iters_;
-  total_num_of_repredict_iters_ += eval_num_of_repredict_iters_;
+  total_num_of_lngi_reinterp_ += eval_num_of_lngi_reinterp_;
+  total_num_of_lngi_iters_ += eval_num_of_lngi_iters_;
+  total_num_of_reinterp_iters_ += eval_num_of_reinterp_iters_;
   total_num_of_line_search_ += eval_num_of_line_search_;
   total_num_of_line_search_iters_ += eval_num_of_line_search_iters_;
   total_num_of_alpha_neq_1 += eval_num_of_alpha_neq_1;
   total_num_of_alpha_neq_1_last_iter += eval_num_of_alpha_neq_1_last_iter;
   total_time_inelastic_defgrad_ += eval_time_inelastic_defgrad_;
   total_time_LNL_ += eval_time_LNL_;
-  total_time_pred_adapt_ += eval_time_pred_adapt_;
-  total_time_repredict_ += eval_time_repredict_;
+  total_time_lngi_ += eval_time_lngi_;
+  total_time_reinterp_ += eval_time_reinterp_;
   total_time_line_search_ += eval_time_line_search_;
   total_time_additional_cmat_ += eval_time_additional_cmat_;
   for (const auto& [error_type, error_count] : eval_error_map_)
@@ -1116,16 +1115,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   output_data["Total steps (LNL)"] = {static_cast<double>(total_num_of_LNL_steps_)};
   output_data["Eval. iterations (LNL)"] = {static_cast<double>(eval_num_of_iters_)};
   output_data["Total iterations (LNL)"] = {static_cast<double>(total_num_of_iters_)};
-  output_data["Eval. repredictorizations (LNL)"] = {static_cast<double>(eval_num_of_repredict_)};
-  output_data["Total repredictorizations (LNL)"] = {static_cast<double>(total_num_of_repredict_)};
-  output_data["Eval. iterations (predictor adaptation)"] = {
-      static_cast<double>(eval_num_of_pred_adapt_iters_)};
-  output_data["Total iterations (predictor adaptation)"] = {
-      static_cast<double>(total_num_of_pred_adapt_iters_)};
-  output_data["Eval. iterations (repredictorization)"] = {
-      static_cast<double>(eval_num_of_repredict_iters_)};
-  output_data["Total iterations (repredictorization)"] = {
-      static_cast<double>(total_num_of_repredict_iters_)};
+  output_data["Eval. reinterpolations (LNGI)"] = {static_cast<double>(eval_num_of_lngi_reinterp_)};
+  output_data["Total reinterpolations (LNGI)"] = {static_cast<double>(total_num_of_lngi_reinterp_)};
+  output_data["Eval. iterations (LNGI)"] = {static_cast<double>(eval_num_of_lngi_iters_)};
+  output_data["Total iterations (LNGI)"] = {static_cast<double>(total_num_of_lngi_iters_)};
+  output_data["Eval. iterations (LNGI reinterpolation)"] = {
+      static_cast<double>(eval_num_of_reinterp_iters_)};
+  output_data["Total iterations (LNGI reinterpolation)"] = {
+      static_cast<double>(total_num_of_reinterp_iters_)};
   output_data["Eval. iterations (line search)"] = {
       static_cast<double>(eval_num_of_line_search_iters_)};
   output_data["Total iterations (line search)"] = {
@@ -1138,10 +1135,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
       static_cast<double>(total_time_inelastic_defgrad_)};
   output_data["Eval. time (LNL)"] = {static_cast<double>(eval_time_LNL_)};
   output_data["Total time (LNL)"] = {static_cast<double>(total_time_LNL_)};
-  output_data["Eval. time (predictor adaptation)"] = {static_cast<double>(eval_time_pred_adapt_)};
-  output_data["Total time (predictor adaptation)"] = {static_cast<double>(total_time_pred_adapt_)};
-  output_data["Eval. time (repredictorization)"] = {static_cast<double>(eval_time_repredict_)};
-  output_data["Total time (repredictorization)"] = {static_cast<double>(total_time_repredict_)};
+  output_data["Eval. time (LNGI)"] = {static_cast<double>(eval_time_lngi_)};
+  output_data["Total time (LNGI)"] = {static_cast<double>(total_time_lngi_)};
+  output_data["Eval. time (LNGI reinterpolation)"] = {static_cast<double>(eval_time_reinterp_)};
+  output_data["Total time (reinterporization)"] = {static_cast<double>(total_time_reinterp_)};
   output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
   output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
   output_data["Eval. time (additional cmat)"] = {static_cast<double>(eval_time_additional_cmat_)};
@@ -1173,48 +1170,48 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   // predictor interpolation factors
   output_data
       ["Interpolation factor (lambda 1) of GP 0 of Ele 0 (last global "
-       "iteration)"] = {static_cast<double>(curr_pred_interp_factor_lambda_1_)};
+       "iteration)"] = {static_cast<double>(curr_lngi_factor_lambda_1_)};
   output_data
       ["Interpolation factor (lambda 2) of GP 0 of Ele 0 (last global "
-       "iteration)"] = {static_cast<double>(curr_pred_interp_factor_lambda_2_)};
+       "iteration)"] = {static_cast<double>(curr_lngi_factor_lambda_2_)};
   output_data
       ["Interpolation factor (q component 1) of GP 0 of Ele 0 (last global "
-       "iteration)"] = {static_cast<double>(curr_pred_interp_factor_eigenvect_rot_comp_0_)};
+       "iteration)"] = {static_cast<double>(curr_lngi_factor_eigenvect_rot_comp_0_)};
   output_data
       ["Interpolation factor (q component 2) of GP 0 of Ele 0 (last global "
-       "iteration)"] = {static_cast<double>(curr_pred_interp_factor_eigenvect_rot_comp_1_)};
+       "iteration)"] = {static_cast<double>(curr_lngi_factor_eigenvect_rot_comp_1_)};
   output_data
       ["Interpolation factor (q component 3) of GP 0 of Ele 0 (last global "
-       "iteration)"] = {static_cast<double>(curr_pred_interp_factor_eigenvect_rot_comp_2_)};
+       "iteration)"] = {static_cast<double>(curr_lngi_factor_eigenvect_rot_comp_2_)};
   output_data
       ["Interpolation factor (lambda 1) of GP 0 of Ele 0 (maximum over all global "
-       "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_lambda_1_)};
+       "iterations)"] = {static_cast<double>(curr_max_lngi_factor_lambda_1_)};
   output_data
       ["Interpolation factor (lambda 2) of GP 0 of Ele 0 (maximum over all global "
-       "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_lambda_2_)};
+       "iterations)"] = {static_cast<double>(curr_max_lngi_factor_lambda_2_)};
   output_data
       ["Interpolation factor (q component 1) of GP 0 of Ele 0 (maximum over all global "
-       "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_eigenvect_rot_comp_0_)};
+       "iterations)"] = {static_cast<double>(curr_max_lngi_factor_eigenvect_rot_comp_0_)};
   output_data
       ["Interpolation factor (q component 2) of GP 0 of Ele 0 (maximum over all global "
-       "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_eigenvect_rot_comp_1_)};
+       "iterations)"] = {static_cast<double>(curr_max_lngi_factor_eigenvect_rot_comp_1_)};
   output_data
       ["Interpolation factor (q component 3) of GP 0 of Ele 0 (maximum over all global "
-       "iterations)"] = {static_cast<double>(curr_max_pred_interp_factor_eigenvect_rot_comp_2_)};
+       "iterations)"] = {static_cast<double>(curr_max_lngi_factor_eigenvect_rot_comp_2_)};
   output_data["Interpolation factor (lambda 1) of GP 0 of Ele 0 (optimal)"] = {
-      static_cast<double>(optimal_pred_interp_factor_lambda_1_)};
+      static_cast<double>(optimal_lngi_factor_lambda_1_)};
   output_data["Interpolation factor (lambda 2) of GP 0 of Ele 0 (optimal)"] = {
-      static_cast<double>(optimal_pred_interp_factor_lambda_2_)};
+      static_cast<double>(optimal_lngi_factor_lambda_2_)};
   output_data["Interpolation factor (q component 1) of GP 0 of Ele 0 (optimal)"] = {
-      static_cast<double>(optimal_pred_interp_factor_eigenvect_rot_comp_0_)};
+      static_cast<double>(optimal_lngi_factor_eigenvect_rot_comp_0_)};
   output_data["Interpolation factor (q component 2) of GP 0 of Ele 0 (optimal)"] = {
-      static_cast<double>(optimal_pred_interp_factor_eigenvect_rot_comp_1_)};
+      static_cast<double>(optimal_lngi_factor_eigenvect_rot_comp_1_)};
   output_data["Interpolation factor (q component 3) of GP 0 of Ele 0 (optimal)"] = {
-      static_cast<double>(optimal_pred_interp_factor_eigenvect_rot_comp_2_)};
+      static_cast<double>(optimal_lngi_factor_eigenvect_rot_comp_2_)};
 
 
   output_data["LNL Residual: Interpolation factor of GP 0 of Ele 0 (optimal)"] = {
-      static_cast<double>(lnl_res_optimal_pred_interp_factor_)};
+      static_cast<double>(lnl_res_optimal_lngi_factor_)};
 
 
   // write output data to csv
@@ -1371,7 +1368,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptM
   // the given micro iteration
   FOUR_C_ASSERT_ALWAYS(
       std::find(all_microiter_.begin(), all_microiter_.end(), micro_iter) == all_microiter_.end(),
-      "You have already written predictor adaptation data for microiteration {}", micro_iter);
+      "You have already written Local Newton Guess Interpolation data for microiteration {}",
+      micro_iter);
 
   // append data for the given microiteration
   all_microiter_.push_back(micro_iter);
@@ -1420,7 +1418,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputPredAdaptMicroIterData::
-    write_pred_adapt_micro_iter_data_to_csv()
+    write_lngi_micro_iter_data_to_csv()
 {
   // get structure discretization
   std::shared_ptr<Core::FE::Discretization> structure_dis =
