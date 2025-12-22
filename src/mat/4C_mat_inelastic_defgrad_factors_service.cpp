@@ -140,6 +140,21 @@ namespace
     return optimal_xi_for_val;
   }
 
+  // Local Newton Guess interpolation: determine whether eigenvector rotation
+  // shall be interpolated
+  bool lnl_guess_interpolation_interpolate_eigenvect_rot(
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorStretchAssignType
+          stretch_assign_type)
+  {
+    if (stretch_assign_type ==
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorStretchAssignType::
+            rotate_previous_elastic_stretch)
+      return false;
+
+    return true;
+  }
+
+
 }  // namespace
 
 
@@ -395,7 +410,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
       guess_inv_plast_defgrad_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}},
       defgrad_type_(get_defgrad_type(rot_assign_type)),
       plast_pred_stretch_assign_type_(stretch_assign_type),
-      plast_pred_rot_assign_type_(rot_assign_type)
+      plast_pred_rot_assign_type_(rot_assign_type),
+      interpolate_eigenvect_rot_(
+          lnl_guess_interpolation_interpolate_eigenvect_rot(stretch_assign_type))
 {
   // auxiliaries
   Core::LinAlg::Matrix<3, 3> temp3x3{Core::LinAlg::Initialization::zero};
@@ -456,8 +473,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   all_component_interp_lambda_2_[gp].xi_l_ = {0.0};
   all_component_interp_lambda_2_[gp].xi_u_ = {1.0};
 
-  all_component_interp_rel_eigenvect_rot_[gp].xi_l_ = {0.0, 0.0, 0.0};
-  all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = {1.0, 1.0, 1.0};
+  if (interpolate_eigenvect_rot_)
+  {
+    all_component_interp_rel_eigenvect_rot_[gp].xi_l_ = {0.0, 0.0, 0.0};
+    all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = {1.0, 1.0, 1.0};
+  }
 
   // clear initial guess for inverse plastic defgrad, and the number of
   // performed interpolations
@@ -478,8 +498,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   {
     all_component_interp_lambda_1_[gp].last_xi_ = all_component_interp_lambda_1_[gp].current_xi_;
     all_component_interp_lambda_2_[gp].last_xi_ = all_component_interp_lambda_2_[gp].current_xi_;
-    all_component_interp_rel_eigenvect_rot_[gp].last_xi_ =
-        all_component_interp_rel_eigenvect_rot_[gp].current_xi_;
+    if (interpolate_eigenvect_rot_)
+    {
+      all_component_interp_rel_eigenvect_rot_[gp].last_xi_ =
+          all_component_interp_rel_eigenvect_rot_[gp].current_xi_;
+    }
   }
 }
 
@@ -507,8 +530,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   {
     all_component_interp_lambda_1_[gp].current_xi_ = all_component_interp_lambda_1_[gp].last_xi_;
     all_component_interp_lambda_2_[gp].current_xi_ = all_component_interp_lambda_2_[gp].last_xi_;
-    all_component_interp_rel_eigenvect_rot_[gp].current_xi_ =
-        all_component_interp_rel_eigenvect_rot_[gp].last_xi_;
+    if (interpolate_eigenvect_rot_)
+    {
+      all_component_interp_rel_eigenvect_rot_[gp].current_xi_ =
+          all_component_interp_rel_eigenvect_rot_[gp].last_xi_;
+    }
   }
 
   // auxiliaries
@@ -566,13 +592,18 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   // declare interpolated inverse plastic deformation gradient
   Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad{Core::LinAlg::Initialization::zero};
 
-  // interpolate rotation vector through linear interpolation (eigenvector rotation)
+  // interpolate rotation vector through linear interpolation (eigenvector rotation) -> use elastic
+  // predictor (= 0 relative rotation) if this should not be interpolated
   Core::LinAlg::Matrix<3, 1> rel_eigenvect_rot_vect{Core::LinAlg::Initialization::zero};
-  for (unsigned int i = 0; i < 3; ++i)
+  if (interpolate_eigenvect_rot_)
   {
-    rel_eigenvect_rot_vect(i) = interp_point.xi_rel_eigenvect_rot_[i] *
-                                all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i);
+    for (unsigned int i = 0; i < 3; ++i)
+    {
+      rel_eigenvect_rot_vect(i) = interp_point.xi_rel_eigenvect_rot_[i] *
+                                  all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i);
+    }
   }
+
   // get relative eigenvector (rotation) matrix associated with the rotation
   // vector (relative with respect to the eigenvector matrix within the
   // elastic predictor)
@@ -684,11 +715,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     adapt_interpolation_intervals(const unsigned int gp, const ErrorType eval_err_type)
 {
   // collect all current interpolation factors
-  std::array<double, 5> all_current_xi = {all_component_interp_lambda_1_[gp].current_xi_[0],
-      all_component_interp_lambda_2_[gp].current_xi_[0],
-      all_component_interp_rel_eigenvect_rot_[gp].current_xi_[0],
-      all_component_interp_rel_eigenvect_rot_[gp].current_xi_[1],
-      all_component_interp_rel_eigenvect_rot_[gp].current_xi_[2]};
+  std::vector<double> all_current_xi;
+
+  if (interpolate_eigenvect_rot_)
+  {
+    all_current_xi = {all_component_interp_lambda_1_[gp].current_xi_[0],
+        all_component_interp_lambda_2_[gp].current_xi_[0],
+        all_component_interp_rel_eigenvect_rot_[gp].current_xi_[0],
+        all_component_interp_rel_eigenvect_rot_[gp].current_xi_[1],
+        all_component_interp_rel_eigenvect_rot_[gp].current_xi_[2]};
+  }
+  else
+  {
+    all_current_xi = {all_component_interp_lambda_1_[gp].current_xi_[0],
+        all_component_interp_lambda_2_[gp].current_xi_[0]};
+  }
+
 
   if (eval_err_type == ErrorType::no_errors)
   {
@@ -742,11 +784,19 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 {
   const double num_tolerance = 1.0e-8;
 
-  return (std::abs(all_component_interp_lambda_1_[gp].current_xi_[0]) < num_tolerance) &&
-         (std::abs(all_component_interp_lambda_2_[gp].current_xi_[0]) < num_tolerance) &&
-         (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[0]) < num_tolerance) &&
-         (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[1]) < num_tolerance) &&
-         (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[2]) < num_tolerance);
+  if (interpolate_eigenvect_rot_)
+  {
+    return (std::abs(all_component_interp_lambda_1_[gp].current_xi_[0]) < num_tolerance) &&
+           (std::abs(all_component_interp_lambda_2_[gp].current_xi_[0]) < num_tolerance) &&
+           (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[0]) < num_tolerance) &&
+           (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[1]) < num_tolerance) &&
+           (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[2]) < num_tolerance);
+  }
+  else
+  {
+    return (std::abs(all_component_interp_lambda_1_[gp].current_xi_[0]) < num_tolerance) &&
+           (std::abs(all_component_interp_lambda_2_[gp].current_xi_[0]) < num_tolerance);
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -835,15 +885,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
           .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1]},
       "lambda 2")};
 
-  for (unsigned int i = 0; i < 3; ++i)
+  if (interpolate_eigenvect_rot_)
   {
-    all_component_interp_rel_eigenvect_rot_[gp].optimal_xi_[i] =
-        determine_optimal_interpolation_factors(
-            InputVerifyOptimalInterpolationFactors{.gp_ = gp,
-                .reference_val_ = solution_defgrad_decomposition.Qvec_plast_pred_rel_(i),
-                .elast_pred_val_ = 0.0,
-                .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i)},
-            "eigenvector rotation vector, component " + std::to_string(i));
+    for (unsigned int i = 0; i < 3; ++i)
+    {
+      all_component_interp_rel_eigenvect_rot_[gp].optimal_xi_[i] =
+          determine_optimal_interpolation_factors(
+              InputVerifyOptimalInterpolationFactors{.gp_ = gp,
+                  .reference_val_ = solution_defgrad_decomposition.Qvec_plast_pred_rel_(i),
+                  .elast_pred_val_ = 0.0,
+                  .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i)},
+              "eigenvector rotation vector, component " + std::to_string(i));
+    }
   }
 }
 

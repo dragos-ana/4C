@@ -2806,7 +2806,7 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "state | eliminate elastic stretch entirely (only "
                                 "meaningful for no-yield-surface viscoplasticity laws)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        PlasticPredictorStretchAssignType::maintain_elastic_stretch}),
+                        PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                     PlasticPredictorRotAssignType>("PLASTIC_PRED_ROT_ASSIGN",
                 {.description =
