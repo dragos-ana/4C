@@ -1138,7 +1138,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   output_data["Eval. time (LNGI)"] = {static_cast<double>(eval_time_lngi_)};
   output_data["Total time (LNGI)"] = {static_cast<double>(total_time_lngi_)};
   output_data["Eval. time (LNGI reinterpolation)"] = {static_cast<double>(eval_time_reinterp_)};
-  output_data["Total time (reinterporization)"] = {static_cast<double>(total_time_reinterp_)};
+  output_data["Total time (LNGI reinterpolation)"] = {static_cast<double>(total_time_reinterp_)};
   output_data["Eval. time (line search)"] = {static_cast<double>(eval_time_line_search_)};
   output_data["Total time (line search)"] = {static_cast<double>(total_time_line_search_)};
   output_data["Eval. time (additional cmat)"] = {static_cast<double>(eval_time_additional_cmat_)};
