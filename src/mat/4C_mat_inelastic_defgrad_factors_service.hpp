@@ -372,8 +372,6 @@ namespace Mat
                 spectral_pairs_ref = std::nullopt);
       };
 
-
-
       //! enum class: deformation gradient decomposed and
       //! interpolated in the interpolation routine
       enum class DefgradType
@@ -882,8 +880,6 @@ namespace Mat
       //! plastic deformation gradient within the plastic predictor
       const PlasticPredictorRotAssignType plast_pred_rot_assign_type_;
 
-
-
       //! interpolator for each GP for first eigenvalue \f$ \lambda_1 \f$ of either the
       //! elastic or the plastic defgrad (depending on rotation assignment)
       std::vector<ComponentInterpolator<1>> all_component_interp_lambda_1_;
@@ -896,6 +892,10 @@ namespace Mat
       //! \boldsymbol{q}_{\mathrm{rel}} \f$ of either the elastic or the plastic defgrad
       //! (depending on rotation assignment)
       std::vector<ComponentInterpolator<3>> all_component_interp_rel_eigenvect_rot_;
+
+      //! control variable: should eigenvector rotations be interpolated (if
+      //! not, take the eigenvector rotation of the elastic predictor)
+      const bool interpolate_eigenvect_rot_;
     };
 
     //! struct with local substepping utilities

@@ -714,7 +714,7 @@ namespace
   bool debug_mode(const int ele_gid, const int gp)
   {
     const int debug_ele_gid = 0;
-    const int debug_gp = 7;
+    const int debug_gp = 0;
 
     return (ele_gid == debug_ele_gid && gp == debug_gp);
   }
@@ -2134,8 +2134,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
             time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_],
             parameter()->plastic_pred_stretch_assign_type(),
             parameter()->plastic_pred_rot_assign_type());
-    /*  Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad_plastic_pred =
-          debug_precondition_matrix(inv_plastic_defgrad_plastic_pred_temp); */
 
 
 #ifdef DEBUG_PRED_ADAPT
