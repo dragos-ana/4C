@@ -2514,6 +2514,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     general_local_timint_analysis_utils.is_reset_current_timestep_ = true;
   }
 
+  // set LNL iteration to 0
+  lnl_data_.iter_ = 0;
+
   // Increment the global iteration here (only for first GP, we don't want to do this for
   // each GP). We assume that this method is only called in new global iterations!
   if (gp_ == 0) ++globiter_;
