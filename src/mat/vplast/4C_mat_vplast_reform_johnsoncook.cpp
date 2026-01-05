@@ -213,23 +213,41 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
     double log_deriv_sigma = const_pars_.log_p_e +
                              const_pars_.e * (equiv_stress * inv_yield_strength - 1.0) -
                              log_yield_strength;
-    double log_deriv_eps = const_pars_.log_p_e +
-                           const_pars_.e * (equiv_stress * inv_yield_strength - 1.0) +
-                           log_equiv_stress - 2.0 * log_yield_strength + const_pars_.log_B_N +
-                           (const_pars_.N - 1.0) * log_equiv_plastic_strain;
-
-    // check overflow error using these logarithms
-    double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
-    if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) &&
-        (log_dt + log_deriv_eps > log_max_plastic_strain_deriv_value))
+    // hardening case
+    if (const_pars_.B > 0.0)
     {
-      err_status = ErrorType::no_errors;
-      return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
-    }
+      const double log_deriv_eps =
+          const_pars_.log_p_e + const_pars_.e * (equiv_stress * inv_yield_strength - 1.0) +
+          log_equiv_stress - 2.0 * log_yield_strength + const_pars_.log_B_N +
+          (const_pars_.N - 1.0) * log_equiv_plastic_strain;
+      // check overflow error using these logarithms
+      double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
+      if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) &&
+          (log_dt + log_deriv_eps > log_max_plastic_strain_deriv_value))
+      {
+        err_status = ErrorType::failed_computation_flow_resistance_derivs;
+        return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+      }
 
-    // compute the exact derivatives using these logarithms
-    equiv_plastic_strain_rate_ders(0, 0) = std::exp(log_deriv_sigma);
-    equiv_plastic_strain_rate_ders(1, 0) = -std::exp(log_deriv_eps);
+      // compute the exact derivatives using these logarithms
+      equiv_plastic_strain_rate_ders(0, 0) = std::exp(log_deriv_sigma);
+      equiv_plastic_strain_rate_ders(1, 0) = -std::exp(log_deriv_eps);
+    }
+    // perfect plasticity
+    else
+    {
+      // check overflow error using these logarithms
+      double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
+      if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value))
+      {
+        err_status = ErrorType::failed_computation_flow_resistance_derivs;
+        return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+      }
+
+      // compute the exact derivatives using these logarithms
+      equiv_plastic_strain_rate_ders(0, 0) = std::exp(log_deriv_sigma);
+      equiv_plastic_strain_rate_ders(1, 0) = 0.0;
+    }
   }
 
   return equiv_plastic_strain_rate_ders;
