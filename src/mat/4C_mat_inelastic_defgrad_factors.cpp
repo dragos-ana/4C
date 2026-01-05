@@ -52,6 +52,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -921,6 +922,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<double>("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE")),
       use_substepping_(matdata.parameters.get<bool>("USE_SUBSTEPPING")),
       analyze_timint_(matdata.parameters.get<bool>("ANALYZE_TIMINT")),
+      analyze_timint_timer_inelastic_defgrad_rel_tol_(
+          matdata.parameters.get<double>("ANALYZE_TIMINT_TIMER_INELASTIC_DEFGRAD_REL_TOL")),
       max_substepping_halve_num_(matdata.parameters.get<int>("MAX_SUBSTEPPING_HALVE_NUM")),
       mat_exp_calc_method_(
           matdata.parameters.get<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD")),
@@ -2074,7 +2077,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     // start Local Newton Guess Interpolation timer
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+      general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
     }
 
     // set starting point of the Local Newton Guess Interpolation
@@ -2501,8 +2504,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     // stop Local Newton Guess Interpolation timer
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_lngi_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+      general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
     }
   }
 
@@ -3203,7 +3206,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
   // general local timint analysis: start linearization evaluation
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.start(true);
+    general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.start(true);
   }
 
   // reduced deformation gradient FredM, taking into account all the already computed
@@ -3245,8 +3248,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
       // general local timint analysis: stop linearization evaluation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.stop();
       }
 
 
@@ -3262,8 +3265,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
       // general local timint analysis: stop linearization evaluation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.stop();
       }
 
 
@@ -3291,8 +3294,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
       // general local timint analysis: stop linearization evaluation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.stop();
       }
 
 
@@ -3309,8 +3312,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
       // general local timint analysis: stop linearization evaluation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.stop();
       }
 
 
@@ -3376,8 +3379,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
       // general local timint analysis: stop linearization evaluation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.stop();
       }
       return;
     }
@@ -3394,8 +3397,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     // general local timint analysis: stop linearization evaluation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_additional_cmat_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_additional_cmat_.stop();
+      general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ +=
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_additional_cmat_.stop();
     }
   }
 }
@@ -3407,155 +3410,422 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     const Core::LinAlg::Matrix<3, 3>* defgrad, const Core::LinAlg::Matrix<3, 3>& iFin_other,
     Core::LinAlg::Matrix<3, 3>& iFinM)
 {
-  // general local time integration analysis: start evaluation
+  // -->  We repeat the inelastic deformation gradient
+  // determination for benchmarking computation times (analyze_timint), we
+  // need to compute the time the solution a repeated number of times to avoid
+  // overhead interfering in the computation times
+
+  // set safeguard: maximum number of repetitions, upon which error is thrown
+  // if there was no convergence of the computation time
+  const unsigned int max_num_of_repetitions = 1000;
+
+  // general local time integration analysis:  store current timint analysis data (required, since
+  // we will need to average over the number of repetitions afterwards)
+  auto& utils = general_local_timint_analysis_utils;
+  // initialize copies of current timint analysis values -> this will be required when setting the
+  // correct numbers of iterations and computation times after the repetitions of the same scenario
+  GeneralLocalTimIntAnalysisUtils::NumItersAndSteps copied_num_iters_and_steps{};
+  GeneralLocalTimIntAnalysisUtils::TimeMeasurements copied_time_measurements{};
+  std::map<ErrorType, unsigned int> copied_error_map{};
+
+
+  // start timer
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_teuchos_timer_inelastic_defgrad_.start(true);
+    // start timer
+    utils.timers_.eval_teuchos_timer_inelastic_defgrad_.start(true);
   }
 
-  // reduced deformation gradient FredM, taking into account all the already computed
-  // inelastic factors
-  //    \f$ \boldsymbol{F_{\text{red}}} = \boldsymbol{F}
-  //    \boldsymbol{F_{\text{in,other}}^{-1}}
-  //    \f$
-  //      with \f$\boldsymbol{F}_{\text{in,other}}^{-1} = \boldsymbol{F}_{\text{in},1}^{-1}
-  //      \boldsymbol{F}_{\text{in},2}^{-1} \dots \f$ up to the current inelastic factor
-  Core::LinAlg::Matrix<3, 3> FredM(Core::LinAlg::Initialization::zero);
-  FredM.multiply_nn(1.0, *defgrad, iFin_other, 0.0);
-  Core::LinAlg::Matrix<3, 3> CredM(Core::LinAlg::Initialization::zero);
-  CredM.multiply_tn(1.0, FredM, FredM, 0.0);
-
-  // check whether we have already evaluated the inverse inelastic deformation gradient for
-  // the given reduced deformation gradient
-  Core::LinAlg::Matrix<3, 3> diff_defgrad{Core::LinAlg::Initialization::zero};
-  diff_defgrad.update(1.0, FredM, -1.0, time_step_quantities_.current_defgrad_[gp_], 0.0);
-  if (diff_defgrad.norm2() <= 1.0e-16)
+  // repeat return mapping until computation time converges
+  unsigned int num_of_repetitions = 0;  // current number of repetitions $R$
+  double rel_deviation = 1.0;  // relative deviation of the computation time \f$|  (C_{t, R} / R -
+                               // C_{t, , R - 1} / (R - 1) | / (C_{t,
+                               //  R - 1} / (R - 1)) \f$ for the return mapping
+  std::array<double, max_num_of_repetitions>
+      computation_times_after_repetitions{};  // total computation times after each repetition
+  while (true)
   {
-    // return the already computed current_ value
-    iFinM = time_step_quantities_.current_plastic_defgrad_inverse_[gp_];
-    return;
-  }
+    // increment number of repetitions
+    num_of_repetitions += 1;
 
-  // perform non-repeatable pre-evaluation tasks (non-repeatable: not
-  // called in the redundant evaluate call, which is already handled
-  // above!)
-  prepare_non_repeat_tasks(*defgrad);
-
-  // set predictor: assume purely elastic behavior in this time step
-  Core::LinAlg::Matrix<3, 3> iFinM_pred(Core::LinAlg::Initialization::zero);
-  iFinM_pred.update(1.0, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
-  double plastic_strain_pred = time_step_quantities_.last_plastic_strain_[gp_];
-
-  // declare error status of evaluation (no errors)
-  ErrorType err_status = ErrorType::no_errors;
-
-  // set current defgrad and current right CG tensor
-  time_step_quantities_.current_defgrad_[gp_] = FredM;
-  time_step_quantities_.current_rightCG_[gp_] = CredM;
-
-  // check whether the predictor is the solution (no plastic strain during this time step)
-  bool pred_is_sol = check_predictor(CredM, iFinM_pred, plastic_strain_pred, err_status);
-
-  if ((err_status == ErrorType::no_errors) && (pred_is_sol))
-  {
-    // update inverse inelastic defgrad
-    iFinM = iFinM_pred;
-
-    // update history variables of material
-    if (update_hist_var_)
+    // DEBUG
+    if (gp_ == 0)
     {
-      time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
-      time_step_quantities_.current_plastic_strain_[gp_] = plastic_strain_pred;
-      time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
-    }
-  }
-  else  // predictor does not suffice
-  {
-    // perform time integration via the Local Newton-Raphson Loop (LNL)
-    Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
-    Core::LinAlg::Matrix<10, 1> x_adapted{x};
-
-    // adapt predictor (interpolate Local Newton guess)
-    if (parameter()->use_lngi())
-    {
-      x_adapted = interpolate_local_newton_guess(x, FredM);
-
-      // start timer Local Newton Guess Interpolation
-      if (parameter()->analyze_timint())
-      {
-        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
-      }
-      // increment the number of performed Local Newton Guess Interpolations
-      ++lnl_guess_interpolation_.num_of_lngi_;
-
-      // stop timer Local Newton Guess Interpolation
-      if (parameter()->analyze_timint())
-      {
-        general_local_timint_analysis_utils.eval_time_lngi_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
-      }
+      std::cout << "gp_ = 0; num_of_repetitions = " << num_of_repetitions << std::endl;
     }
 
-    // get solution via time integration (Local Newton Loop LNL)
-    if (parameter()->analyze_timint())  // general local time integration analysis: start timer
-      general_local_timint_analysis_utils.eval_teuchos_timer_LNL_.start(true);
-    Core::LinAlg::Matrix<10, 1> sol = local_newton_loop(FredM, x_adapted, err_status);
 
-    // throw error if the Local Newton Loop cannot be evaluated with the given
-    // settings
-    if (err_status != ErrorType::no_errors)
+
+    // verify safeguard: maximum number of repetitions
+    FOUR_C_ASSERT_ALWAYS(num_of_repetitions <= max_num_of_repetitions,
+        "Maximum number of repetitions {} was reached, without convergence of the the computation "
+        "time for the return mapping! The relative deviation for convergence is still larger than "
+        "the set tolerance: {} > {}",
+        max_num_of_repetitions, rel_deviation,
+        parameter()->analyze_timint_timer_inelastic_defgrad_rel_tol());
+
+
+    // reduced deformation gradient FredM, taking into account all the already computed
+    // inelastic factors
+    //    \f$ \boldsymbol{F_{\text{red}}} = \boldsymbol{F}
+    //    \boldsymbol{F_{\text{in,other}}^{-1}}
+    //    \f$
+    //      with \f$\boldsymbol{F}_{\text{in,other}}^{-1} = \boldsymbol{F}_{\text{in},1}^{-1}
+    //      \boldsymbol{F}_{\text{in},2}^{-1} \dots \f$ up to the current inelastic factor
+    Core::LinAlg::Matrix<3, 3> FredM(Core::LinAlg::Initialization::zero);
+    FredM.multiply_nn(1.0, *defgrad, iFin_other, 0.0);
+    Core::LinAlg::Matrix<3, 3> CredM(Core::LinAlg::Initialization::zero);
+    CredM.multiply_tn(1.0, FredM, FredM, 0.0);
+
+    // check whether we have already evaluated the inverse inelastic deformation gradient for
+    // the given reduced deformation gradient (this check should only be
+    // performed for the first repetition, since we want to repeat the
+    // return mapping under the same conditions, and not simply return the
+    // computed value)
+    Core::LinAlg::Matrix<3, 3> diff_defgrad{Core::LinAlg::Initialization::zero};
+    diff_defgrad.update(1.0, FredM, -1.0, time_step_quantities_.current_defgrad_[gp_], 0.0);
+    if (diff_defgrad.norm2() <= 1.0e-16 and num_of_repetitions == 1)
     {
-      // general local time integration analysis output routine with LNL error
-      if (parameter()->analyze_timint())
-        general_local_timint_analysis_utils.output_error_local_newton_loop(
-            local_substepping_utils_.substep_counter_);
+      // just set the already computed value, no further computation
+      iFinM = time_step_quantities_.current_plastic_defgrad_inverse_[gp_];
 
-      // output error and then throw (in order to display the error on
-      // the right processor)
-      std::cout << debug_get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                           get_detailed_error_message_for_error_type(err_status))
-                << std::endl;
-      FOUR_C_THROW("See above");
+      // stop timer, but don't update computation time; this time is not
+      // really computation time, but a bypass to directly retrieve additional cmat (current problem
+      // of simultaneous evaluation of stress and stiffness)
+      utils.timers_.eval_teuchos_timer_inelastic_defgrad_.stop();
+      return;
     }
     else
+    // if this is a "new" deformation gradient, we evaluate the inverse
+    // inelastic deformation gradient via return mapping
     {
-      // general local time integration analysis: add number of substeps and stop started
-      // timer
-      if (parameter()->analyze_timint())
-      {
-        // general local time integration analysis: add number of substeps to
-        // general_local_timint_analysis_utils
-        general_local_timint_analysis_utils.eval_num_of_LNL_steps_ += 1;
-        // general local time integration analysis: stop LNL timer
-        general_local_timint_analysis_utils.eval_time_LNL_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_LNL_.stop();
-      }
+      // DEBUG
+      if (gp_ == 0) std::cout << "Perform return mapping" << std::endl;
 
-      // increment number of LNL iterations for the current timestep at the
-      // current GP
-      lnl_data_.num_iter_curr_timestep_[gp_] += lnl_data_.iter_;
+
+      // perform non-repeatable pre-evaluation tasks (non-repeatable: not
+      // called in the redundant evaluate call, which is already handled
+      // above!)
+      prepare_non_repeat_tasks(*defgrad);
+
+      // reset copies to reflect pre-evaluation steps
+      copied_num_iters_and_steps = utils.num_iters_and_steps_;
+      copied_time_measurements = utils.time_measurements_;
+      std::map<ErrorType, unsigned int> copied_error_map = utils.eval_error_map_;
+
+
+      // set predictor: assume purely elastic behavior in this time step
+      Core::LinAlg::Matrix<3, 3> iFinM_pred(Core::LinAlg::Initialization::zero);
+      iFinM_pred.update(1.0, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
+      double plastic_strain_pred = time_step_quantities_.last_plastic_strain_[gp_];
+
+      // declare error status of evaluation (no errors)
+      ErrorType err_status = ErrorType::no_errors;
+
+      // set current defgrad and current right CG tensor
+      time_step_quantities_.current_defgrad_[gp_] = FredM;
+      time_step_quantities_.current_rightCG_[gp_] = CredM;
+
+      // check whether the predictor is the solution (no plastic strain during this time step)
+      bool pred_is_sol = check_predictor(CredM, iFinM_pred, plastic_strain_pred, err_status);
+
+      if ((err_status == ErrorType::no_errors) && (pred_is_sol))
+      {
+        // update inverse inelastic defgrad
+        iFinM = iFinM_pred;
+
+        // update history variables of material
+        if (update_hist_var_)
+        {
+          time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
+          time_step_quantities_.current_plastic_strain_[gp_] = plastic_strain_pred;
+          time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
+        }
+      }
+      else  // predictor does not suffice
+      {
+        // perform time integration via the Local Newton-Raphson Loop (LNL)
+        Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
+        Core::LinAlg::Matrix<10, 1> x_adapted{x};
+
+        // adapt predictor (interpolate Local Newton guess)
+        if (parameter()->use_lngi())
+        {
+          x_adapted = interpolate_local_newton_guess(x, FredM);
+
+          // start timer Local Newton Guess Interpolation
+          if (parameter()->analyze_timint())
+          {
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
+          }
+          // increment the number of performed Local Newton Guess Interpolations
+          ++lnl_guess_interpolation_.num_of_lngi_;
+
+          // stop timer Local Newton Guess Interpolation
+          if (parameter()->analyze_timint())
+          {
+            general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+                general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
+          }
+        }
+
+        // get solution via time integration (Local Newton Loop LNL)
+        if (parameter()->analyze_timint())  // general local time integration analysis: start timer
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_LNL_.start(true);
+        Core::LinAlg::Matrix<10, 1> sol = local_newton_loop(FredM, x_adapted, err_status);
+
+        // throw error if the Local Newton Loop cannot be evaluated with the given
+        // settings
+        if (err_status != ErrorType::no_errors)
+        {
+          // general local time integration analysis output routine with LNL error
+          if (parameter()->analyze_timint())
+            general_local_timint_analysis_utils.output_error_local_newton_loop(
+                local_substepping_utils_.substep_counter_);
+
+          // output error and then throw (in order to display the error on
+          // the right processor)
+          std::cout << debug_get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                               get_detailed_error_message_for_error_type(err_status))
+                    << std::endl;
+          FOUR_C_THROW("See above");
+        }
+        else
+        {
+          // general local time integration analysis: add number of substeps and stop started
+          // timer
+          if (parameter()->analyze_timint())
+          {
+            // general local time integration analysis: add number of substeps to
+            // general_local_timint_analysis_utils
+            general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_LNL_steps_ += 1;
+            // general local time integration analysis: stop LNL timer
+            general_local_timint_analysis_utils.time_measurements_.eval_time_LNL_ +=
+                general_local_timint_analysis_utils.timers_.eval_teuchos_timer_LNL_.stop();
+          }
+
+          // increment number of LNL iterations for the current timestep at the
+          // current GP
+          lnl_data_.num_iter_curr_timestep_[gp_] += lnl_data_.iter_;
+        }
+
+
+        // extract the inverse inelastic defgrad from the LNL solution
+        iFinM = extract_inverse_inelastic_defgrad(sol);
+
+        // update history variables of material
+        if (update_hist_var_)
+        {
+          time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
+          time_step_quantities_.current_plastic_strain_[gp_] = sol(9);
+          time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
+        }
+      }
     }
 
-
-    // extract the inverse inelastic defgrad from the LNL solution
-    iFinM = extract_inverse_inelastic_defgrad(sol);
-
-    // update history variables of material
-    if (update_hist_var_)
+    // check: do we currently analyze computation time?
+    if (parameter()->analyze_timint())
     {
-      time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
-      time_step_quantities_.current_plastic_strain_[gp_] = sol(9);
-      time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
+      // save total computation time after this repetition
+      computation_times_after_repetitions[num_of_repetitions - 1] =
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_inelastic_defgrad_
+              .totalElapsedTime(true);
+
+      // check relative deviation when we have at least 2 repetitions
+      if (num_of_repetitions > 1)
+      {
+        // compute average computation time for current repetition
+        const double average_computation_time =
+            computation_times_after_repetitions[num_of_repetitions - 1] /
+            static_cast<double>(num_of_repetitions);
+        // compute average computation time for previous repetition
+        const double previous_average_computation_time =
+            computation_times_after_repetitions[num_of_repetitions - 2] /
+            static_cast<double>(num_of_repetitions - 1);
+
+
+        // compute relative deviation between current average computation time
+        // and the previous average computation time
+        rel_deviation = std::abs(average_computation_time - previous_average_computation_time) /
+                        previous_average_computation_time;
+
+        // DEBUG
+        if (gp_ == 0)
+        {
+          std::cout << "average_computation_time: " << average_computation_time
+                    << ", previous_average_computation_time: " << previous_average_computation_time
+                    << ", rel_deviation: " << rel_deviation << std::endl;
+          std::cout << "inelastic_defgrad: " << std::endl;
+          iFinM.print(std::cout);
+          std::cout << "updated_num_of_LNL_steps: "
+                    << utils.num_iters_and_steps_.eval_num_of_LNL_steps_
+                    << ", copied_num_of_LNL_steps: "
+                    << copied_num_iters_and_steps.eval_num_of_LNL_steps_ << std::endl;
+          std::cout << "diff_num_of_LNL_steps: "
+                    << utils.num_iters_and_steps_.eval_num_of_LNL_steps_ -
+                           copied_num_iters_and_steps.eval_num_of_LNL_steps_
+                    << std::endl;
+        }
+
+
+
+        // if relative deviation smaller than set tolerance, stop timer and exit the
+        // return mapping repetition
+        // loop
+        if (rel_deviation < parameter()->analyze_timint_timer_inelastic_defgrad_rel_tol())
+        {
+          // general local time integration analysis: stop timer
+          general_local_timint_analysis_utils.time_measurements_.eval_time_inelastic_defgrad_ +=
+              general_local_timint_analysis_utils.timers_.eval_teuchos_timer_inelastic_defgrad_
+                  .stop();
+
+          break;
+        }
+      }
+    }
+    else  // if we don't perform analysis, then return after the first
+          // "repetition"
+    {
+      return;
     }
   }
-
-  // general local time integration analysis: stop timer and update
-  // total values
+  // general local time integration analysis: average computation times / number of iterations
+  // over the number of repetitions: other than for the inelastic defgrad time, where we
+  // explicitly repeat the same computation, the other computation times are rather inexactly
+  // averaged, since the specific operations may be short and the overhead may still be
+  // non-negligible. For a safe way of getting these computation times, one would have to repeat
+  // the same computation (e.g., LNGI) over and over again until computation time convergence is
+  // reached, the same way we do here for the return mapping
   if (parameter()->analyze_timint())
   {
-    // general local time integration analysis: stop timer
-    general_local_timint_analysis_utils.eval_time_inelastic_defgrad_ +=
-        general_local_timint_analysis_utils.eval_teuchos_timer_inelastic_defgrad_.stop();
+    FOUR_C_ASSERT_ALWAYS(num_of_repetitions > 1,
+        "You need more than 1 repetitions to make sure that the computation time is converged!");
+
+    auto& utils = general_local_timint_analysis_utils;
+
+    // ---- iteration / step counters (exact per-run values expected) ----
+    GeneralLocalTimIntAnalysisUtils::NumItersAndSteps updated_num_iters_and_steps{
+        utils.num_iters_and_steps_};
+
+    // get differences with respect to stored values
+    const int diff_num_of_LNL_steps = updated_num_iters_and_steps.eval_num_of_LNL_steps_ -
+                                      copied_num_iters_and_steps.eval_num_of_LNL_steps_;
+    const int diff_num_of_iters = updated_num_iters_and_steps.eval_num_of_iters_ -
+                                  copied_num_iters_and_steps.eval_num_of_iters_;
+    const int diff_num_of_lngi_reinterp = updated_num_iters_and_steps.eval_num_of_lngi_reinterp_ -
+                                          copied_num_iters_and_steps.eval_num_of_lngi_reinterp_;
+    const int diff_num_of_lngi_iters = updated_num_iters_and_steps.eval_num_of_lngi_iters_ -
+                                       copied_num_iters_and_steps.eval_num_of_lngi_iters_;
+    const int diff_num_of_reinterp_iters = updated_num_iters_and_steps.eval_num_of_reinterp_iters_ -
+                                           copied_num_iters_and_steps.eval_num_of_reinterp_iters_;
+    const int diff_num_of_line_search = updated_num_iters_and_steps.eval_num_of_line_search_ -
+                                        copied_num_iters_and_steps.eval_num_of_line_search_;
+    const int diff_num_of_line_search_iters =
+        updated_num_iters_and_steps.eval_num_of_line_search_iters_ -
+        copied_num_iters_and_steps.eval_num_of_line_search_iters_;
+    const int diff_num_of_alpha_neq_1_last_iter =
+        updated_num_iters_and_steps.eval_num_of_alpha_neq_1_last_iter_ -
+        copied_num_iters_and_steps.eval_num_of_alpha_neq_1_last_iter_;
+    const int diff_num_of_alpha_neq_1 = updated_num_iters_and_steps.eval_num_of_alpha_neq_1_ -
+                                        copied_num_iters_and_steps.eval_num_of_alpha_neq_1_;
+
+
+
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_LNL_steps % num_of_repetitions == 0,
+        "diff_num_of_LNL_steps {} is not divisible by num_of_repetitions {}", diff_num_of_LNL_steps,
+        num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_iters % num_of_repetitions == 0,
+        "diff_num_of_iters {} is not divisible by num_of_repetitions {}", diff_num_of_iters,
+        num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_lngi_reinterp % num_of_repetitions == 0,
+        "diff_num_of_lngi_reinterp {} is not divisible by num_of_repetitions {}",
+        diff_num_of_lngi_reinterp, num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_lngi_iters % num_of_repetitions == 0,
+        "diff_num_of_lngi_iters {} is not divisible by num_of_repetitions {}",
+        diff_num_of_lngi_iters, num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_reinterp_iters % num_of_repetitions == 0,
+        "diff_num_of_reinterp_iters {} is not divisible by num_of_repetitions {}",
+        diff_num_of_reinterp_iters, num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_line_search % num_of_repetitions == 0,
+        "diff_num_of_line_search {} is not divisible by num_of_repetitions {}",
+        diff_num_of_line_search, num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_line_search_iters % num_of_repetitions == 0,
+        "diff_num_of_line_search_iters {} is not divisible by num_of_repetitions {}",
+        diff_num_of_line_search_iters, num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_alpha_neq_1_last_iter % num_of_repetitions == 0,
+        "diff_num_of_alpha_neq_1_last_iter {} is not divisible by num_of_repetitions {}",
+        diff_num_of_alpha_neq_1_last_iter, num_of_repetitions);
+    FOUR_C_ASSERT_ALWAYS(diff_num_of_alpha_neq_1 % num_of_repetitions == 0,
+        "diff_num_of_alpha_neq_1 {} is not divisible by num_of_repetitions {}",
+        diff_num_of_alpha_neq_1, num_of_repetitions);
+
+    utils.num_iters_and_steps_.eval_num_of_LNL_steps_ =
+        copied_num_iters_and_steps.eval_num_of_LNL_steps_ +
+        diff_num_of_LNL_steps / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_iters_ =
+        copied_num_iters_and_steps.eval_num_of_iters_ + diff_num_of_iters / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_lngi_reinterp_ =
+        copied_num_iters_and_steps.eval_num_of_lngi_reinterp_ +
+        diff_num_of_lngi_reinterp / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_lngi_iters_ =
+        copied_num_iters_and_steps.eval_num_of_lngi_iters_ +
+        diff_num_of_lngi_iters / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_reinterp_iters_ =
+        copied_num_iters_and_steps.eval_num_of_reinterp_iters_ +
+        diff_num_of_reinterp_iters / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_line_search_ =
+        copied_num_iters_and_steps.eval_num_of_line_search_ +
+        diff_num_of_line_search / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_line_search_iters_ =
+        copied_num_iters_and_steps.eval_num_of_line_search_iters_ +
+        diff_num_of_line_search_iters / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_alpha_neq_1_last_iter_ =
+        copied_num_iters_and_steps.eval_num_of_alpha_neq_1_last_iter_ +
+        diff_num_of_alpha_neq_1_last_iter / num_of_repetitions;
+    utils.num_iters_and_steps_.eval_num_of_alpha_neq_1_ =
+        copied_num_iters_and_steps.eval_num_of_alpha_neq_1_ +
+        diff_num_of_alpha_neq_1 / num_of_repetitions;
+
+    // ---- timing values (averaged) ----
+    const double inv_reps = 1.0 / static_cast<double>(num_of_repetitions);
+
+    GeneralLocalTimIntAnalysisUtils::TimeMeasurements updated_time_measurements{
+        utils.time_measurements_};
+
+    // get differences with respect to stored values
+    const double diff_time_inelastic_defgrad =
+        updated_time_measurements.eval_time_inelastic_defgrad_ -
+        copied_time_measurements.eval_time_inelastic_defgrad_;
+    const double diff_time_LNL =
+        updated_time_measurements.eval_time_LNL_ - copied_time_measurements.eval_time_LNL_;
+    const double diff_time_lngi =
+        updated_time_measurements.eval_time_lngi_ - copied_time_measurements.eval_time_lngi_;
+    const double diff_time_reinterp = updated_time_measurements.eval_time_reinterp_ -
+                                      copied_time_measurements.eval_time_reinterp_;
+    const double diff_time_line_search = updated_time_measurements.eval_time_line_search_ -
+                                         copied_time_measurements.eval_time_line_search_;
+    const double diff_time_additional_cmat = updated_time_measurements.eval_time_additional_cmat_ -
+                                             copied_time_measurements.eval_time_additional_cmat_;
+
+    utils.time_measurements_.eval_time_inelastic_defgrad_ =
+        copied_time_measurements.eval_time_inelastic_defgrad_ +
+        diff_time_inelastic_defgrad * inv_reps;
+    utils.time_measurements_.eval_time_LNL_ =
+        copied_time_measurements.eval_time_LNL_ + diff_time_LNL * inv_reps;
+    utils.time_measurements_.eval_time_lngi_ =
+        copied_time_measurements.eval_time_lngi_ + diff_time_lngi * inv_reps;
+    utils.time_measurements_.eval_time_reinterp_ =
+        copied_time_measurements.eval_time_reinterp_ + diff_time_reinterp * inv_reps;
+    utils.time_measurements_.eval_time_line_search_ =
+        copied_time_measurements.eval_time_line_search_ + diff_time_line_search * inv_reps;
+    utils.time_measurements_.eval_time_additional_cmat_ =
+        copied_time_measurements.eval_time_additional_cmat_ + diff_time_additional_cmat * inv_reps;
+
+    // ---- error map (assumed consistent per repetition) ----
+    for (auto& [key, value] : utils.eval_error_map_)
+    {
+      value = copied_error_map[key] + (value - copied_error_map[key]) / num_of_repetitions;
+    }
   }
 }
 
@@ -3590,7 +3860,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       // start timer for Local Newton Guess Interpolation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+        general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
       }
 
       // ----------------------------------------------- //
@@ -3642,8 +3912,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       if (parameter()->analyze_timint())
       {
         // general local time integration analysis: stop timer
-        general_local_timint_analysis_utils.eval_time_lngi_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
       }
     }
     else if (parameter()->lngi_starting_point_type() ==
@@ -3653,7 +3923,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       // start timer for Local Newton Guess Interpolation
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+        general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
       }
 
       // ----------------------------------------------- //
@@ -3739,8 +4009,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       if (parameter()->analyze_timint())
       {
         // general local time integration analysis: stop timer
-        general_local_timint_analysis_utils.eval_time_lngi_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
       }
     }
   }
@@ -3762,7 +4032,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     // start timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+      general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
     }
 
     for (unsigned int gp = 0; gp < time_step_quantities_.last_plastic_defgrad_inverse_.size(); ++gp)
@@ -3802,8 +4072,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     // stop timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_lngi_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+      general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
     }
   }
 
@@ -3823,7 +4093,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     // start timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+      general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
     }
 
     lnl_guess_interpolation_.update();
@@ -3831,8 +4101,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     // stop timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_time_lngi_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+      general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
     }
   }
 
@@ -3850,29 +4120,29 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 
       // general local time integration analysis: set interpolation factors (the
       // one obtained from the Local Newton Guess Interpolation and the optimal one)
-      general_local_timint_analysis_utils.curr_lngi_factor_lambda_1_ =
+      general_local_timint_analysis_utils.lngi_factors_.curr_lngi_factor_lambda_1_ =
           curr_interp_point.xi_lambda_1_;
-      general_local_timint_analysis_utils.curr_lngi_factor_lambda_2_ =
+      general_local_timint_analysis_utils.lngi_factors_.curr_lngi_factor_lambda_2_ =
           curr_interp_point.xi_lambda_2_;
-      general_local_timint_analysis_utils.curr_lngi_factor_eigenvect_rot_comp_0_ =
+      general_local_timint_analysis_utils.lngi_factors_.curr_lngi_factor_eigenvect_rot_comp_0_ =
           curr_interp_point.xi_rel_eigenvect_rot_[0];
-      general_local_timint_analysis_utils.curr_lngi_factor_eigenvect_rot_comp_1_ =
+      general_local_timint_analysis_utils.lngi_factors_.curr_lngi_factor_eigenvect_rot_comp_1_ =
           curr_interp_point.xi_rel_eigenvect_rot_[1];
-      general_local_timint_analysis_utils.curr_lngi_factor_eigenvect_rot_comp_2_ =
+      general_local_timint_analysis_utils.lngi_factors_.curr_lngi_factor_eigenvect_rot_comp_2_ =
           curr_interp_point.xi_rel_eigenvect_rot_[2];
-      general_local_timint_analysis_utils.optimal_lngi_factor_lambda_1_ =
+      general_local_timint_analysis_utils.lngi_factors_.optimal_lngi_factor_lambda_1_ =
           optimal_interp_point.xi_lambda_1_;  // only for the 0-th Gauss point in the
                                               // time integration analysis
-      general_local_timint_analysis_utils.optimal_lngi_factor_lambda_2_ =
+      general_local_timint_analysis_utils.lngi_factors_.optimal_lngi_factor_lambda_2_ =
           optimal_interp_point.xi_lambda_2_;  // only for the 0-th Gauss point in the
                                               // time integration analysis
-      general_local_timint_analysis_utils.optimal_lngi_factor_eigenvect_rot_comp_0_ =
+      general_local_timint_analysis_utils.lngi_factors_.optimal_lngi_factor_eigenvect_rot_comp_0_ =
           optimal_interp_point.xi_rel_eigenvect_rot_[0];  // only for the 0-th Gauss point in
                                                           // the time integration analysis
-      general_local_timint_analysis_utils.optimal_lngi_factor_eigenvect_rot_comp_1_ =
+      general_local_timint_analysis_utils.lngi_factors_.optimal_lngi_factor_eigenvect_rot_comp_1_ =
           optimal_interp_point.xi_rel_eigenvect_rot_[1];  // only for the 0-th Gauss point in
                                                           // the time integration analysis
-      general_local_timint_analysis_utils.optimal_lngi_factor_eigenvect_rot_comp_2_ =
+      general_local_timint_analysis_utils.lngi_factors_.optimal_lngi_factor_eigenvect_rot_comp_2_ =
           optimal_interp_point.xi_rel_eigenvect_rot_[2];  // only for the 0-th Gauss point in
                                                           // the time integration analysis
 
@@ -3883,7 +4153,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       general_local_timint_analysis_utils.write_to_csv();
 
       // reset linearization time
-      general_local_timint_analysis_utils.eval_time_additional_cmat_ = 0;
+      general_local_timint_analysis_utils.time_measurements_.eval_time_additional_cmat_ = 0;
 
       // timint_analysis: reset control flow variables
       general_local_timint_analysis_utils.is_reset_current_timestep_ = false;
@@ -3955,15 +4225,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   // start timer for Local Newton Guess Interpolation
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+    general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
   }
   // call setup method of the Local Newton Guess Interpolation
   lnl_guess_interpolation_.setup(numgp);
   // stop timer for Local Newton Guess Interpolation
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_time_lngi_ +=
-        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+    general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+        general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
   }
 
 
@@ -4429,7 +4699,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
 
       // general local time integration analysis: increment iterations
-      if (parameter()->analyze_timint()) ++general_local_timint_analysis_utils.eval_num_of_iters_;
+      if (parameter()->analyze_timint())
+        ++general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_iters_;
 
       // compute residual
       residual = calculate_local_newton_loop_residual(curr_CM, sol,
@@ -4629,7 +4900,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           // add number of times the step size of the
           // line search algorithm deviates from 1.0 in the last iter
           if (std::abs(alpha - 1.0) > 1.0e-8)
-            general_local_timint_analysis_utils.eval_num_of_alpha_neq_1_last_iter += 1;
+            general_local_timint_analysis_utils.num_iters_and_steps_
+                .eval_num_of_alpha_neq_1_last_iter_ += 1;
         }
 
         // break out of the substep NR loop
@@ -4843,7 +5115,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       {
         // general local time integration analysis: start timer for line search
         if (parameter()->analyze_timint())
-          general_local_timint_analysis_utils.eval_teuchos_timer_line_search_.start(true);
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_line_search_.start(true);
 
         // check angle condition
         if (parameter()->check_line_search_angle_condition())
@@ -4882,13 +5154,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         // timer
         if (parameter()->analyze_timint())
         {
-          ++general_local_timint_analysis_utils.eval_num_of_line_search_;
-          general_local_timint_analysis_utils.eval_time_line_search_ +=
-              general_local_timint_analysis_utils.eval_teuchos_timer_line_search_.stop();
+          ++general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_line_search_;
+          general_local_timint_analysis_utils.time_measurements_.eval_time_line_search_ +=
+              general_local_timint_analysis_utils.timers_.eval_teuchos_timer_line_search_.stop();
 
           if (std::abs(alpha - 1.0) > 1.0e-8)
           {  // increment number of required searches
-            ++general_local_timint_analysis_utils.eval_num_of_alpha_neq_1;
+            ++general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_alpha_neq_1_;
           }
         }
 
@@ -5099,13 +5371,13 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
   if (parameter()->analyze_timint())
   {
     // general local time integration analysis: start timer
-    general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+    general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
 
     // general local time integration analysis: start reinterpolation timer if this is
     // the case
     if (lnl_guess_interpolation_.num_of_lngi_ >= 1)
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_reinterp_.start(true);
+      general_local_timint_analysis_utils.timers_.eval_teuchos_timer_reinterp_.start(true);
     }
   }
 
@@ -5183,15 +5455,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
       if (parameter()->analyze_timint())
       {
         // general local time integration analysis: stop timer
-        general_local_timint_analysis_utils.eval_time_lngi_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
 
         // general local time integration analysis: stop timer for LNGI
         // reinterpolation, if this is the case
         if (lnl_guess_interpolation_.num_of_lngi_ >= 1)
         {
-          general_local_timint_analysis_utils.eval_time_reinterp_ +=
-              general_local_timint_analysis_utils.eval_teuchos_timer_reinterp_.stop();
+          general_local_timint_analysis_utils.time_measurements_.eval_time_reinterp_ +=
+              general_local_timint_analysis_utils.timers_.eval_teuchos_timer_reinterp_.stop();
         }
       }
 
@@ -5371,19 +5643,21 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
   if (parameter()->analyze_timint())
   {
     // general local time integration analysis: stop timer
-    general_local_timint_analysis_utils.eval_time_lngi_ +=
-        general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+    general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+        general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
 
     // general local time integration analysis: save number of performed iterations
-    general_local_timint_analysis_utils.eval_num_of_lngi_iters_ += lngi_step_counter;
+    general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_lngi_iters_ +=
+        lngi_step_counter;
 
     // general local time integration analysis: perform the same actions for
     // reinterpolation, if this is the case
     if (lnl_guess_interpolation_.num_of_lngi_ >= 1)
     {
-      general_local_timint_analysis_utils.eval_num_of_reinterp_iters_ += lngi_step_counter;
-      general_local_timint_analysis_utils.eval_time_reinterp_ +=
-          general_local_timint_analysis_utils.eval_teuchos_timer_reinterp_.stop();
+      general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_reinterp_iters_ +=
+          lngi_step_counter;
+      general_local_timint_analysis_utils.time_measurements_.eval_time_reinterp_ +=
+          general_local_timint_analysis_utils.timers_.eval_teuchos_timer_reinterp_.stop();
     }
   }
   // append micro iteration data for the last micro iteration which
@@ -5586,7 +5860,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
     if (dec_times > max_dec_times)
     {
       // general local time integration analysis: set number of required iterations
-      general_local_timint_analysis_utils.eval_num_of_line_search_iters_ += dec_times;
+      general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_line_search_iters_ +=
+          dec_times;
 
       // set error status (determination of line search step has failed)
       err_status = ErrorType::failed_determ_line_search_step;
@@ -5693,7 +5968,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::get_line_search_step(
     if ((next_f < curr_f - 2.0 * rho * alpha * incr_squared) || converged)
     {
       // general local time integration analysis: set number of required iterations
-      general_local_timint_analysis_utils.eval_num_of_line_search_iters_ += dec_times;
+      general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_line_search_iters_ +=
+          dec_times;
 
       // write micro iteration data to csv
       if (parameter()->use_csv_output_line_search_micro_iter())
@@ -5815,7 +6091,7 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     // start timer for Local Newton Guess Interpolation
     if (parameter()->analyze_timint())
     {
-      general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.start(true);
+      general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.start(true);
     }
 
     // increment number of Local Newton Guess Interpolations / Reinterpolations
@@ -5830,7 +6106,7 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     // general local time integration analysis: increment number of
     // reinterpolations
     if (parameter()->analyze_timint())
-      ++general_local_timint_analysis_utils.eval_num_of_lngi_reinterp_;
+      ++general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_lngi_reinterp_;
 
 
 
@@ -5941,8 +6217,8 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
       // call times Local Newton Guess Interpolation itself already
       if (parameter()->analyze_timint())
       {
-        general_local_timint_analysis_utils.eval_time_lngi_ +=
-            general_local_timint_analysis_utils.eval_teuchos_timer_lngi_.stop();
+        general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
+            general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_.stop();
       }
 
       // adapt initial guess: separate time tracking for Local Newton Guess Interpolation
@@ -5957,8 +6233,8 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
   // general local time integration analysis: write to csv
   if (parameter()->analyze_timint())
   {
-    general_local_timint_analysis_utils.eval_time_inelastic_defgrad_ =
-        general_local_timint_analysis_utils.eval_teuchos_timer_inelastic_defgrad_.stop();
+    general_local_timint_analysis_utils.time_measurements_.eval_time_inelastic_defgrad_ =
+        general_local_timint_analysis_utils.timers_.eval_teuchos_timer_inelastic_defgrad_.stop();
     general_local_timint_analysis_utils.update_total();
     general_local_timint_analysis_utils.write_to_csv();
   }
