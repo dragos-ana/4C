@@ -2903,7 +2903,14 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "number of iterations, number of substeps, ...) to a csv "
                                 "file? If true: yes, false: no",
                     .default_value = false}),
-
+            parameter<double>("ANALYZE_TIMINT_TIMER_INELASTIC_DEFGRAD_REL_TOL",
+                {.description =
+                        "Relative tolerance for determining the computation time required "
+                        "to perform "
+                        "the return mapping (inelastic deformation gradient)! The return "
+                        "mapping is repeated until the computation time changes only within the "
+                        "set relative tolerance with respect to the previously average value!",
+                    .default_value = 1.0e-2}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType>(
                 "LINEARIZATION",
                 {.description =
