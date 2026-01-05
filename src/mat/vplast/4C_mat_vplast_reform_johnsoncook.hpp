@@ -188,9 +188,25 @@ namespace Mat
               log_p_e(std::log(prefac * expon)),
               B(harden_prefac),
               N(harden_expon),
-              log_B_N(std::log(harden_prefac * harden_expon)),
+              log_B_N(set_log_b_n(harden_prefac, harden_expon)),
               sigma_Y0(initial_yield_strength)
         {
+        }
+
+        /// helper function to set log(B * N): in the case of perfect plasticity
+        /// B == 0, we set this value to 0.0; also, we dismiss softening with B
+        /// < 0.0 so far
+        double set_log_b_n(const double B, const double N)
+        {
+          if (B == 0.0)
+            return 0.0;
+          else if (B < 0.0)
+            FOUR_C_THROW(
+                "The hardening prefactor is {}; Softening is not yet enabled for the Reformulated "
+                "Johnson-Cook Law!",
+                B);
+          else
+            return std::log(B * N);
         }
       };
 
