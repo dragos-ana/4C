@@ -946,234 +946,257 @@ namespace Mat
     class GeneralLocalTimIntAnalysisUtils
     {
      public:
-      //! number of LNL steps for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_LNL_steps_ = 0;
+      //! struct: numbers of iterations, steps, ... for the different
+      //! computation methods used (such as e.g., LNGI)
+      struct NumItersAndSteps
+      {
+        //! number of LNL steps for the current timestep evaluation (LNL)
+        unsigned int eval_num_of_LNL_steps_ = 0;
 
-      //! total number of LNL steps over all time steps
-      unsigned int total_num_of_LNL_steps_ = 0;
+        //! total number of LNL steps over all time steps
+        unsigned int total_num_of_LNL_steps_ = 0;
 
-      //! number of iterations for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_iters_ = 0;
+        //! number of iterations for the current timestep evaluation (LNL)
+        unsigned int eval_num_of_iters_ = 0;
 
-      //! total number of LNL iterations over all time steps
-      unsigned int total_num_of_iters_ = 0;
+        //! total number of LNL iterations over all time steps
+        unsigned int total_num_of_iters_ = 0;
 
-      //! number of reinterpolations for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_lngi_reinterp_ = 0;
+        //! number of reinterpolations for the current timestep evaluation (LNL)
+        unsigned int eval_num_of_lngi_reinterp_ = 0;
 
-      //! total number of Local Newton Guess Reinterpolations over all time steps
-      unsigned int total_num_of_lngi_reinterp_ = 0;
+        //! total number of Local Newton Guess Reinterpolations over all time steps
+        unsigned int total_num_of_lngi_reinterp_ = 0;
 
-      //! number of iterations spent in the Local Newton Guess Interpolations for the
-      //! current timestep evaluation (including Reinterpolations)
-      unsigned int eval_num_of_lngi_iters_ = 0;
+        //! number of iterations spent in the Local Newton Guess Interpolations for the
+        //! current timestep evaluation (including Reinterpolations)
+        unsigned int eval_num_of_lngi_iters_ = 0;
 
-      //! total number of iterations spent in the Local Newton Guess
-      //! Interpolation
-      //! over all time steps (including Reinterpolation)
-      unsigned int total_num_of_lngi_iters_ = 0;
+        //! total number of iterations spent in the Local Newton Guess
+        //! Interpolation
+        //! over all time steps (including Reinterpolation)
+        unsigned int total_num_of_lngi_iters_ = 0;
 
-      //! number of iterations spent in the Local Newton Guess Interpolation for the
-      //! current timestep evaluation (LNL), in the specific case of Reinterpolation
-      unsigned int eval_num_of_reinterp_iters_ = 0;
+        //! number of iterations spent in the Local Newton Guess Interpolation for the
+        //! current timestep evaluation (LNL), in the specific case of Reinterpolation
+        unsigned int eval_num_of_reinterp_iters_ = 0;
 
-      //! total number of iterations spent in the Local Newton Guess Interpolation
-      //! over all time steps,
-      //! in the specific case of Reinterpolation
-      unsigned int total_num_of_reinterp_iters_ = 0;
+        //! total number of iterations spent in the Local Newton Guess Interpolation
+        //! over all time steps,
+        //! in the specific case of Reinterpolation
+        unsigned int total_num_of_reinterp_iters_ = 0;
 
-      //! number of line searches for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_line_search_ = 0;
+        //! number of line searches for the current timestep evaluation (LNL)
+        unsigned int eval_num_of_line_search_ = 0;
 
-      //! line search: the number of times the step size \f$ \alpha \f$ of
-      //! the last iteration (Local Newton Loop) deviates from 1.0
-      //! (currently evaluated time step)
-      unsigned int eval_num_of_alpha_neq_1_last_iter = 0;
+        //! line search: the number of times the step size \f$ \alpha \f$ of
+        //! the last iteration (Local Newton Loop) deviates from 1.0
+        //! (currently evaluated time step)
+        unsigned int eval_num_of_alpha_neq_1_last_iter_ = 0;
 
-      //! line search: the number of times the step size \f$ \alpha \f$
-      //! deviates from 1.0 in all iterations of the Local Newton Loop
-      //! (currently evaluated time step)
-      unsigned int eval_num_of_alpha_neq_1 = 0;
+        //! line search: the number of times the step size \f$ \alpha \f$
+        //! deviates from 1.0 in all iterations of the Local Newton Loop
+        //! (currently evaluated time step)
+        unsigned int eval_num_of_alpha_neq_1_ = 0;
 
-      //! total number of LNL line searches over all time steps
-      unsigned int total_num_of_line_search_ = 0;
+        //! total number of LNL line searches over all time steps
+        unsigned int total_num_of_line_search_ = 0;
 
-      //! line search: total number of times the step size \f$ \alpha \f$ of
-      //! the last iteration (Local Newton Loop) deviates from 1.0
-      unsigned int total_num_of_alpha_neq_1_last_iter = 0;
+        //! line search: total number of times the step size \f$ \alpha \f$ of
+        //! the last iteration (Local Newton Loop) deviates from 1.0
+        unsigned int total_num_of_alpha_neq_1_last_iter_ = 0;
 
-      //! line search: the number of times the step size \f$ \alpha \f$
-      //! deviates from 1.0 in all iterations of the Local Newton Loop
-      //! (currently evaluated time step)
-      unsigned int total_num_of_alpha_neq_1 = 0;
+        //! line search: the number of times the step size \f$ \alpha \f$
+        //! deviates from 1.0 in all iterations of the Local Newton Loop
+        //! (currently evaluated time step)
+        unsigned int total_num_of_alpha_neq_1_ = 0;
 
-      //! number of iterations of the line searches for the current timestep evaluation (LNL)
-      unsigned int eval_num_of_line_search_iters_ = 0;
+        //! number of iterations of the line searches for the current timestep evaluation (LNL)
+        unsigned int eval_num_of_line_search_iters_ = 0;
 
-      //! total number of line search iterations over all time steps
-      unsigned int total_num_of_line_search_iters_ = 0;
+        //! total number of line search iterations over all time steps
+        unsigned int total_num_of_line_search_iters_ = 0;
+      };
+      NumItersAndSteps num_iters_and_steps_;
 
-      //! Local Newton Guess Interpolation factor for eigenvalue \f$ \lambda_1 \f$ obtained from the
-      //! Local Newton Guess Interpolation routine (for set GP, current time step, last global
-      //! iteration)
-      double curr_lngi_factor_lambda_1_ = 0;
+      //! struct: interpolation factors for the LNGI
+      struct LNGIFactors
+      {
+        //! Local Newton Guess Interpolation factor for eigenvalue \f$ \lambda_1 \f$ obtained from
+        //! the Local Newton Guess Interpolation routine (for set GP, current time step, last global
+        //! iteration)
+        double curr_lngi_factor_lambda_1_ = 0;
 
-      //! Local Newton Guess Interpolation factor for eigenvalue \f$ \lambda_2 \f$ obtained from the
-      //! Local Newton Guess Interpolation routine (for set GP, current time step, last global
-      //! iteration)
-      double curr_lngi_factor_lambda_2_ = 0;
+        //! Local Newton Guess Interpolation factor for eigenvalue \f$ \lambda_2 \f$ obtained from
+        //! the Local Newton Guess Interpolation routine (for set GP, current time step, last global
+        //! iteration)
+        double curr_lngi_factor_lambda_2_ = 0;
 
-      //! Local Newton Guess Interpolation factor for rotation vector (component
-      //! 0) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
-      //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
-      //! global iteration)
-      double curr_lngi_factor_eigenvect_rot_comp_0_ = 0;
+        //! Local Newton Guess Interpolation factor for rotation vector (component
+        //! 0) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
+        //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
+        //! global iteration)
+        double curr_lngi_factor_eigenvect_rot_comp_0_ = 0;
 
-      //! Local Newton Guess Interpolation factor for rotation vector (component
-      //! 1) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
-      //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
-      //! global iteration)
-      double curr_lngi_factor_eigenvect_rot_comp_1_ = 0;
+        //! Local Newton Guess Interpolation factor for rotation vector (component
+        //! 1) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
+        //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
+        //! global iteration)
+        double curr_lngi_factor_eigenvect_rot_comp_1_ = 0;
 
-      //! Local Newton Guess Interpolation factor for rotation vector (component
-      //! 2) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
-      //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
-      //! global iteration)
-      double curr_lngi_factor_eigenvect_rot_comp_2_ = 0;
+        //! Local Newton Guess Interpolation factor for rotation vector (component
+        //! 2) associated with the eigenvector (rotation) matrix \f$ \boldsymbol{Q} \f$ obtained
+        //! from the Local Newton Guess Interpolation routine (for set GP, current time step, last
+        //! global iteration)
+        double curr_lngi_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
-      //! Local Newton Guess Interpolation routine (for set GP, current time step, maximum over all
-      //! global iterations)
-      double curr_max_lngi_factor_lambda_1_ = 0;
+        //! Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained from the
+        //! Local Newton Guess Interpolation routine (for set GP, current time step, maximum over
+        //! all global iterations)
+        double curr_max_lngi_factor_lambda_1_ = 0;
 
-      //! Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
-      //! Local Newton Guess Interpolation routine (for set GP, current time step, maximum over all
-      //! global iterations)
-      double curr_max_lngi_factor_lambda_2_ = 0;
+        //! Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained from the
+        //! Local Newton Guess Interpolation routine (for set GP, current time step, maximum over
+        //! all global iterations)
+        double curr_max_lngi_factor_lambda_2_ = 0;
 
-      //! Local Newton Guess Interpolation factor (rotation vector associated
-      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 0) obtained for set GP, current
-      //! time step, maximum over all global iterations
-      double curr_max_lngi_factor_eigenvect_rot_comp_0_ = 0;
+        //! Local Newton Guess Interpolation factor (rotation vector associated
+        //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+        //! component 0) obtained for set GP, current
+        //! time step, maximum over all global iterations
+        double curr_max_lngi_factor_eigenvect_rot_comp_0_ = 0;
 
-      //! Local Newton Guess Interpolation factor (rotation vector associated
-      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 1) obtained for set GP, current
-      //! time step, maximum over all global iterations
-      double curr_max_lngi_factor_eigenvect_rot_comp_1_ = 0;
+        //! Local Newton Guess Interpolation factor (rotation vector associated
+        //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+        //! component 1) obtained for set GP, current
+        //! time step, maximum over all global iterations
+        double curr_max_lngi_factor_eigenvect_rot_comp_1_ = 0;
 
-      //! Local Newton Guess Interpolation factor (rotation vector associated
-      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 2) obtained for set GP, current
-      //! time step, maximum over all global iterations
-      double curr_max_lngi_factor_eigenvect_rot_comp_2_ = 0;
+        //! Local Newton Guess Interpolation factor (rotation vector associated
+        //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+        //! component 2) obtained for set GP, current
+        //! time step, maximum over all global iterations
+        double curr_max_lngi_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! optimal Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained
-      //! from the time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_lngi_factor_lambda_1_ = 0;
+        //! optimal Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_1 \f$) obtained
+        //! from the time step solution (for GP 0 of element 0 after the current time step)
+        double optimal_lngi_factor_lambda_1_ = 0;
 
-      //! optimal Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained
-      //! from the time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_lngi_factor_lambda_2_ = 0;
+        //! optimal Local Newton Guess Interpolation factor (eigenvalue \f$ \lambda_2 \f$) obtained
+        //! from the time step solution (for GP 0 of element 0 after the current time step)
+        double optimal_lngi_factor_lambda_2_ = 0;
 
-      //! optimal Local Newton Guess Interpolation factor (rotation vector associated
-      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 0) obtained from the
-      //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_lngi_factor_eigenvect_rot_comp_0_ = 0;
+        //! optimal Local Newton Guess Interpolation factor (rotation vector associated
+        //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+        //! component 0) obtained from the
+        //! time step solution (for GP 0 of element 0 after the current time step)
+        double optimal_lngi_factor_eigenvect_rot_comp_0_ = 0;
 
-      //! optimal Local Newton Guess Interpolation factor (rotation vector associated
-      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 1) obtained from the
-      //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_lngi_factor_eigenvect_rot_comp_1_ = 0;
+        //! optimal Local Newton Guess Interpolation factor (rotation vector associated
+        //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+        //! component 1) obtained from the
+        //! time step solution (for GP 0 of element 0 after the current time step)
+        double optimal_lngi_factor_eigenvect_rot_comp_1_ = 0;
 
-      //! optimal Local Newton Guess Interpolation factor (rotation vector associated
-      //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
-      //! component 2) obtained from the
-      //! time step solution (for GP 0 of element 0 after the current time step)
-      double optimal_lngi_factor_eigenvect_rot_comp_2_ = 0;
+        //! optimal Local Newton Guess Interpolation factor (rotation vector associated
+        //! with eigenvector rotation matrix \f$ \boldsymbol{Q} \f$,
+        //! component 2) obtained from the
+        //! time step solution (for GP 0 of element 0 after the current time step)
+        double optimal_lngi_factor_eigenvect_rot_comp_2_ = 0;
 
-      //! Local Newton residual obtained from the optimal Local Newton Guess Interpolation factor
-      double lnl_res_optimal_lngi_factor_ = 0;
+        //! Local Newton residual obtained from the optimal Local Newton Guess Interpolation factor
+        double lnl_res_optimal_lngi_factor_ = 0;
+      };
+      LNGIFactors lngi_factors_;
 
-      //! timer for the current inelastic deformation gradient evaluation in the current timestep
-      Teuchos::Time eval_teuchos_timer_inelastic_defgrad_{
-          "InelasticDefgradTransvIsotropElastViscoplast::inelastic deformation gradient "
-          "evaluation"};
+      //! struct: contains timers for the different
+      //! computations performed
+      struct Timers
+      {
+        //! timer for the current inelastic deformation gradient evaluation in the current timestep
+        Teuchos::Time eval_teuchos_timer_inelastic_defgrad_{
+            "InelasticDefgradTransvIsotropElastViscoplast::inelastic deformation gradient "
+            "evaluation"};
 
-      //! timer for the time spent in the Local Newton loop
-      Teuchos::Time eval_teuchos_timer_LNL_{
-          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
+        //! timer for the time spent in the Local Newton loop
+        Teuchos::Time eval_teuchos_timer_LNL_{
+            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
 
-      //! timer for the time spent adapting the initial guess (including Local Newton Guess
-      //! Reinterpolation)
-      Teuchos::Time eval_teuchos_timer_lngi_{
-          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
-          "Interpolation"};
+        //! timer for the time spent adapting the initial guess (including Local Newton Guess
+        //! Reinterpolation)
+        Teuchos::Time eval_teuchos_timer_lngi_{
+            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
+            "Interpolation"};
 
-      //! timer for the time spent in the Local Newton Guess Interpolation
-      //! routine, only in the
-      //! specific case of Reinterpolation
-      Teuchos::Time eval_teuchos_timer_reinterp_{
-          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
-          "Interpolation "
-          "(Reinterpolation)"};
+        //! timer for the time spent in the Local Newton Guess Interpolation
+        //! routine, only in the
+        //! specific case of Reinterpolation
+        Teuchos::Time eval_teuchos_timer_reinterp_{
+            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
+            "Interpolation "
+            "(Reinterpolation)"};
 
-      //! timer for the time spent in the line search scheme
-      Teuchos::Time eval_teuchos_timer_line_search_{
-          "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
+        //! timer for the time spent in the line search scheme
+        Teuchos::Time eval_teuchos_timer_line_search_{
+            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
 
-      //! timer for the current linearization evaluation (additional cmat) in the current timestep
-      Teuchos::Time eval_teuchos_timer_additional_cmat_{
-          "InelasticDefgradTransvIsotropElastViscoplast::linearization "
-          "evaluation (additional cmat)"};
+        //! timer for the current linearization evaluation (additional cmat) in the current timestep
+        Teuchos::Time eval_teuchos_timer_additional_cmat_{
+            "InelasticDefgradTransvIsotropElastViscoplast::linearization "
+            "evaluation (additional cmat)"};
+      };
+      Timers timers_;
 
-      //! evaluation time for the current time step to compute the
-      //! inelastic deformation gradient
-      double eval_time_inelastic_defgrad_;
+      //! struct: contains time measurements using the timers for the different
+      //! computations performed
+      struct TimeMeasurements
+      {
+        //! evaluation time for the current time step to compute the
+        //! inelastic deformation gradient
+        double eval_time_inelastic_defgrad_;
 
-      //! total evaluation time for the inelastic deformation gradient
-      //! over all times
-      double total_time_inelastic_defgrad_;
+        //! total evaluation time for the inelastic deformation gradient
+        //! over all times
+        double total_time_inelastic_defgrad_;
 
-      //! evaluation time spent in the Local Newton loop (current
-      //! time step)
-      double eval_time_LNL_;
+        //! evaluation time spent in the Local Newton loop (current
+        //! time step)
+        double eval_time_LNL_;
 
-      //! total time spent in the Local Newton Loop over all time steps
-      double total_time_LNL_;
+        //! total time spent in the Local Newton Loop over all time steps
+        double total_time_LNL_;
 
-      //! evaluation time spent in the Local Newton Guess Interpolation (current
-      //! time step)
-      double eval_time_lngi_;
+        //! evaluation time spent in the Local Newton Guess Interpolation (current
+        //! time step)
+        double eval_time_lngi_;
 
-      //! total time spent in the Local Newton Guess Interpolation over all time steps
-      double total_time_lngi_;
+        //! total time spent in the Local Newton Guess Interpolation over all time steps
+        double total_time_lngi_;
 
-      //! evaluation time spent in the Local Newton Guess Interpolation (current
-      //! time step), in the specific case of Reinterpolation
-      double eval_time_reinterp_;
+        //! evaluation time spent in the Local Newton Guess Interpolation (current
+        //! time step), in the specific case of Reinterpolation
+        double eval_time_reinterp_;
 
-      //! total time spent in the Local Newton Guess Interpolation over all time steps, in the
-      //! specific case of Reinterpolation
-      double total_time_reinterp_;
+        //! total time spent in the Local Newton Guess Interpolation over all time steps, in the
+        //! specific case of Reinterpolation
+        double total_time_reinterp_;
 
-      //! evaluation time spent in the line search (current
-      //! time step)
-      double eval_time_line_search_;
+        //! evaluation time spent in the line search (current
+        //! time step)
+        double eval_time_line_search_;
 
-      //! total time spent in the line search scheme over all time steps
-      double total_time_line_search_;
+        //! total time spent in the line search scheme over all time steps
+        double total_time_line_search_;
 
-      //! evaluation time for the current time step to compute the
-      //! linearization (additional cmat)
-      double eval_time_additional_cmat_;
+        //! evaluation time for the current time step to compute the
+        //! linearization (additional cmat)
+        double eval_time_additional_cmat_;
 
-      //! total evaluation time for the linearization (additional cmat)
-      //! over all times
-      double total_time_additional_cmat_;
+        //! total evaluation time for the linearization (additional cmat)
+        //! over all times
+        double total_time_additional_cmat_;
+      };
+      TimeMeasurements time_measurements_;
 
       //! error map (how many times an error occurs) of the current timestep evaluation, from the
       //! first preevaluate of this time step to the first preevaluate of the next

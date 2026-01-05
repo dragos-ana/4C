@@ -415,6 +415,12 @@ namespace Mat
       //! get boolean: analyze time integration scheme and write
       //! output to csv? (true: yes, false: no)
       [[nodiscard]] bool analyze_timint() const { return analyze_timint_; };
+      //! get relative timer tolerance (analyze_timint_ = True) for the return mapping evaluation in
+      //! the current timestep
+      [[nodiscard]] double analyze_timint_timer_inelastic_defgrad_rel_tol() const
+      {
+        return analyze_timint_timer_inelastic_defgrad_rel_tol_;
+      };
       //! get maximum number of times a time step can be halved into smaller and smaller substeps
       [[nodiscard]] unsigned int max_halve_number() const
       {
@@ -592,6 +598,11 @@ namespace Mat
 
       //! boolean: analyze time integration and write output to csv?
       const bool analyze_timint_;
+
+      //! relative timer tolerance (analyze_timint_ = True) for the return mapping evaluation in the
+      //! current timestep -> return mapping / determination of inelastic defgrad is repeated until
+      //! the computation time changes only within the set relative tolerance
+      const double analyze_timint_timer_inelastic_defgrad_rel_tol_;
 
       //! maximum number of times the given time step can be halved before reaching the minimum
       //! allowed substep length
