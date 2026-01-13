@@ -1113,37 +1113,33 @@ namespace Mat
       //! computations performed
       struct Timers
       {
-        //! timer for the current inelastic deformation gradient evaluation in the current timestep
-        Teuchos::Time eval_teuchos_timer_inelastic_defgrad_{
-            "InelasticDefgradTransvIsotropElastViscoplast::inelastic deformation gradient "
-            "evaluation"};
+        //! timer for the Local Newton Guess Interpolation in the current timestep -> only considers
+        //! the initial interpolation, no reinterpolation
+        Teuchos::Time eval_teuchos_timer_lngi_{
+            "InelasticDefgradTransvIsotropElastViscoplast::Local Newton Guess Interpolation (only "
+            "initial interpolation, no reinterpolation)"};
+
+        //! boolean: should the timer for Local Newton Guess Interpolation (only
+        //! initial interpolation, no reinterpolation)
+        //! be used?
+        const bool use_teuchos_timer_lngi_ = false;
 
         //! timer for the time spent in the Local Newton loop
-        Teuchos::Time eval_teuchos_timer_LNL_{
+        Teuchos::Time eval_teuchos_timer_lnl_{
             "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
 
-        //! timer for the time spent adapting the initial guess (including Local Newton Guess
-        //! Reinterpolation)
-        Teuchos::Time eval_teuchos_timer_lngi_{
-            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
-            "Interpolation"};
+        //! boolean: should the timer for Local Newton loop be used?
+        const bool use_teuchos_timer_lnl_ = false;
 
-        //! timer for the time spent in the Local Newton Guess Interpolation
-        //! routine, only in the
-        //! specific case of Reinterpolation
-        Teuchos::Time eval_teuchos_timer_reinterp_{
-            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the Local Newton Guess "
-            "Interpolation "
-            "(Reinterpolation)"};
+        //! timer for finding a starting point for the Local Newton Guess Interpolation for next
+        //! timestep
+        Teuchos::Time eval_teuchos_timer_lngi_starting_point_next_timestep_{
+            "InelasticDefgradTransvIsotropElastViscoplast::Local Newton Guess Interpolation (only "
+            "initial interpolation, no reinterpolation)"};
 
-        //! timer for the time spent in the line search scheme
-        Teuchos::Time eval_teuchos_timer_line_search_{
-            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the line search"};
-
-        //! timer for the current linearization evaluation (additional cmat) in the current timestep
-        Teuchos::Time eval_teuchos_timer_additional_cmat_{
-            "InelasticDefgradTransvIsotropElastViscoplast::linearization "
-            "evaluation (additional cmat)"};
+        //! boolean: should the timer for finding a starting point for the Local Newton Guess
+        //! Interpolation be used?
+        const bool use_teuchos_timer_lngi_starting_point_next_timestep_ = false;
       };
       Timers timers_;
 
@@ -1151,50 +1147,28 @@ namespace Mat
       //! computations performed
       struct TimeMeasurements
       {
-        //! evaluation time for the current time step to compute the
-        //! inelastic deformation gradient
-        double eval_time_inelastic_defgrad_;
-
-        //! total evaluation time for the inelastic deformation gradient
-        //! over all times
-        double total_time_inelastic_defgrad_;
-
         //! evaluation time spent in the Local Newton loop (current
         //! time step)
-        double eval_time_LNL_;
+        double eval_time_lnl_;
 
         //! total time spent in the Local Newton Loop over all time steps
-        double total_time_LNL_;
+        double total_time_lnl_;
 
         //! evaluation time spent in the Local Newton Guess Interpolation (current
-        //! time step)
+        //! time step, only initial interpolation, no reinterpolation)
         double eval_time_lngi_;
 
-        //! total time spent in the Local Newton Guess Interpolation over all time steps
+        //! total time spent in the Local Newton Guess Interpolation over all time steps (only
+        //! initial interpolation, no reinterpolation)
         double total_time_lngi_;
 
-        //! evaluation time spent in the Local Newton Guess Interpolation (current
-        //! time step), in the specific case of Reinterpolation
-        double eval_time_reinterp_;
+        //! evaluation time spent for finding a starting point for the Local Newton Guess
+        //! Interpolation in the next timestep
+        double eval_time_lngi_starting_point_next_timestep_;
 
-        //! total time spent in the Local Newton Guess Interpolation over all time steps, in the
-        //! specific case of Reinterpolation
-        double total_time_reinterp_;
-
-        //! evaluation time spent in the line search (current
-        //! time step)
-        double eval_time_line_search_;
-
-        //! total time spent in the line search scheme over all time steps
-        double total_time_line_search_;
-
-        //! evaluation time for the current time step to compute the
-        //! linearization (additional cmat)
-        double eval_time_additional_cmat_;
-
-        //! total evaluation time for the linearization (additional cmat)
-        //! over all times
-        double total_time_additional_cmat_;
+        //! total time spent for finding a starting point for the Local Newton Guess
+        //! Interpolation in the next timestep (over all timesteps)
+        double total_time_lngi_starting_point_next_timestep_;
       };
       TimeMeasurements time_measurements_;
 
@@ -1245,6 +1219,11 @@ namespace Mat
 
       //! runtime csv writer
       std::optional<Core::IO::RuntimeCsvWriter> csv_writer_;
+
+      //! boolean: control variable to check whether number of iters,
+      //! steps, errors, ... should be incremented (to be used in benchmarking, so that
+      //! repeating a procedure should not reincrement iters and steps)
+      bool increment_vars_ = true;
 
       //! initialize csv writer
       void init_csv_writer();
