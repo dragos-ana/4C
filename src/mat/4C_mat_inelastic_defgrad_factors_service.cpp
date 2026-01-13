@@ -472,11 +472,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   all_component_interp_lambda_2_[gp].xi_l_ = {0.0};
   all_component_interp_lambda_2_[gp].xi_u_ = {1.0};
 
-  if (interpolate_eigenvect_rot_)
-  {
-    all_component_interp_rel_eigenvect_rot_[gp].xi_l_ = {0.0, 0.0, 0.0};
-    all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = {1.0, 1.0, 1.0};
-  }
+  all_component_interp_rel_eigenvect_rot_[gp].xi_l_ = {0.0, 0.0, 0.0};
+  all_component_interp_rel_eigenvect_rot_[gp].xi_u_ = {1.0, 1.0, 1.0};
 
   // clear initial guess for inverse plastic defgrad, and the number of
   // performed interpolations
@@ -633,34 +630,34 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
       w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[1] +
       w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[1]);
 
-
-#ifdef DEBUG_PRED_ADAPT
-  std::cout << "Interpolating inverse plastic defgrad: " << std::endl;
-  std::cout << "--> defgrad_type: " << EnumTools::enum_name(defgrad_type_) << std::endl;
-  std::cout << "--> lambda_1: elast_pred: "
-            << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0]
-            << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0]
-            << "; current_xi: " << all_component_interp_lambda_1_[gp].current_xi_[0] << std::endl;
-  std::cout << "--> lambda_2: elast_pred: "
-            << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1]
-            << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1]
-            << "; current_xi: " << all_component_interp_lambda_2_[gp].current_xi_[0] << std::endl;
-  std::cout << "--> lambda_3: elast_pred: "
-            << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[2]
-            << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[2]
-            << std::endl;
-  std::cout << "--> Qmat_elast_pred: " << std::endl;
-  all_pred_decomp_specific_defgrad_[gp].Qmat_elast_pred_.print(std::cout);
-  std::cout << "--> Qmat_plast_pred: " << std::endl;
-  all_pred_decomp_specific_defgrad_[gp].Qmat_plast_pred_.print(std::cout);
-  std::cout << "--> Qvec_plast_pred_rel_: " << std::endl;
-  all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_.print(std::cout);
-  std::cout << "--> eigenvect_rot_matrix: " << std::endl;
-  eigenvect_rot_matrix.print(std::cout);
-  std::cout << "inv_defgrad (relevant for defgrad_type: elastic_defgrad): " << std::endl;
-  inv_defgrad.print(std::cout);
-#endif
-
+  /*
+  #ifdef DEBUG_PRED_ADAPT
+    std::cout << "Interpolating inverse plastic defgrad: " << std::endl;
+    std::cout << "--> defgrad_type: " << EnumTools::enum_name(defgrad_type_) << std::endl;
+    std::cout << "--> lambda_1: elast_pred: "
+              << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0]
+              << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0]
+              << "; current_xi: " << all_component_interp_lambda_1_[gp].current_xi_[0] << std::endl;
+    std::cout << "--> lambda_2: elast_pred: "
+              << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1]
+              << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1]
+              << "; current_xi: " << all_component_interp_lambda_2_[gp].current_xi_[0] << std::endl;
+    std::cout << "--> lambda_3: elast_pred: "
+              << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[2]
+              << "; plast_pred: " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[2]
+              << std::endl;
+    std::cout << "--> Qmat_elast_pred: " << std::endl;
+    all_pred_decomp_specific_defgrad_[gp].Qmat_elast_pred_.print(std::cout);
+    std::cout << "--> Qmat_plast_pred: " << std::endl;
+    all_pred_decomp_specific_defgrad_[gp].Qmat_plast_pred_.print(std::cout);
+    std::cout << "--> Qvec_plast_pred_rel_: " << std::endl;
+    all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_.print(std::cout);
+    std::cout << "--> eigenvect_rot_matrix: " << std::endl;
+    eigenvect_rot_matrix.print(std::cout);
+    std::cout << "inv_defgrad (relevant for defgrad_type: elastic_defgrad): " << std::endl;
+    inv_defgrad.print(std::cout);
+  #endif
+  */
 
 
   // different treatment based on the utilized deformation gradient type for the
@@ -846,29 +843,30 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 
 
   // DEBUG
-  if (gp == 0)
-  {
-    std::cout << std::string(50, '-') << std::endl;
-    std::cout << "GP: 0: Foundation for determining optimal interpolation factors: " << std::endl;
-    std::cout << "VAL -> ELAST. PRED - PLAST. PRED: OPTIMAL" << std::endl;
-    std::cout << "lambda_1 -> " << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0]
-              << " - " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0] << ": "
-              << solution_defgrad_decomposition.lambda_plast_pred_[0] << std::endl;
-    std::cout << "lambda_2 -> " << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1]
-              << " - " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1] << ": "
-              << solution_defgrad_decomposition.lambda_plast_pred_[1] << std::endl;
-    std::cout << "q_rel_1 -> " << "0"
-              << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(0) << ": "
-              << solution_defgrad_decomposition.Qvec_plast_pred_rel_(0) << std::endl;
-    std::cout << "q_rel_2 -> " << "0"
-              << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(1) << ": "
-              << solution_defgrad_decomposition.Qvec_plast_pred_rel_(1) << std::endl;
-    std::cout << "q_rel_3 -> " << "0"
-              << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(2) << ": "
-              << solution_defgrad_decomposition.Qvec_plast_pred_rel_(2) << std::endl;
-    std::cout << std::string(50, '-') << std::endl;
-  }
-
+  /*
+    if (gp == 0)
+    {
+      std::cout << std::string(50, '-') << std::endl;
+      std::cout << "GP: 0: Foundation for determining optimal interpolation factors: " << std::endl;
+      std::cout << "VAL -> ELAST. PRED - PLAST. PRED: OPTIMAL" << std::endl;
+      std::cout << "lambda_1 -> " << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0]
+                << " - " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0] << ": "
+                << solution_defgrad_decomposition.lambda_plast_pred_[0] << std::endl;
+      std::cout << "lambda_2 -> " << all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1]
+                << " - " << all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1] << ": "
+                << solution_defgrad_decomposition.lambda_plast_pred_[1] << std::endl;
+      std::cout << "q_rel_1 -> " << "0"
+                << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(0) << ": "
+                << solution_defgrad_decomposition.Qvec_plast_pred_rel_(0) << std::endl;
+      std::cout << "q_rel_2 -> " << "0"
+                << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(1) << ": "
+                << solution_defgrad_decomposition.Qvec_plast_pred_rel_(1) << std::endl;
+      std::cout << "q_rel_3 -> " << "0"
+                << " - " << all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(2) << ": "
+                << solution_defgrad_decomposition.Qvec_plast_pred_rel_(2) << std::endl;
+      std::cout << std::string(50, '-') << std::endl;
+    }
+  */
 
   // determine the optimal interpolation factors
   all_component_interp_lambda_1_[gp].optimal_xi_ = {determine_optimal_interpolation_factors(
@@ -938,12 +936,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Eval. iterations (LNGI reinterpolation)", 1, 16);
   csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
-  /*
-  csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (all LNL iters)", 1, 16);
-  csv_writer_->register_data_vector("Eval. # of times: alpha neq 1 (last LNL iter)", 1, 16);
-  csv_writer_->register_data_vector("Eval. # of first LNL iter. convergences", 1, 16);*/
-  csv_writer_->register_data_vector("Eval. time (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Eval. time (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (RMA)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (LNGI starting point)", 1, 16);
   csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
@@ -952,14 +945,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Total iterations (LNGI reinterpolation)", 1, 16);
   csv_writer_->register_data_vector("Total line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
-  /*
-  csv_writer_->register_data_vector("Total # of times: alpha neq 1 (all LNL iters)", 1, 16);
-  csv_writer_->register_data_vector("Total # of times: alpha neq 1 (last LNL iter)", 1, 16);
-  csv_writer_->register_data_vector("Total # of first LNL iter.
-  convergences", 1, 16); */
   csv_writer_->register_data_vector("Total time (inelastic defgrad)", 1, 16);
-  csv_writer_->register_data_vector("Total time (LNL)", 1, 16);
-  csv_writer_->register_data_vector("Total time (LNGI)", 1, 16);
+  csv_writer_->register_data_vector("Total time (RMA)", 1, 16);
   csv_writer_->register_data_vector("Total time (LNGI starting point)", 1, 16);
   csv_writer_->register_data_vector(
       "Interpolation factor (lambda 1) of GP 0 of Ele 0 (last global iteration)", 1, 16);
@@ -1029,11 +1016,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   num_iters_and_steps_.eval_num_of_reinterp_iters_ = 0;
   num_iters_and_steps_.eval_num_of_line_search_ = 0;
   num_iters_and_steps_.eval_num_of_line_search_iters_ = 0;
-  timers_.eval_teuchos_timer_lnl_.reset();
-  timers_.eval_teuchos_timer_lngi_.reset();
+  timers_.eval_teuchos_timer_rma_.reset();
   timers_.eval_teuchos_timer_lngi_starting_point_next_timestep_.reset();
-  time_measurements_.eval_time_lnl_ = 0;
-  time_measurements_.eval_time_lngi_ = 0;
+  time_measurements_.eval_time_rma_ = 0;
   time_measurements_.eval_time_lngi_starting_point_next_timestep_ = 0;
   eval_error_map_ = {
       {ErrorType::negative_plastic_strain, 0},
@@ -1086,8 +1071,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   num_iters_and_steps_.total_num_of_alpha_neq_1_ += num_iters_and_steps_.eval_num_of_alpha_neq_1_;
   num_iters_and_steps_.total_num_of_alpha_neq_1_last_iter_ +=
       num_iters_and_steps_.eval_num_of_alpha_neq_1_last_iter_;
-  time_measurements_.total_time_lnl_ += time_measurements_.eval_time_lnl_;
-  time_measurements_.total_time_lngi_ += time_measurements_.eval_time_lngi_;
+  time_measurements_.total_time_rma_ += time_measurements_.eval_time_rma_;
   time_measurements_.total_time_lngi_starting_point_next_timestep_ +=
       time_measurements_.eval_time_lngi_starting_point_next_timestep_;
   for (const auto& [error_type, error_count] : eval_error_map_)
@@ -1131,10 +1115,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
       static_cast<double>(num_iters_and_steps_.eval_num_of_line_search_)};
   output_data["Total line searches (LNL)"] = {
       static_cast<double>(num_iters_and_steps_.total_num_of_line_search_)};
-  output_data["Eval. time (LNL)"] = {static_cast<double>(time_measurements_.eval_time_lnl_)};
-  output_data["Total time (LNL)"] = {static_cast<double>(time_measurements_.total_time_lnl_)};
-  output_data["Eval. time (LNGI)"] = {static_cast<double>(time_measurements_.eval_time_lngi_)};
-  output_data["Total time (LNGI)"] = {static_cast<double>(time_measurements_.total_time_lngi_)};
+  output_data["Eval. time (RMA)"] = {static_cast<double>(time_measurements_.eval_time_rma_)};
+  output_data["Total time (RMA)"] = {static_cast<double>(time_measurements_.total_time_rma_)};
   output_data["Eval. time (LNGI starting point)"] = {
       static_cast<double>(time_measurements_.eval_time_lngi_starting_point_next_timestep_)};
   output_data["Total time (LNGI starting point)"] = {
@@ -1224,8 +1206,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
 {  // add current number of steps
   num_iters_and_steps_.eval_num_of_LNL_steps_ += step_counter;
 
-  // stop (already started!) LNL timer
-  time_measurements_.eval_time_lnl_ += timers_.eval_teuchos_timer_lnl_.stop();
+  // stop (already started!) RMA timer
+  time_measurements_.eval_time_rma_ += timers_.eval_teuchos_timer_rma_.stop();
 
   // output routine
   update_total();

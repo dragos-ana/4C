@@ -1837,14 +1837,11 @@ namespace Mat
      * numerically evaluable and leads to plastic flow), then it is directly
      * return without further interpolation
      * @param[in] FM deformation gradient
-     * @param[in] update_internal_vars_benchmark update internal variables (relevant for
-     * benchmarking the function, where we want to repeat exactly the same scenario with unchanged
-     * variables -> then we set it to False)
      * @return interpolated initial guess with the same structure as the current
      * initial guess
      */
     Core::LinAlg::Matrix<10, 1> interpolate_local_newton_guess(
-        const Core::LinAlg::Matrix<3, 3>& FM, const bool update_internal_vars_benchmark = true);
+        const Core::LinAlg::Matrix<3, 3>& FM);
 
     /*!
      * @brief Local Newton Loop in order to calculate the current inverse plastic deformation
@@ -1854,16 +1851,26 @@ namespace Mat
      * @param[in] x initial guess of Local Newton Loop, composed of the components of the
      *              inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$
      *              and plastic strain \f$ \varepsilon_{\text{p}} \f$
-     * @param[in] update_internal_vars_benchmark update internal variables (relevant for
-     * benchmarking the function, where we want to repeat exactly the same scenario with unchanged
-     * variables -> then we set it to False)
      * @param[out] err_status error status
      * @return solution vector of the Local Newton Loop, structured analogously to the initial guess
      * x
      */
     Core::LinAlg::Matrix<10, 1> local_newton_loop(const Core::LinAlg::Matrix<3, 3>& defgrad,
-        const Core::LinAlg::Matrix<10, 1>& x, ErrorType& err_status,
-        const bool update_internal_vars_benchmark = true);
+        const Core::LinAlg::Matrix<10, 1>& x, ErrorType& err_status);
+
+
+    /*!
+     * @brief Performs return mapping at each GP. It first evaluates whether the elastic predictor
+     * is suitable as a solution, and performs the local time integration (Local Newton Loop)
+     * afterwards.
+     *
+     * @param[in] FredM reduced deformation gradient \f$ \boldsymbol{F}_{\text{red}} =
+     * \boldsymbol{F} \boldsymbol{F_{\text{in,other}}^{-1}} \f$ accounting for all the already
+     * computed inelastic defgrad factors
+     * @return inverse inelastic deformation gradient \boldsymbol{F}_{\text{in}}^{-1}
+     */
+    Core::LinAlg::Matrix<3, 3> return_mapping(const Core::LinAlg::Matrix<3, 3>& FredM);
+
 
     /*!
      * @brief Compute the plastic strain \f$
