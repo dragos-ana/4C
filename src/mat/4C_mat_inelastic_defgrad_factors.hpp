@@ -25,6 +25,7 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.fwd.hpp"
 
+#include <boost/graph/visitors.hpp>
 #include <Teuchos_Array.hpp>
 #include <Teuchos_ParameterList.hpp>
 
@@ -1770,7 +1771,7 @@ namespace Mat
      * @param[out] err_status error status
      * @return boolean value: true (predictor = solution), or false (predictor != solution)
      */
-    bool check_predictor(const Core::LinAlg::Matrix<3, 3>& CM,
+    bool check_elastic_predictor(const Core::LinAlg::Matrix<3, 3>& CM,
         const Core::LinAlg::Matrix<3, 3>& iFinM_pred, const double plastic_strain_pred,
         ErrorType& err_status);
 
@@ -1830,16 +1831,14 @@ namespace Mat
      * numerically evaluable and leads to plastic flow), then it is directly
      * return without further interpolation
      * @param[in] FM deformation gradient
-     * @param[in] current_initial_guess current initial guess consisting of the
-     * Voigt representation of the inverse plastic deformation gradient
-     * \f$ \boldsymbol{F}^{\text{p}^{-1}} \f$ (components 0 to 8), and
-     * the plastic strain \f$ \varepsilon^{\text{p}} \f$
+     * @param[in] update_internal_vars_benchmark update internal variables (relevant for
+     * benchmarking the function, where we want to repeat exactly the same scenario with unchanged
+     * variables -> then we set it to False)
      * @return interpolated initial guess with the same structure as the current
      * initial guess
      */
     Core::LinAlg::Matrix<10, 1> interpolate_local_newton_guess(
-        const Core::LinAlg::Matrix<10, 1>& current_initial_guess,
-        const Core::LinAlg::Matrix<3, 3>& FM);
+        const Core::LinAlg::Matrix<3, 3>& FM, const bool update_internal_vars_benchmark = true);
 
     /*!
      * @brief Local Newton Loop in order to calculate the current inverse plastic deformation
@@ -1849,12 +1848,16 @@ namespace Mat
      * @param[in] x initial guess of Local Newton Loop, composed of the components of the
      *              inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$
      *              and plastic strain \f$ \varepsilon_{\text{p}} \f$
+     * @param[in] update_internal_vars_benchmark update internal variables (relevant for
+     * benchmarking the function, where we want to repeat exactly the same scenario with unchanged
+     * variables -> then we set it to False)
      * @param[out] err_status error status
      * @return solution vector of the Local Newton Loop, structured analogously to the initial guess
      * x
      */
     Core::LinAlg::Matrix<10, 1> local_newton_loop(const Core::LinAlg::Matrix<3, 3>& defgrad,
-        const Core::LinAlg::Matrix<10, 1>& x, ErrorType& err_status);
+        const Core::LinAlg::Matrix<10, 1>& x, ErrorType& err_status,
+        const bool update_internal_vars_benchmark = true);
 
     /*!
      * @brief Compute the plastic strain \f$
@@ -2011,6 +2014,88 @@ namespace Mat
      * with further information
      */
     std::string debug_get_error_info(const std::string& base_error_string);
+
+
+    // benchmarking procedure: runs a specific function in a loop until the
+    // computation time converges based on a specified relative tolerance
+    template <typename Func, typename... Args>
+    double benchmark_function(std::string func_descr, Teuchos::Time& func_timer,
+        const double relative_tol, bool& increment_timint_analysis_vars, int& num_of_required_iters,
+        Func&& func, Args&&... args)
+    {
+      // average computation time (current iteration)
+      double avg_time = 0.0;
+
+      // average computation time (previous iteration)
+      double prev_avg_time = 0.0;
+
+      // number of performed iterations / repetitions
+      num_of_required_iters = 0;
+
+      // minimum and maximum numbers of iterations
+      constexpr int warmup_iters = 3;    // number of warm-up iterations
+      constexpr int max_iters = 100000;  // safety cap
+
+      // start timer
+      func_timer.start(true);
+
+      // loop over iterations
+      while (true)
+      {
+        // increment iterations and check safety cap
+        ++num_of_required_iters;
+        FOUR_C_ASSERT_ALWAYS(num_of_required_iters < max_iters,
+            "Maximum number of repetitions {} was reached without a converged computation time for "
+            "the function [{}]",
+            max_iters, func_descr);
+
+        // set tracker variable for iters, steps, errors, ...
+        increment_timint_analysis_vars =
+            (num_of_required_iters ==
+                1);  // only track iters, steps, errors, ... for
+                     // the first repetition / iteration of the procedure to be benchmarked
+
+        // reset timer upon reaching minimum number of iterations (warm-up
+        // iterations)
+        if (num_of_required_iters == warmup_iters)
+        {
+          func_timer.reset();
+          continue;
+        }
+
+        // run function to be timed
+        func(std::forward<Args>(args)...);
+
+        // if this is not a warm-up iteration anymore, we calculate
+        // relative change and check for convergence
+        if (num_of_required_iters > warmup_iters)
+        {
+          // get current elapsed time
+          const double t = func_timer.totalElapsedTime(true);
+
+          // running average
+          avg_time = t / (num_of_required_iters - warmup_iters);
+
+          // check for convergence based on the relative tolerance
+          const double rel_change = std::abs(avg_time - prev_avg_time) / avg_time;
+
+          // if convergence is reached: stop the timer and break out of the loop
+          if (rel_change < relative_tol)
+          {
+            func_timer.stop();
+            break;
+          }
+
+          // set previous times for the next iteration
+          prev_avg_time = avg_time;
+        }
+      }
+      // set control variable to true, since we exit the benchmarking procedure
+      increment_timint_analysis_vars = true;
+
+      // return average time
+      return avg_time;
+    }
   };
 }  // namespace Mat
 FOUR_C_NAMESPACE_CLOSE
