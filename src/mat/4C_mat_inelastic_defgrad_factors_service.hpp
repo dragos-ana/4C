@@ -1113,23 +1113,12 @@ namespace Mat
       //! computations performed
       struct Timers
       {
-        //! timer for the Local Newton Guess Interpolation in the current timestep -> only considers
-        //! the initial interpolation, no reinterpolation
-        Teuchos::Time eval_teuchos_timer_lngi_{
-            "InelasticDefgradTransvIsotropElastViscoplast::Local Newton Guess Interpolation (only "
-            "initial interpolation, no reinterpolation)"};
+        //! timer for the return mapping in the current timestep
+        Teuchos::Time eval_teuchos_timer_rma_{
+            "InelasticDefgradTransvIsotropElastViscoplast::Return Mapping"};
 
-        //! boolean: should the timer for Local Newton Guess Interpolation (only
-        //! initial interpolation, no reinterpolation)
-        //! be used?
-        const bool use_teuchos_timer_lngi_ = false;
-
-        //! timer for the time spent in the Local Newton loop
-        Teuchos::Time eval_teuchos_timer_lnl_{
-            "InelasticDefgradTransvIsotropElastViscoplast::time spent in the LNL"};
-
-        //! boolean: should the timer for Local Newton loop be used?
-        const bool use_teuchos_timer_lnl_ = false;
+        //! boolean: should the timer for return mapping be used?
+        const bool use_teuchos_timer_rma_ = false;
 
         //! timer for finding a starting point for the Local Newton Guess Interpolation for next
         //! timestep
@@ -1147,20 +1136,11 @@ namespace Mat
       //! computations performed
       struct TimeMeasurements
       {
-        //! evaluation time spent in the Local Newton loop (current
-        //! time step)
-        double eval_time_lnl_;
+        //! evaluation time spent in the return mapping (current time step)
+        double eval_time_rma_;
 
-        //! total time spent in the Local Newton Loop over all time steps
-        double total_time_lnl_;
-
-        //! evaluation time spent in the Local Newton Guess Interpolation (current
-        //! time step, only initial interpolation, no reinterpolation)
-        double eval_time_lngi_;
-
-        //! total time spent in the Local Newton Guess Interpolation over all time steps (only
-        //! initial interpolation, no reinterpolation)
-        double total_time_lngi_;
+        //! total time spent in the return mapping over all time steps
+        double total_time_rma_;
 
         //! evaluation time spent for finding a starting point for the Local Newton Guess
         //! Interpolation in the next timestep
@@ -1706,8 +1686,8 @@ namespace Mat
     // display / log evaluation warnings
 #define DISPLAY_WARNINGS ;
 
-    // #define DEBUG_MODE ;
-    // #define DEBUG_PRED_ADAPT ;
+#define DEBUG_MODE ;
+#define DEBUG_PRED_ADAPT ;
     // #define DEBUG_LNL ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils

@@ -2124,17 +2124,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
             parameter()->lngi_plastic_pred_stretch_assign_type(),
             parameter()->lngi_plastic_pred_rot_assign_type());
 
-
-#ifdef DEBUG_PRED_ADAPT
-    std::cout << std::string(50, '-') << std::endl;
-    std::cout << "--> Determined inverse plastic defgrads for elastic and plastic predictor!"
-              << std::endl;
-    std::cout << "elast. :" << std::endl;
-    time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
-    std::cout << "plast. :" << std::endl;
-    inv_plastic_defgrad_plastic_pred.print(std::cout);
-#endif
-
+    /*
+    #ifdef DEBUG_PRED_ADAPT
+        std::cout << std::string(50, '-') << std::endl;
+        std::cout << "--> Determined inverse plastic defgrads for elastic and plastic predictor!"
+                  << std::endl;
+        std::cout << "elast. :" << std::endl;
+        time_step_quantities_.last_plastic_defgrad_inverse_[gp_].print(std::cout);
+        std::cout << "plast. :" << std::endl;
+        inv_plastic_defgrad_plastic_pred.print(std::cout);
+    #endif
+    */
 
 
     // consistency check:
@@ -3350,8 +3350,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   //      \boldsymbol{F}_{\text{in},2}^{-1} \dots \f$ up to the current inelastic factor
   Core::LinAlg::Matrix<3, 3> FredM(Core::LinAlg::Initialization::zero);
   FredM.multiply_nn(1.0, *defgrad, iFin_other, 0.0);
-  Core::LinAlg::Matrix<3, 3> CredM(Core::LinAlg::Initialization::zero);
-  CredM.multiply_tn(1.0, FredM, FredM, 0.0);
 
   // check whether we have already evaluated the inverse inelastic deformation gradient for
   // the given reduced deformation gradient (this check should only be
@@ -3371,158 +3369,140 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   // if this is a "new" deformation gradient, we evaluate the inverse
   // inelastic deformation gradient via return mapping
   {
-    // perform non-repeatable pre-evaluation tasks (non-repeatable: not
-    // called in the redundant evaluate call, which is already handled
-    // above!)
-    prepare_non_repeat_tasks(*defgrad);
-
-    // set predictor: assume purely elastic behavior in this time step
-    Core::LinAlg::Matrix<3, 3> iFinM_pred(Core::LinAlg::Initialization::zero);
-    iFinM_pred.update(1.0, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
-    double plastic_strain_pred = time_step_quantities_.last_plastic_strain_[gp_];
-
-    // declare error status of evaluation (no errors)
-    ErrorType err_status = ErrorType::no_errors;
-
-    // set current defgrad and current right CG tensor
-    time_step_quantities_.current_defgrad_[gp_] = FredM;
-    time_step_quantities_.current_rightCG_[gp_] = CredM;
-
-    // check whether the predictor is the solution (no plastic strain during this time step)
-    bool pred_is_sol = check_elastic_predictor(CredM, iFinM_pred, plastic_strain_pred, err_status);
-
-    if ((err_status == ErrorType::no_errors) && (pred_is_sol))
+    if (parameter()->analyze_timint())
     {
-      // update inverse inelastic defgrad
-      iFinM = iFinM_pred;
-
-      // update history variables of material
-      if (update_hist_var_)
-      {
-        time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
-        time_step_quantities_.current_plastic_strain_[gp_] = plastic_strain_pred;
-        time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
-      }
+      int num_of_required_repetitions = 0;
+      Core::LinAlg::Matrix<3, 3> iFinM_temp{Core::LinAlg::Initialization::zero};
+      // benchmark run time
+      general_local_timint_analysis_utils.time_measurements_.eval_time_rma_ += benchmark_function(
+          "Return Mapping", general_local_timint_analysis_utils.timers_.eval_teuchos_timer_rma_,
+          parameter()->analyze_timint_timer_inelastic_defgrad_rel_tol(),
+          general_local_timint_analysis_utils.increment_vars_, num_of_required_repetitions,
+          [this](Core::LinAlg::Matrix<3, 3>& FredM, Core::LinAlg::Matrix<3, 3>& iFinM_temp)
+          { iFinM_temp = return_mapping(FredM); }, FredM, iFinM_temp);
+      iFinM = iFinM_temp;
     }
-    else  // predictor does not suffice
+    else
     {
-      // perform time integration via the Local Newton-Raphson Loop (LNL)
-      Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
-      Core::LinAlg::Matrix<10, 1> x_adapted{x};
-
-      // adapt predictor (interpolate Local Newton guess)
-      if (parameter()->use_lngi())
-      {
-        if (parameter()->analyze_timint())
-        {
-          int num_of_required_repetitions = 0;
-          // benchmark run time
-          general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_ +=
-              benchmark_function(
-                  "LNGI", general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_,
-                  parameter()->analyze_timint_timer_inelastic_defgrad_rel_tol(),
-                  general_local_timint_analysis_utils.increment_vars_, num_of_required_repetitions,
-                  [this](Core::LinAlg::Matrix<10, 1>& x_adapted,
-                      const Core::LinAlg::Matrix<10, 1>& x, const Core::LinAlg::Matrix<3, 3>& FredM)
-                  {
-                    lnl_guess_interpolation_.num_of_lngi_ = 0;
-                    x_adapted = interpolate_local_newton_guess(FredM);
-                    // DEBUG
-                    std::cout << "With benchmarking, GP " << gp_ << ": x_adapted: " << std::endl;
-                    x_adapted.print(std::cout);
-                  },
-                  x_adapted, x, FredM);
-        }
-        else
-        {
-          x_adapted = interpolate_local_newton_guess(FredM);
-
-          // DEBUG
-          std::cout << "Without benchmarking, GP " << gp_ << ": x_adapted: " << std::endl;
-          x_adapted.print(std::cout);
-        }
-
-        // increment the number of performed Local Newton Guess Interpolations
-        ++lnl_guess_interpolation_.num_of_lngi_;
-      }
-
       // DEBUG
-      std::cout << std::string(100, '-') << std::endl;
+      std::cout << "Start return mapping" << std::endl;
 
-      // perform Local Newton Loop (LNL)
-      Core::LinAlg::Matrix<10, 1> sol{Core::LinAlg::Initialization::zero};
-      if (parameter()->analyze_timint())
-      {
-        int num_of_required_repetitions = 0;
-        // benchmark run time
-        general_local_timint_analysis_utils.time_measurements_.eval_time_lnl_ += benchmark_function(
-            "LNL", general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lnl_,
-            parameter()->analyze_timint_timer_inelastic_defgrad_rel_tol(),
-            general_local_timint_analysis_utils.increment_vars_, num_of_required_repetitions,
-            [this](Core::LinAlg::Matrix<10, 1>& sol, const Core::LinAlg::Matrix<3, 3> FredM,
-                const Core::LinAlg::Matrix<10, 1>& x_adapted, ErrorType& err_status)
-            {
-              sol = local_newton_loop(FredM, x_adapted, err_status);
-
-              // DEBUG
-              std::cout << "With benchmarking, GP " << gp_ << ": sol: " << std::endl;
-              sol.print(std::cout);
-            },
-            sol, FredM, x_adapted, err_status);
-      }
-      else
-      {
-        sol = local_newton_loop(FredM, x_adapted, err_status);
-        // DEBUG
-        std::cout << "Without benchmarking, GP " << gp_ << ": sol: " << std::endl;
-        sol.print(std::cout);
-      }
-
-      // throw error if the Local Newton Loop cannot be evaluated with the given
-      // settings
-      if (err_status != ErrorType::no_errors)
-      {
-        // general local time integration analysis output routine with LNL error
-        if (parameter()->analyze_timint())
-          general_local_timint_analysis_utils.output_error_local_newton_loop(
-              local_substepping_utils_.substep_counter_);
-
-        // output error and then throw (in order to display the error on
-        // the right processor)
-        std::cout << debug_get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                             get_detailed_error_message_for_error_type(err_status))
-                  << std::endl;
-        FOUR_C_THROW("See above");
-      }
-      else
-      {
-        // general local time integration analysis: add number of substeps and stop started
-        // timer
-        if (parameter()->analyze_timint() && general_local_timint_analysis_utils.increment_vars_)
-        {
-          // general local time integration analysis: add number of substeps to
-          // general_local_timint_analysis_utils
-          general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_LNL_steps_ += 1;
-        }
-
-        // increment number of LNL iterations for the current timestep at the
-        // current GP
-        lnl_data_.num_iter_curr_timestep_[gp_] += lnl_data_.iter_;
-      }
-
-
-      // extract the inverse inelastic defgrad from the LNL solution
-      iFinM = extract_inverse_inelastic_defgrad(sol);
-
-      // update history variables of material
-      if (update_hist_var_)
-      {
-        time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
-        time_step_quantities_.current_plastic_strain_[gp_] = sol(9);
-        time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
-      }
+      iFinM = return_mapping(FredM);
     }
   }
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
+    const Core::LinAlg::Matrix<3, 3>& FredM)
+{
+  // declare output: inverse inelastic deformation gradient (after return mapping)
+  Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
+
+  // compute right CG tensor corresponding to the given deformation gradient
+  Core::LinAlg::Matrix<3, 3> CredM(Core::LinAlg::Initialization::zero);
+  CredM.multiply_tn(1.0, FredM, FredM, 0.0);
+
+  // perform non-repeatable pre-evaluation tasks (non-repeatable: not
+  // called in the redundant evaluate call, which is already handled -> direct return without
+  // calling this function)
+  prepare_non_repeat_tasks(FredM);
+
+  // set predictor: assume purely elastic behavior in this time step
+  Core::LinAlg::Matrix<3, 3> iFinM_pred(Core::LinAlg::Initialization::zero);
+  iFinM_pred.update(1.0, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
+  double plastic_strain_pred = time_step_quantities_.last_plastic_strain_[gp_];
+
+  // set error status of evaluation to no errors
+  ErrorType err_status = ErrorType::no_errors;
+
+  // set current defgrad and current right CG tensor
+  time_step_quantities_.current_defgrad_[gp_] = FredM;
+  time_step_quantities_.current_rightCG_[gp_] = CredM;
+
+  // check whether the predictor is the solution (no plastic strain during this time step)
+  bool pred_is_sol = check_elastic_predictor(CredM, iFinM_pred, plastic_strain_pred, err_status);
+
+  if ((err_status == ErrorType::no_errors) && (pred_is_sol))
+  {
+    // update inverse inelastic defgrad
+    iFinM = iFinM_pred;
+
+    // update history variables of material
+    if (update_hist_var_)
+    {
+      time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
+      time_step_quantities_.current_plastic_strain_[gp_] = plastic_strain_pred;
+      time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
+    }
+  }
+  else  // predictor does not suffice
+  {
+    // perform time integration via the Local Newton-Raphson Loop (LNL)
+    Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
+    Core::LinAlg::Matrix<10, 1> x_adapted{x};
+
+    // adapt predictor (interpolate Local Newton guess)
+    if (parameter()->use_lngi())
+    {
+      // increment the number of performed Local Newton Guess Interpolations
+      ++lnl_guess_interpolation_.num_of_lngi_;
+
+      x_adapted = interpolate_local_newton_guess(FredM);
+    }
+
+    // perform Local Newton Loop (LNL)
+    Core::LinAlg::Matrix<10, 1> sol{Core::LinAlg::Initialization::zero};
+    sol = local_newton_loop(FredM, x_adapted, err_status);
+
+    // throw error if the Local Newton Loop cannot be evaluated with the given
+    // settings
+    if (err_status != ErrorType::no_errors)
+    {
+      // general local time integration analysis output routine with LNL error
+      if (parameter()->analyze_timint())
+        general_local_timint_analysis_utils.output_error_local_newton_loop(
+            local_substepping_utils_.substep_counter_);
+
+      // output error and then throw (in order to display the error on
+      // the right processor)
+      std::cout << debug_get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                           get_detailed_error_message_for_error_type(err_status))
+                << std::endl;
+      FOUR_C_THROW("See above");
+    }
+    else
+    {
+      // general local time integration analysis: add number of substeps and stop started
+      // timer
+      if (parameter()->analyze_timint() && general_local_timint_analysis_utils.increment_vars_)
+      {
+        // general local time integration analysis: add number of substeps to
+        // general_local_timint_analysis_utils
+        general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_LNL_steps_ += 1;
+      }
+
+      // increment number of LNL iterations for the current timestep at the
+      // current GP
+      lnl_data_.num_iter_curr_timestep_[gp_] += lnl_data_.iter_;
+    }
+
+
+    // extract the inverse inelastic defgrad from the LNL solution
+    iFinM = extract_inverse_inelastic_defgrad(sol);
+
+    // update history variables of material
+    if (update_hist_var_)
+    {
+      time_step_quantities_.current_plastic_defgrad_inverse_[gp_] = iFinM;
+      time_step_quantities_.current_plastic_strain_[gp_] = sol(9);
+      time_step_quantities_.current_stress_[gp_] = state_quantities_.curr_equiv_stress_;
+    }
+  }
+
+
+  return iFinM;
 }
 
 
@@ -4220,7 +4200,7 @@ Core::LinAlg::Matrix<10, 10> Mat::InelasticDefgradTransvIsotropElastViscoplast::
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
     const Core::LinAlg::Matrix<3, 3>& defgrad, const Core::LinAlg::Matrix<10, 1>& x,
-    ErrorType& err_status, const bool update_internal_vars_benchmark)
+    ErrorType& err_status)
 {
   // auxiliaries
   Core::LinAlg::Matrix<10, 10> temp10x10(Core::LinAlg::Initialization::zero);
@@ -4963,19 +4943,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<10, 1>
 Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_guess(
-    const Core::LinAlg::Matrix<3, 3>& FM, const bool update_internal_vars_benchmark)
+    const Core::LinAlg::Matrix<3, 3>& FM)
 {
 #ifdef DEBUG_PRED_ADAPT
   if (debug_mode(ele_gid_, gp_))
   {
-    std::cout << "Adapt predictor for ele_gid_ " << ele_gid_ << " and gp " << gp_ << std::endl;
-    std::cout << "initial: " << std::endl;
-    current_initial_guess.print(std::cout);
+    std::cout << "LNGI num " << lnl_guess_interpolation_.num_of_lngi_ << " for ele_gid_ "
+              << ele_gid_ << " and gp " << gp_ << std::endl;
   }
 #endif
 
   // csv runtime output
-  if (parameter()->use_csv_output_lngi_micro_iter() && update_internal_vars_benchmark)
+  if (parameter()->use_csv_output_lngi_micro_iter())
   {
     // initialize micro iteration data for all microiterations
     // of the subsequent Local Newton Guess Interpolation, to be written to csv
@@ -5054,6 +5033,25 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
           plastic_strain_adapt_pred, err_status, state_quantities_, state_quantity_derivatives_);
     }
 
+#ifdef DEBUG_PRED_ADAPT
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "ITER:  " << lngi_step_counter << std::endl;
+      std::cout << "curr_interp_point: " << std::endl;
+      lnl_guess_interpolation_.get_curr_interp_point(gp_).print(std::cout);
+      std::cout << "lower_bound_interp_point: " << std::endl;
+      lnl_guess_interpolation_.get_lower_bound_interp_point(gp_).print(std::cout);
+      std::cout << "upper_bound_interp_point: " << std::endl;
+      lnl_guess_interpolation_.get_upper_bound_interp_point(gp_).print(std::cout);
+      std::cout << "equiv_stress:  " << state_quantities_stress.curr_equiv_stress_
+                << ", plastic_strain: " << plastic_strain_adapt_pred
+                << ", plastic_strain_rate: " << state_quantities_.curr_equiv_plastic_strain_rate_
+                << std::endl;
+      std::cout << "err_status: " << EnumTools::enum_name(err_status) << std::endl;
+    }
+#endif
+
+
 
     // if there was an evaluation error: adapt interpolation interval
     // and the interpolation parameters subsequently
@@ -5125,6 +5123,24 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
   // write micro iteration data to csv
   if (parameter()->use_csv_output_lngi_micro_iter())
     csv_output_lngi_micro_iter_data_.write_lngi_micro_iter_data_to_csv();
+
+#ifdef DEBUG_PRED_ADAPT
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << "End LNGI " << lnl_guess_interpolation_.num_of_lngi_ << " for ele_gid_ "
+              << ele_gid_ << " and gp " << gp_ << std::endl;
+    std::cout << "curr_interp_point: " << std::endl;
+    lnl_guess_interpolation_.get_curr_interp_point(gp_).print(std::cout);
+    std::cout << "lower_bound_interp_point: " << std::endl;
+    lnl_guess_interpolation_.get_lower_bound_interp_point(gp_).print(std::cout);
+    std::cout << "upper_bound_interp_point: " << std::endl;
+    lnl_guess_interpolation_.get_upper_bound_interp_point(gp_).print(std::cout);
+    std::cout << "equiv_stress:  " << state_quantities_.curr_equiv_stress_
+              << ", plastic_strain: " << plastic_strain_adapt_pred
+              << ", plastic_strain_rate: " << state_quantities_.curr_equiv_plastic_strain_rate_
+              << std::endl;
+  }
+#endif
 
 
   // return adapted predictor
