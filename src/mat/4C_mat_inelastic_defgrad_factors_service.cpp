@@ -775,28 +775,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    verify_interp_factors_elast_pred(const unsigned int gp)
-{
-  const double num_tolerance = 1.0e-8;
-
-  if (interpolate_eigenvect_rot_)
-  {
-    return (std::abs(all_component_interp_lambda_1_[gp].current_xi_[0]) < num_tolerance) &&
-           (std::abs(all_component_interp_lambda_2_[gp].current_xi_[0]) < num_tolerance) &&
-           (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[0]) < num_tolerance) &&
-           (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[1]) < num_tolerance) &&
-           (std::abs(all_component_interp_rel_eigenvect_rot_[gp].current_xi_[2]) < num_tolerance);
-  }
-  else
-  {
-    return (std::abs(all_component_interp_lambda_1_[gp].current_xi_[0]) < num_tolerance) &&
-           (std::abs(all_component_interp_lambda_2_[gp].current_xi_[0]) < num_tolerance);
-  }
-}
-
-/*--------------------------------------------------------------------*
- *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
     compute_optimal_interp_factors(const unsigned int gp,
         const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
@@ -937,7 +915,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (RMA)", 1, 16);
-  csv_writer_->register_data_vector("Eval. time (LNGI starting point)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (LNGI next timestep)", 1, 16);
   csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total reinterpolations (LNGI)", 1, 16);
@@ -947,7 +925,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
   csv_writer_->register_data_vector("Total time (inelastic defgrad)", 1, 16);
   csv_writer_->register_data_vector("Total time (RMA)", 1, 16);
-  csv_writer_->register_data_vector("Total time (LNGI starting point)", 1, 16);
+  csv_writer_->register_data_vector("Total time (LNGI next timestep)", 1, 16);
   csv_writer_->register_data_vector(
       "Interpolation factor (lambda 1) of GP 0 of Ele 0 (last global iteration)", 1, 16);
   csv_writer_->register_data_vector(
@@ -1019,7 +997,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   timers_.eval_teuchos_timer_rma_.reset();
   timers_.eval_teuchos_timer_lngi_starting_point_next_timestep_.reset();
   time_measurements_.eval_time_rma_ = 0;
-  time_measurements_.eval_time_lngi_starting_point_next_timestep_ = 0;
+  time_measurements_.eval_time_lngi_prepare_next_timestep_ = 0;
   eval_error_map_ = {
       {ErrorType::negative_plastic_strain, 0},
       {ErrorType::overflow_error, 0},
@@ -1072,8 +1050,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   num_iters_and_steps_.total_num_of_alpha_neq_1_last_iter_ +=
       num_iters_and_steps_.eval_num_of_alpha_neq_1_last_iter_;
   time_measurements_.total_time_rma_ += time_measurements_.eval_time_rma_;
-  time_measurements_.total_time_lngi_starting_point_next_timestep_ +=
-      time_measurements_.eval_time_lngi_starting_point_next_timestep_;
+  time_measurements_.total_time_lngi_prepare_next_timestep_ +=
+      time_measurements_.eval_time_lngi_prepare_next_timestep_;
   for (const auto& [error_type, error_count] : eval_error_map_)
   {
     total_error_map_[error_type] += error_count;
@@ -1117,10 +1095,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
       static_cast<double>(num_iters_and_steps_.total_num_of_line_search_)};
   output_data["Eval. time (RMA)"] = {static_cast<double>(time_measurements_.eval_time_rma_)};
   output_data["Total time (RMA)"] = {static_cast<double>(time_measurements_.total_time_rma_)};
-  output_data["Eval. time (LNGI starting point)"] = {
-      static_cast<double>(time_measurements_.eval_time_lngi_starting_point_next_timestep_)};
-  output_data["Total time (LNGI starting point)"] = {
-      static_cast<double>(time_measurements_.total_time_lngi_starting_point_next_timestep_)};
+  output_data["Eval. time (LNGI next timestep)"] = {
+      static_cast<double>(time_measurements_.eval_time_lngi_prepare_next_timestep_)};
+  output_data["Total time (LNGI next timestep)"] = {
+      static_cast<double>(time_measurements_.total_time_lngi_prepare_next_timestep_)};
   /*
   output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
       static_cast<double>(eval_num_of_alpha_neq_1)};
