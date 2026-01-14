@@ -376,13 +376,11 @@ namespace Mat
       //! interpolation space) for the Local Newton Guess Interpolation, for which further
       //! interpolation is not possible / feasible
       [[nodiscard]] double lngi_min_interp_interval() const { return lngi_min_interp_interval_; }
-      //! get minimum difference between current interpolation point and its lower bound  | xi -
-      //! xi_lower | (2-norm in interpolation space) for the Local Newton Guess Reinterpolation,
-      //! upon which xi_lower is set as xi in the reinterpolation routine
-      [[nodiscard]] double lngi_reinterp_min_diff_lbound() const
-      {
-        return lngi_reinterp_min_diff_lbound_;
-      }
+      //! get minimum relative deviation between equivalent stresses related to the current
+      //! interpolation point and its lower bound  | \overline{\xi} -
+      //! \overline{\sigma}(\xi_lower) | / \overline{\sigma}(\xi_lower) for the Local Newton Guess
+      //! Reinterpolation, upon which xi_lower is set as xi in the reinterpolation routine
+      [[nodiscard]] double lngi_reinterp_min_rel_dev() const { return lngi_reinterp_min_rel_dev_; }
       //! get boolean: output relevant data from each microiteration of the Local Newton Guess
       //! Interpolation (and Reinterpolations) to a dedicated csv file?
       [[nodiscard]] bool use_csv_output_lngi_micro_iter()
@@ -556,10 +554,12 @@ namespace Mat
       //! feasible
       const double lngi_min_interp_interval_;
 
-      //! Local Newton Guess Interpolation: minimum difference between current interpolation point
-      //! and its lower bound  | xi - xi_lower | (2-norm in interpolation space), upon which
-      //! xi_lower is set as xi in the reinterpolation routine
-      const double lngi_reinterp_min_diff_lbound_;
+      //! Local Newton Guess Reinterpolation: get minimum relative deviation between equivalent
+      //! stresses related to the current interpolation point and its lower bound  | \overline{\xi}
+      //! -
+      //! \overline{\sigma}(\xi_lower) | / \overline{\sigma}(\xi_lower) upon which xi_lower is set
+      //! as xi in the reinterpolation routine
+      const double lngi_reinterp_min_rel_dev_;
 
       //! Local Newton Guess Interpolation: precondition matrices,
       //! i.e., set components smaller than a set numerical
