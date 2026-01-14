@@ -296,13 +296,11 @@ namespace
       // call pre_evaluate to set the temperature
       lin_temp_iso_->pre_evaluate(params_temp, 0, 0);
 
-
       // create InelasticDefgradTransvIsotropElastViscoplast object initialize container for
       // material parameters
       Core::IO::InputParameterContainer inelastic_defgrad_transv_isotrop_vplast_refJC_data;
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("CHECK_CONSISTENCY_PRED_ADAPT", false);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("CHECK_ELASTIC_PRED", false);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT_TIMER_REL_TOL", 0.001);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "CHECK_LINE_SEARCH_ANGLE_CONDITION", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("FIBER_READER_ID", 5);
@@ -310,12 +308,29 @@ namespace
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "LINE_SEARCH_ANGLE_CONDITION_TOLERANCE", 0.5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_CHECK_CONSISTENCY", false);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_INTERVAL_SCAN_PARAM", 0.5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_MAX_NUM_REINTERP", 10);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_ROT_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
+              trial_elastic_rotation);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PRECONDITION_MATRICES", true);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
+          "LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-3);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT", 0.0);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              LocalNewtonGuessInterpolationStartingPointType::user_set);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_CONV_CHECK",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
-              ResidualOnly);
+              ResidualAndIncrement);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_DIVER_CONT",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
-              ContinueWithSafeGuard);
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::Stop);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_INCR_TOL", 1.0e-8);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_RES_TOL", 1.0e-8);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
@@ -328,34 +343,21 @@ namespace
           Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAT_BEHAVIOR",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior::transv_isotrop);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", 1.0e13);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e13);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_STRETCH_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-              PlasticPredictorStretchAssignType::maintain_elastic_stretch);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_ROT_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-              trial_elastic_rotation);
+          "MAX_PLASTIC_STRAIN_DERIV_INCR", 10686474581524.4628906250000000);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "PRECONDITION_MATRICES_PRED_ADAPT", true);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL", 1.0e-13);
+          "MAX_PLASTIC_STRAIN_INCR", 10686474581524.4628906250000000);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USER_PRED_INTERP_FACT", 0.5);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
-          "USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER", false);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
+          "USE_CSV_OUTPUT_LNGI_MICRO_ITER", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_OPTIMAL_PRED_ADAPT_FACT", false);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_LNGI", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "USE_STEEPEST_DESCENT_UPDATE_CORRECTION", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
@@ -363,8 +365,6 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("YIELD_COND_A", 1.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("YIELD_COND_B", 2.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("YIELD_COND_F", 2.5);
-
-
 
       // get pointer to parameter class
       params_transv_isotrop_vplast_refJC_ =
@@ -376,19 +376,35 @@ namespace
       // analogously for the purely isotropic viscoplastic material
       Core::IO::InputParameterContainer inelastic_defgrad_isotrop_vplast_refJC_data;
       inelastic_defgrad_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("CHECK_CONSISTENCY_PRED_ADAPT", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("CHECK_ELASTIC_PRED", false);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("ANALYZE_TIMINT_TIMER_REL_TOL", 0.001);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("CHECK_LINE_SEARCH_ANGLE_CONDITION", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("FIBER_READER_ID", 5);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LINEARIZATION",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE", 0.5);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_CHECK_CONSISTENCY", false);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_INTERVAL_SCAN_PARAM", 0.5);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_MAX_NUM_REINTERP", 10);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-5);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_ROT_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
+              trial_elastic_rotation);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PRECONDITION_MATRICES", true);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add(
+          "LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-3);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT", 0.0);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              LocalNewtonGuessInterpolationStartingPointType::user_set);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_CONV_CHECK",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
-              ResidualOnly);
+              ResidualAndIncrement);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_DIVER_CONT",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
-              ContinueWithSafeGuard);
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::Stop);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_INCR_TOL", 1.0e-8);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_RES_TOL", 1.0e-8);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
@@ -401,32 +417,20 @@ namespace
           Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAT_BEHAVIOR",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior::isotrop);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_NUM_PRED_ADAPT", 10);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", 1.0e13);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", 1.0e13);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 1);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_STRETCH_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-              PlasticPredictorStretchAssignType::maintain_elastic_stretch);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("PLASTIC_PRED_ROT_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-              trial_elastic_rotation);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("PRECONDITION_MATRICES_PRED_ADAPT", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL", 1.0e-13);
+          "MAX_PLASTIC_STRAIN_DERIV_INCR", 10686474581524.4628906250000000);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add(
+          "MAX_PLASTIC_STRAIN_INCR", 10686474581524.4628906250000000);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("USER_PRED_INTERP_FACT", 0.5);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add(
-          "USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LAST_PRED_ADAPT_FACT", true);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_CSV_OUTPUT_LNGI_MICRO_ITER", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LINE_SEARCH", true);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_OPTIMAL_PRED_ADAPT_FACT", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_LNGI", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "USE_STEEPEST_DESCENT_UPDATE_CORRECTION", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
@@ -475,9 +479,15 @@ namespace
       Core::IO::InputParameterContainer viscoplastic_law_reformulated_Johnson_Cook_data;
       viscoplastic_law_reformulated_Johnson_Cook_data.add("STRAIN_RATE_PREFAC", 1.0);
       viscoplastic_law_reformulated_Johnson_Cook_data.add("STRAIN_RATE_EXP_FAC", 0.1);
-      viscoplastic_law_reformulated_Johnson_Cook_data.add("INIT_YIELD_STRENGTH", 20000.0);
-      viscoplastic_law_reformulated_Johnson_Cook_data.add("ISOTROP_HARDEN_PREFAC", 5000.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("INIT_YIELD_STRENGTH", 2.0e4);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("ISOTROP_HARDEN_PREFAC", 5.0e3);
       viscoplastic_law_reformulated_Johnson_Cook_data.add("ISOTROP_HARDEN_EXP", 0.2);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("REF_TEMPERATURE", 293.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("MELT_TEMPERATURE", 1793.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("TEMPERATURE_SENS", 1.03);
+
+
+
       // add material to problem instance
       problem.materials()->insert(400,
           Mat::make_parameter(400, Core::Materials::MaterialType::mvl_reformulated_Johnson_Cook,
@@ -550,6 +560,7 @@ namespace
       Discret::Elements::Fibers fibers;
       fibers.element_fibers.emplace_back(Core::LinAlg::Tensor<double, 3>{{0.0, 0.0, 1.0}});
 
+
       // define setup parameter for InelasticDefGradTransvIsotropElastViscoplast
 
       Core::IO::InputParameterContainer setup_transv_isotrop_vplast_refJC;
@@ -566,6 +577,7 @@ namespace
       transv_isotrop_vplast_refJC_->setup(8, fibers, {});
       isotrop_vplast_refJC_->setup(8, fibers, {});
       isotrop_vplast_Anand_->setup(8, fibers, {});
+
 
       // parameter list for InelasticDefGradTransvIsotropElastViscoplast
       Teuchos::ParameterList param_list_transv_isotrop_vplast_refJC{};
@@ -607,7 +619,7 @@ namespace
       // curr_Me_dev_sym_M_
       transv.curr_Me_dev_sym_M_(0, 0) = -19470.3479922481; transv.curr_Me_dev_sym_M_(0, 1) = 4697.9637131783; transv.curr_Me_dev_sym_M_(0, 2) = 8854.0883100775;
       transv.curr_Me_dev_sym_M_(1, 0) = 4697.9637131783; transv.curr_Me_dev_sym_M_(1, 1) = -136.8589922481; transv.curr_Me_dev_sym_M_(1, 2) = 6281.4860542636;
-      transv.curr_Me_dev_sym_M_(2, 0) = 8854.0883100775; transv.curr_Me_dev_sym_M_(2, 1) = 6281.4860542636; transv.curr_Me_dev_sym_M_(2, 2) = 19607.2069844961;;
+      transv.curr_Me_dev_sym_M_(2, 0) = 8854.0883100775; transv.curr_Me_dev_sym_M_(2, 1) = 6281.4860542636; transv.curr_Me_dev_sym_M_(2, 2) = 19607.2069844961;
       iso.curr_Me_dev_sym_M_ = transv.curr_Me_dev_sym_M_;
 
       // curr_equiv_stress_
@@ -1271,21 +1283,37 @@ namespace
       // material parameters
       Core::IO::InputParameterContainer inelastic_defgrad_debug_vplast_data;
       inelastic_defgrad_debug_vplast_data.add("ANALYZE_TIMINT", false);
-      inelastic_defgrad_debug_vplast_data.add("CHECK_CONSISTENCY_PRED_ADAPT", false);
-      inelastic_defgrad_debug_vplast_data.add("CHECK_ELASTIC_PRED", false);
+      inelastic_defgrad_debug_vplast_data.add("ANALYZE_TIMINT_TIMER_REL_TOL", 1.0e-03);
       inelastic_defgrad_debug_vplast_data.add("CHECK_LINE_SEARCH_ANGLE_CONDITION", false);
-      inelastic_defgrad_debug_vplast_data.add("FIBER_READER_ID", 6);
+      inelastic_defgrad_debug_vplast_data.add("FIBER_READER_ID", 104);
       inelastic_defgrad_debug_vplast_data.add("LINEARIZATION",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
-      inelastic_defgrad_debug_vplast_data.add("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE", 0.5);
+      inelastic_defgrad_debug_vplast_data.add("LINE_SEARCH_ANGLE_CONDITION_TOLERANCE", 5.0e-01);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_CHECK_CONSISTENCY", false);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_INTERVAL_SCAN_PARAM", 5.0e-01);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_MAX_NUM_REINTERP", 30);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-05);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_PLASTIC_PRED_ROT_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
+              trial_elastic_rotation);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_PRECONDITION_MATRICES", true);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-03);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_STARTING_POINT", 0.0e+00);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_STARTING_POINT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+              LocalNewtonGuessInterpolationStartingPointType::user_set);
       inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_CONV_CHECK",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               ResidualOnly);
       inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_DIVER_CONT",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
               ContinueWithSafeGuard);
-      inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_INCR_TOL", 1.0e-8);
-      inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_RES_TOL", 1.0e-8);
+      inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_INCR_TOL", 1.0e-08);
+      inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_RES_TOL", 1.0e-08);
       inelastic_defgrad_debug_vplast_data.add(
           "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
       inelastic_defgrad_debug_vplast_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
@@ -1296,34 +1324,22 @@ namespace
           Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
       inelastic_defgrad_debug_vplast_data.add("MAT_BEHAVIOR",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior::isotrop);
-      inelastic_defgrad_debug_vplast_data.add("MAX_NUM_PRED_ADAPT", 10);
-      inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-      inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
+      inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", 1.1e+13);
+      inelastic_defgrad_debug_vplast_data.add("MAX_PLASTIC_STRAIN_INCR", 1.1e+13);
       inelastic_defgrad_debug_vplast_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
-      inelastic_defgrad_debug_vplast_data.add("PLASTIC_PRED_STRETCH_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-              PlasticPredictorStretchAssignType::maintain_elastic_stretch);
-      inelastic_defgrad_debug_vplast_data.add("PLASTIC_PRED_ROT_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-              trial_elastic_rotation);
-      inelastic_defgrad_debug_vplast_data.add("PRECONDITION_MATRICES_PRED_ADAPT", true);
-      inelastic_defgrad_debug_vplast_data.add("PRECONDITION_MATRICES_PRED_ADAPT_NUM_TOL", 1.0e-13);
       inelastic_defgrad_debug_vplast_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
-      inelastic_defgrad_debug_vplast_data.add("USER_PRED_INTERP_FACT", 0.25);
       inelastic_defgrad_debug_vplast_data.add("USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER", false);
       inelastic_defgrad_debug_vplast_data.add("USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER", false);
-      inelastic_defgrad_debug_vplast_data.add("USE_CSV_OUTPUT_PRED_ADAPT_MICRO_ITER", false);
-      inelastic_defgrad_debug_vplast_data.add("USE_LAST_PRED_ADAPT_FACT", false);
-      inelastic_defgrad_debug_vplast_data.add("USE_LINE_SEARCH", false);
-      inelastic_defgrad_debug_vplast_data.add("USE_OPTIMAL_PRED_ADAPT_FACT", true);
-      inelastic_defgrad_debug_vplast_data.add("USE_PRED_ADAPT", true);
+      inelastic_defgrad_debug_vplast_data.add("USE_CSV_OUTPUT_LNGI_MICRO_ITER", false);
+      inelastic_defgrad_debug_vplast_data.add("USE_LINE_SEARCH", true);
+      inelastic_defgrad_debug_vplast_data.add("USE_LNGI", true);
       inelastic_defgrad_debug_vplast_data.add("USE_STEEPEST_DESCENT_UPDATE_CORRECTION", false);
       inelastic_defgrad_debug_vplast_data.add("USE_SUBSTEPPING", false);
-      inelastic_defgrad_debug_vplast_data.add("VISCOPLAST_LAW_ID", 4);
-      inelastic_defgrad_debug_vplast_data.add("YIELD_COND_A", 0.0);
-      inelastic_defgrad_debug_vplast_data.add("YIELD_COND_B", 0.0);
-      inelastic_defgrad_debug_vplast_data.add("YIELD_COND_F", 0.0);
+      inelastic_defgrad_debug_vplast_data.add("VISCOPLAST_LAW_ID", 103);
+      inelastic_defgrad_debug_vplast_data.add("YIELD_COND_A", 0.0e+00);
+      inelastic_defgrad_debug_vplast_data.add("YIELD_COND_B", 0.0e+00);
+      inelastic_defgrad_debug_vplast_data.add("YIELD_COND_F", 0.0e+00);
 
 
       // get pointer to parameter class
@@ -1340,8 +1356,8 @@ namespace
           pot_sum_el_transv_iso;  // keep empty
       // we only look at a single CoupNeoHooke component
       Core::IO::InputParameterContainer elast_pot_coup_neo_hooke_data;
-      elast_pot_coup_neo_hooke_data.add("YOUNG", 1.0e3);
-      elast_pot_coup_neo_hooke_data.add("NUE", 0.37);
+      elast_pot_coup_neo_hooke_data.add("YOUNG", 222969.27848761834);
+      elast_pot_coup_neo_hooke_data.add("NUE", 0.2961014090479711);
       problem.materials()->insert(
           20000000, Mat::make_parameter(20000000, Core::Materials::MaterialType::mes_coupneohooke,
                         elast_pot_coup_neo_hooke_data));
@@ -1361,12 +1377,14 @@ namespace
       viscoplastic_law_data.add("FLOW_RES_SAT_EXP", 0.05);
 */
       // ---> Ref. JC params
-
-      viscoplastic_law_data.add("INIT_YIELD_STRENGTH", 50.0);
-      viscoplastic_law_data.add("ISOTROP_HARDEN_EXP", 0.3);
-      viscoplastic_law_data.add("ISOTROP_HARDEN_PREFAC", 10.0);
-      viscoplastic_law_data.add("STRAIN_RATE_EXP_FAC", 0.01);
-      viscoplastic_law_data.add("STRAIN_RATE_PREFAC", 1.0);
+      viscoplastic_law_data.add("INIT_YIELD_STRENGTH", 1271.2625652888241348);
+      viscoplastic_law_data.add("ISOTROP_HARDEN_EXP", 0.1491088517797680);
+      viscoplastic_law_data.add("ISOTROP_HARDEN_PREFAC", 1741.2753764527587919);
+      viscoplastic_law_data.add("MELT_TEMPERATURE", 293.0000000000000000);
+      viscoplastic_law_data.add("REF_TEMPERATURE", 293.0000000000000000);
+      viscoplastic_law_data.add("STRAIN_RATE_EXP_FAC", 0.8039636351482647);
+      viscoplastic_law_data.add("STRAIN_RATE_PREFAC", 0.8033601787720555);
+      viscoplastic_law_data.add("TEMPERATURE_SENS", 1.0000000000000000);
 
       // add material to problem instance
       problem.materials()->insert(40000000,
@@ -1429,8 +1447,8 @@ namespace
 
       // parameter list for InelasticDefGradTransvIsotropElastViscoplast
       Teuchos::ParameterList param_list_debug_vplast{};
-      param_list_debug_vplast.set<double>("delta time", 0.09);
-      param_list_debug_vplast.set<double>("total time", 0.09);
+      param_list_debug_vplast.set<double>("delta time", 4e-5);
+      param_list_debug_vplast.set<double>("total time", 4e-5);
       // call pre_evaluate
       debug_vplast_->pre_evaluate(param_list_debug_vplast, 0, 0);
       debug_vplast_->prepare_non_repeat_tasks(FM_);
@@ -1919,16 +1937,25 @@ namespace
                 plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
                     FullEval);
+
+
+
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
         computed_state_quantities_isotrop = isotrop_vplast_refJC_->evaluate_state_quantities(CM,
             iFin_transv_isotrop_vplast_refJC_solution_,
             plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
             Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
                 FullEval);
+
     if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
     }
+
+    // DEBUG
+    computed_state_quantities_transv_isotrop.curr_Me_dev_sym_M_.print(std::cout);
+    std::cout << computed_state_quantities_transv_isotrop.curr_equiv_stress_ << std::endl;
+
 
 
     // compare the results
@@ -2091,28 +2118,28 @@ namespace
 
 
     Core::LinAlg::Matrix<3, 3> last_defgrad{Core::LinAlg::Initialization::zero};
-    last_defgrad(0, 0) = 1.0188997271172862;
-    last_defgrad(0, 1) = -0.0019963024609515;
-    last_defgrad(0, 2) = 0.0044050855340270;
-    last_defgrad(1, 0) = 0.0033006005946954;
-    last_defgrad(1, 1) = 1.0177564076310004;
-    last_defgrad(1, 2) = -0.0160862911058191;
-    last_defgrad(2, 0) = 0.0002039690951422;
-    last_defgrad(2, 1) = 0.0103407705829123;
-    last_defgrad(2, 2) = 0.9498747207625076;
+    last_defgrad(0, 0) = 1.0000000000000000;
+    last_defgrad(0, 1) = 0.0000000000000000;
+    last_defgrad(0, 2) = 0.0000000000000000;
+    last_defgrad(1, 0) = -0.0000000000000006;
+    last_defgrad(1, 1) = 1.0024940652930083;
+    last_defgrad(1, 2) = 0.0150786920117381;
+    last_defgrad(2, 0) = 0.0000000000000000;
+    last_defgrad(2, 1) = -0.0161386667946677;
+    last_defgrad(2, 2) = 0.9942301473097697;
 
 
 
     Core::LinAlg::Matrix<3, 3> last_rightCG{Core::LinAlg::Initialization::zero};
-    last_rightCG(0, 0) = 1.0381675894873577;
-    last_rightCG(0, 1) = 0.0013272845691937;
-    last_rightCG(0, 2) = 0.0046289911138505;
-    last_rightCG(1, 0) = 0.0013272845691937;
-    last_rightCG(1, 1) = 1.0359390220337232;
-    last_rightCG(1, 2) = -0.0065582831611443;
-    last_rightCG(2, 0) = 0.0046289911138505;
-    last_rightCG(2, 1) = -0.0065582831611443;
-    last_rightCG(2, 2) = 0.9025401586837549;
+    last_rightCG(0, 0) = 1.0000000000000000;
+    last_rightCG(0, 1) = -0.0000000000000006;
+    last_rightCG(0, 2) = 0.0000000000000000;
+    last_rightCG(1, 0) = -0.0000000000000006;
+    last_rightCG(1, 1) = 1.0052548075136116;
+    last_rightCG(1, 2) = -0.0009292498104972;
+    last_rightCG(2, 0) = 0.0000000000000000;
+    last_rightCG(2, 1) = -0.0009292498104972;
+    last_rightCG(2, 2) = 0.9887209527723911;
 
 
 
@@ -2151,15 +2178,15 @@ namespace
     }
     // set other variables needed for evaluation
     Core::LinAlg::Matrix<3, 3> current_defgrad{Core::LinAlg::Initialization::zero};
-    current_defgrad(0, 0) = 1.0191523300888632;
-    current_defgrad(0, 1) = -0.0020227843836328;
-    current_defgrad(0, 2) = 0.0044741350312067;
-    current_defgrad(1, 0) = 0.0033398832997971;
-    current_defgrad(1, 1) = 1.0179825632580985;
-    current_defgrad(1, 2) = -0.0163603030498599;
-    current_defgrad(2, 0) = 0.0002196232581720;
-    current_defgrad(2, 1) = 0.0105712416411775;
-    current_defgrad(2, 2) = 0.9492183758142876;
+    current_defgrad(0, 0) = 1.0000000000000000;
+    current_defgrad(0, 1) = 0.0000000000000000;
+    current_defgrad(0, 2) = 0.0000000000000000;
+    current_defgrad(1, 0) = 0.0000000000000416;
+    current_defgrad(1, 1) = 1.0025765797335844;
+    current_defgrad(1, 2) = 0.0148316277666790;
+    current_defgrad(2, 0) = 0.0000000000000150;
+    current_defgrad(2, 1) = -0.0160366420657601;
+    current_defgrad(2, 2) = 0.9942354162191824;
 
 
 
@@ -2181,8 +2208,8 @@ namespace
 
     // parameter list for InelasticDefGradTransvIsotropElastViscoplast
     Teuchos::ParameterList param_list{};
-    param_list.set<double>("delta time", 0.005);
-    param_list.set<double>("total time", 0.005);
+    param_list.set<double>("delta time", 4e-5);
+    param_list.set<double>("total time", 4e-5);
     // call pre_evaluate
     iso_mat->pre_evaluate(param_list, 0, 0);
     iso_mat->prepare_non_repeat_tasks(FM_);

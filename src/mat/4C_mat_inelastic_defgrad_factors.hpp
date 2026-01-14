@@ -416,9 +416,9 @@ namespace Mat
       [[nodiscard]] bool analyze_timint() const { return analyze_timint_; };
       //! get relative timer tolerance (analyze_timint_ = True) for the return mapping evaluation in
       //! the current timestep
-      [[nodiscard]] double analyze_timint_timer_inelastic_defgrad_rel_tol() const
+      [[nodiscard]] double analyze_timint_timer_rel_tol() const
       {
-        return analyze_timint_timer_inelastic_defgrad_rel_tol_;
+        return analyze_timint_timer_rel_tol_;
       };
       //! get maximum number of times a time step can be halved into smaller and smaller substeps
       [[nodiscard]] unsigned int max_halve_number() const
@@ -603,7 +603,7 @@ namespace Mat
       //! relative timer tolerance (analyze_timint_ = True) for the return mapping evaluation in the
       //! current timestep -> return mapping / determination of inelastic defgrad is repeated until
       //! the computation time changes only within the set relative tolerance
-      const double analyze_timint_timer_inelastic_defgrad_rel_tol_;
+      const double analyze_timint_timer_rel_tol_;
 
       //! maximum number of times the given time step can be halved before reaching the minimum
       //! allowed substep length
@@ -1561,7 +1561,7 @@ namespace Mat
     void pre_evaluate(const Teuchos::ParameterList& params, int gp, int eleGID) override;
 
     /*!
-     * Perform all non-repeatable pre-evaluation tasks, i.e., all
+     * Perform all non-repeatable pre-evaluation tasks for the current timestep, i.e., all
      * tasks which shall not be repeated in case of the redundant
      * evaluate call, see Issue #121 at
      * https://github.com/4C-multiphysics/4C/issues/121. This means that
@@ -1575,6 +1575,13 @@ namespace Mat
      * @param[in] defgrad Deformation gradient \f$ \boldsymbol{F} \f$
      */
     void prepare_non_repeat_tasks(const Core::LinAlg::Matrix<3, 3>& defgrad);
+
+    /*!
+     * Perform preparation tasks for the next timestep associated with the LNGI (Local Newton Guess
+     * Interpolation), e.g., computing optimal interpolation factors, or saving relevant stretch and
+     * rotation components. The method is called during update().
+     */
+    void prepare_lngi_next_timestep();
 
     void update() override;
 
@@ -2062,6 +2069,7 @@ namespace Mat
                 1);  // only track iters, steps, errors, ... for
                      // the first repetition / iteration of the procedure to be benchmarked
 
+
         // reset timer upon reaching minimum number of iterations (warm-up
         // iterations)
         if (num_of_required_iters == warmup_iters)
@@ -2085,6 +2093,7 @@ namespace Mat
 
           // check for convergence based on the relative tolerance
           const double rel_change = std::abs(avg_time - prev_avg_time) / avg_time;
+
 
           // if convergence is reached: stop the timer and break out of the loop
           if (rel_change < relative_tol)
