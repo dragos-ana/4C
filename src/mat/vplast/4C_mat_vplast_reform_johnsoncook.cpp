@@ -96,6 +96,7 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_stress_ratio(
           parameter()->isotrop_harden_prefac() * temperature_ratio_ *
               std::pow(equiv_plastic_strain, parameter()->isotrop_harden_exp()));
 
+
   return equiv_stress / yield_strength;
 }
 
@@ -121,6 +122,8 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
 
   // stress ratio
   double stress_ratio = evaluate_stress_ratio(equiv_stress, equiv_plastic_strain);
+
+
   if (stress_ratio >= 1.0)
   {
     double inv_stress_ratio = 1.0 / stress_ratio;
