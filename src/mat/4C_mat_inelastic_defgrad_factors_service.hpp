@@ -834,11 +834,6 @@ namespace Mat
       void adapt_interpolation_parameters(const unsigned int gp);
 
 
-
-      //! verify whether we are at the elastic predictor based on the
-      //! current interpolation factors
-      bool verify_interp_factors_elast_pred(const unsigned int gp);
-
       /**
        * @brief Compute optimal interpolation factors based on the solution of
        * the Local Newton Loop.
@@ -1126,9 +1121,9 @@ namespace Mat
             "InelasticDefgradTransvIsotropElastViscoplast::Local Newton Guess Interpolation (only "
             "initial interpolation, no reinterpolation)"};
 
-        //! boolean: should the timer for finding a starting point for the Local Newton Guess
+        //! boolean: should the timer for preparing the next timestep for the Local Newton Guess
         //! Interpolation be used?
-        const bool use_teuchos_timer_lngi_starting_point_next_timestep_ = false;
+        const bool use_teuchos_timer_lngi_prepare_next_timestep_ = false;
       };
       Timers timers_;
 
@@ -1142,13 +1137,13 @@ namespace Mat
         //! total time spent in the return mapping over all time steps
         double total_time_rma_;
 
-        //! evaluation time spent for finding a starting point for the Local Newton Guess
-        //! Interpolation in the next timestep
-        double eval_time_lngi_starting_point_next_timestep_;
+        //! evaluation time spent for preparing the next timestep for the Local Newton Guess
+        //! Interpolation
+        double eval_time_lngi_prepare_next_timestep_;
 
-        //! total time spent for finding a starting point for the Local Newton Guess
-        //! Interpolation in the next timestep (over all timesteps)
-        double total_time_lngi_starting_point_next_timestep_;
+        //! total time spent for preparing the next timestep for the Local Newton Guess
+        //! Interpolation (over all timesteps)
+        double total_time_lngi_prepare_next_timestep_;
       };
       TimeMeasurements time_measurements_;
 
@@ -1688,7 +1683,7 @@ namespace Mat
 
     // #define DEBUG_MODE ;
     // #define DEBUG_PRED_ADAPT ;
-    //  #define DEBUG_LNL ;
+    // #define DEBUG_LNL ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
