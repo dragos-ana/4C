@@ -907,8 +907,7 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       lngi_interval_scan_param_(matdata.parameters.get<double>("LNGI_INTERVAL_SCAN_PARAM")),
       lngi_max_num_reinterp_(matdata.parameters.get<int>("LNGI_MAX_NUM_REINTERP")),
       lngi_min_interp_interval_(matdata.parameters.get<double>("LNGI_MIN_INTERP_INTERVAL")),
-      lngi_reinterp_min_diff_lbound_(
-          matdata.parameters.get<double>("LNGI_REINTERP_MIN_DIFF_LBOUND")),
+      lngi_reinterp_min_rel_dev_(matdata.parameters.get<double>("LNGI_REINTERP_MIN_REL_DEV")),
       lngi_precondition_matrices_(matdata.parameters.get<bool>("LNGI_PRECONDITION_MATRICES")),
       lngi_precondition_matrices_num_tol_(
           matdata.parameters.get<double>("LNGI_PRECONDITION_MATRICES_NUM_TOL")),
@@ -3387,9 +3386,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
     }
     else
     {
-      // DEBUG
-      std::cout << "Start return mapping" << std::endl;
-
       iFinM = return_mapping(FredM);
     }
   }
@@ -5538,11 +5534,17 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     return ErrorAction::next_iteration;
   }
 
-  // ERROR MANAGEMENT STRATEGY 2: reset predictor of the solution
+  // ERROR MANAGEMENT STRATEGY 2: reset initial guess
   if (parameter()->use_lngi())
   {
     // increment number of Local Newton Guess Interpolations / Reinterpolations
     ++lnl_guess_interpolation_.num_of_lngi_;
+    // general local time integration analysis: increment number of
+    // reinterpolations
+    if (parameter()->analyze_timint() && general_local_timint_analysis_utils.increment_vars_)
+      ++general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_lngi_reinterp_;
+
+
     // check whether Local Newton Guess Interpolation still possible
     if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, 0))
     {
@@ -5550,18 +5552,13 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
       return ErrorAction::return_solution_with_errors;
     }
 
-    // general local time integration analysis: increment number of
-    // reinterpolations
-    if (parameter()->analyze_timint() && general_local_timint_analysis_utils.increment_vars_)
-      ++general_local_timint_analysis_utils.num_iters_and_steps_.eval_num_of_lngi_reinterp_;
-
-
 
     // CHECK: Halve interval towards the elastic predictor, and check if this is
     // a possible initial guess
     // IF YES: accept as updated initial guess
-    // IF NOT OR IF CURRENT INTERPOLATION FACTOR TOO NEAR TO LOWER BOUND \f$ \| \xi -
-    // \xi_\text{l}
+    // IF NOT OR IF CURRENT INTERPOLATION FACTOR TOO NEAR TO LOWER BOUND \f$ \|
+    // \overline{\sigma}(\xi) -
+    // \overline{\sigma}(\xi_\text{l})
     // \| < \text{tol} \f$: set current interpolation factor as lower bound, and
     // reinterpolate initial guess with adapted bounds
 
@@ -5576,79 +5573,112 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
         LocalNewtonGuessInterpolation::add_interpolation_points(
             0.5, interp_point_lbound, 0.5, curr_interp_point);
 
-
-    // get difference with respect to the lower bound
-    const double next_min_lbound = LocalNewtonGuessInterpolation::get_diff_interp_points(
-        next_interp_point, interp_point_lbound);
-
-
     // initialize boolean: is next interpolation point suitable as an initial
     // guess
     bool is_init_guess = true;
-    // check if it is too near to the lower bound, and if not, then properly
-    // evaluate as initial guess
-    if (next_min_lbound < parameter()->lngi_reinterp_min_diff_lbound())
+
+
+    // get deformation gradient and its inverse based on the saved values
+    Core::LinAlg::Matrix<3, 3> defgrad{time_step_quantities_.current_defgrad_[gp_]};
+    Core::LinAlg::Matrix<3, 3> inv_defgrad{Core::LinAlg::Initialization::zero};
+    inv_defgrad.invert(defgrad);
+
+
+    // compute inverse inelastic deformation gradients associated with the current lower bound and
+    // with the interpolation point to be evaluated next
+    Core::LinAlg::Matrix<3, 3> next_iFin = lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(
+        gp_, defgrad, next_interp_point, inv_defgrad);
+    Core::LinAlg::Matrix<3, 3> lbound_iFin =
+        lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(
+            gp_, defgrad, interp_point_lbound, inv_defgrad);
+
+
+    // compute equivalent stresses associated with the lower bound and with the interpolation point
+    // to be evaluated next
+    // interpolate inverse plastic deformation gradient
+    ErrorType next_equiv_stress_eval_err_status = ErrorType::no_errors;
+    StateQuantities state_quantities_next =
+        evaluate_state_quantities(curr_CM, next_iFin, 0.0, next_equiv_stress_eval_err_status,
+            time_step_tracker_.dt_, StateQuantityEvalType::EquivStressOnly);
+    ErrorType lbound_equiv_stress_eval_err_status = ErrorType::no_errors;
+    StateQuantities state_quantities_lbound =
+        evaluate_state_quantities(curr_CM, lbound_iFin, 0.0, lbound_equiv_stress_eval_err_status,
+            time_step_tracker_.dt_, StateQuantityEvalType::EquivStressOnly);
+
+
+    // decide whether this is a candidate for an initial guess based on the evaluability of the
+    // equivalent stresses
+    if (next_equiv_stress_eval_err_status == ErrorType::no_errors &&
+        lbound_equiv_stress_eval_err_status == ErrorType::no_errors)
     {
+      // both evaluable -> compute relative deviation between the stresses to decide whether the
+      // next point should be evaluated next as a candidate for an initial guess (relative deviation
+      // must be higher than a specified value)
+      const double rel_deviation = std::abs(state_quantities_next.curr_equiv_stress_ -
+                                            state_quantities_lbound.curr_equiv_stress_) /
+                                   state_quantities_lbound.curr_equiv_stress_;
+
+      is_init_guess = (rel_deviation > parameter()->lngi_reinterp_min_rel_dev());
+    }
+    else if (next_equiv_stress_eval_err_status == ErrorType::no_errors &&
+             lbound_equiv_stress_eval_err_status != ErrorType::no_errors)
+    {
+      // next point is evaluable, but the lower bound is not -> candidate for an initial guess
+      is_init_guess = true;
+    }
+    else if (next_equiv_stress_eval_err_status != ErrorType::no_errors &&
+             lbound_equiv_stress_eval_err_status != ErrorType::no_errors)
+    {
+      // neither the next point nor the lower bound are evaluable -> not a candidate for an initial
+      // guess
       is_init_guess = false;
     }
     else
     {
-      // get deformation gradient and its inverse based on the saved values
-      Core::LinAlg::Matrix<3, 3> defgrad{time_step_quantities_.current_defgrad_[gp_]};
-      Core::LinAlg::Matrix<3, 3> inv_defgrad{Core::LinAlg::Initialization::zero};
-      inv_defgrad.invert(defgrad);
+      FOUR_C_THROW(
+          "This does not make sense! The equivalent stress of the lower interpolation bound is "
+          "evaluable but the point to be evaluated next is not!");
+    }
 
-      // interpolate inverse plastic deformation gradient
-      Core::LinAlg::Matrix<3, 3> next_iFin =
-          lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(
-              gp_, defgrad, next_interp_point, inv_defgrad);
+    // --> now check whether the next point fully qualifies as an initial guess
+    if (is_init_guess)
+    {
+      ErrorType next_full_eval_err_status =
+          InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
-      // verify combination of next plastic defgrad + last plastic strain as
-      // initial guess (used to compute the stress necessary for
-      // integrating the plastic strain, and also preliminarily checks
-      // fitness of interpolation point as initial guess)
-      ErrorType next_guess_err{
-          InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors};
-      is_valid_local_newton_initial_guess(defgrad, inv_defgrad, curr_CM, next_iFin,
-          time_step_quantities_.last_plastic_strain_[gp_], next_guess_err, state_quantities_,
-          state_quantity_derivatives_);
+      // integrate plastic strain related to the next point
+      const double next_plastic_strain = integrate_plastic_strain(
+          state_quantities_next.curr_equiv_stress_, time_step_quantities_.last_plastic_strain_[gp_],
+          time_step_tracker_.dt_, next_full_eval_err_status);
 
-      // integrate plastic strain
-      if (next_guess_err == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+      if (next_full_eval_err_status ==
+          InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
       {
-        const double next_plastic_strain = integrate_plastic_strain(
-            state_quantities_.curr_equiv_stress_, time_step_quantities_.last_plastic_strain_[gp_],
-            time_step_tracker_.dt_, next_guess_err);
+        // evaluate as initial guess with integrated plastic strain
+        is_valid_local_newton_initial_guess(defgrad, inv_defgrad, curr_CM, next_iFin,
+            next_plastic_strain, next_full_eval_err_status, state_quantities_,
+            state_quantity_derivatives_);
 
-        if (next_guess_err ==
+        // update initial guess if it is valid
+        if (next_full_eval_err_status ==
             InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
         {
-          // reevaluate as initial guess with updated plastic strain
-          is_valid_local_newton_initial_guess(defgrad, inv_defgrad, curr_CM, next_iFin,
-              next_plastic_strain, next_guess_err, state_quantities_, state_quantity_derivatives_);
+          lnl_guess_interpolation_.set_curr_interp_point(gp_, next_interp_point);
 
-          // update initial guess if it is valid
-          if (next_guess_err ==
-              InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
-          {
-            lnl_guess_interpolation_.set_curr_interp_point(gp_, next_interp_point);
-
-            sol = wrap_unknowns(next_iFin, next_plastic_strain);
-          }
+          sol = wrap_unknowns(next_iFin, next_plastic_strain);
         }
       }
 
-      // if this was not an initial valid guess: set dedicated boolean
-      is_init_guess = (next_guess_err ==
+      // if the next point is not suitable as an initial guess -> set dedicated boolean
+      is_init_guess = (next_full_eval_err_status ==
                        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors);
     }
-
 
     // if the next interpolation point is an initial guess: update sol (already
     // done, see above!);
     // otherwise: set as lower
-    // bound, adapt interpolation interval and parameters --> and finally, adapt the
-    // initial guess
+    // bound, adapt interpolation interval and parameters --> and finally, reinterpolate
+    // initial guess with updated interval bounds
     if (!is_init_guess)
     {
       // set lower bound

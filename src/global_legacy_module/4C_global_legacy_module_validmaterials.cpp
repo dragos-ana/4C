@@ -2826,12 +2826,12 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "interpolation points in interpolation space) for which further "
                                 "interpolation is not possible / feasible",
                     .default_value = 1.0e-5}),
-            parameter<double>("LNGI_REINTERP_MIN_DIFF_LBOUND",
+            parameter<double>("LNGI_REINTERP_MIN_REL_DEV",
                 {.description =
-                        "Local Newton Guess Interpolation: minimum difference between current "
-                        "interpolation point xi  and its lower "
-                        "bound xi_lower as | xi - xi_lower | (2-norm of interpolation points in "
-                        "interpolation space), "
+                        "Local Newton Guess Interpolation: minimum relative deviation between the "
+                        "equivalent stress with respect to the lower "
+                        "bound xi_lower: as | \\overline{\\sigma}(xi) - "
+                        "\\overline{\\sigma}(xi_lower)| / \\overline{\\sigma}(xi_lower) "
                         "upon which xi_lower is set as xi in the reinterpolation routine",
                     .default_value = 1.0e-2}),
             parameter<bool>("LNGI_PRECONDITION_MATRICES",
