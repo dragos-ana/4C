@@ -73,7 +73,7 @@ namespace
     double plastic_strain_rate_reformulated_JC_solution_;
     // reference solution for the plastic strain rate derivatives, w.r.t. equivalent stress and
     // plastic strain (ReformulatedJohnsonCook)
-    Core::LinAlg::Matrix<2, 1> deriv_plastic_strain_rate_reformulated_JC_solution_;
+    Core::LinAlg::Matrix<3, 1> deriv_plastic_strain_rate_reformulated_JC_solution_;
     // pointer to ReformulatedJohnsonCook
     std::shared_ptr<Mat::Viscoplastic::ReformulatedJohnsonCook> vplast_law_reformulated_JC_;
     // pointer to parameters of ReformulatedJohnsonCook
@@ -131,7 +131,7 @@ namespace
         Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute solution from the viscoplasticity law
-    Core::LinAlg::Matrix<2, 1> deriv_plastic_strain_rate_reformulated_JC =
+    Core::LinAlg::Matrix<3, 1> deriv_plastic_strain_rate_reformulated_JC =
         vplast_law_reformulated_JC_->evaluate_derivatives_of_plastic_strain_rate(
             equiv_stress_, equiv_plastic_strain_, 1.0, 1.0e30, err_status, false);
 
