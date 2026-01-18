@@ -2109,6 +2109,10 @@ namespace Mat
       // set control variable to true, since we exit the benchmarking procedure
       increment_timint_analysis_vars = true;
 
+      // DEBUG
+      std::cout << "Benchmark " << func_descr << ": avg_time = " << avg_time << " after "
+                << num_of_required_iters << " iters!" << std::endl;
+
       // return average time
       return avg_time;
     }

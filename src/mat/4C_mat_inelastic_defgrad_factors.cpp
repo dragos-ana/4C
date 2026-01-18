@@ -3062,7 +3062,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   dNpdMe_sym_dev = Core::LinAlg::Voigt::modify_voigt_representation(temp6x6, 1.0, 2.0);
 
   // compute the relevant derivatives of the plastic strain rate
-  Core::LinAlg::Matrix<2, 1> evoEqFunctionDers =
+  Core::LinAlg::Matrix<3, 1> evoEqFunctionDers =
       viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(equiv_stress, plastic_strain,
           dt, parameter()->max_plastic_strain_deriv_incr(), err_status);
 
@@ -5139,7 +5139,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
             lngi_step_counter - 1);
       }
 
-
       // adapt interpolation interval
       lnl_guess_interpolation_.adapt_interpolation_intervals(gp_, err_status);
 
@@ -5525,7 +5524,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
     ErrorType& err_status)
 {
   // auxiliaries
-  Core::LinAlg::Matrix<2, 1> temp2x1{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 1> temp3x1{Core::LinAlg::Initialization::zero};
 
   // set predictor
   double plastic_strain = last_plastic_strain;
@@ -5572,9 +5571,9 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
 
     // compute derivative of the plastic strain rate w.r.t. plastic
     // strain
-    temp2x1 = viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(
+    temp3x1 = viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(
         equiv_stress, plastic_strain, dt, parameter()->max_plastic_strain_deriv_incr(), err_status);
-    deriv_plastic_strain_rate = temp2x1(1);
+    deriv_plastic_strain_rate = temp3x1(1);
 
     // throw error
     if (err_status != ErrorType::no_errors) return -1;
