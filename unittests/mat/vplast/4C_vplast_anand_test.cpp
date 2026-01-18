@@ -75,7 +75,7 @@ namespace
     double plastic_strain_rate_Anand_solution_;
     // reference solution for the plastic strain rate derivatives, w.r.t. equivalent stress and
     // plastic strain (Anand)
-    Core::LinAlg::Matrix<2, 1> deriv_plastic_strain_rate_Anand_solution_;
+    Core::LinAlg::Matrix<3, 1> deriv_plastic_strain_rate_Anand_solution_;
     // pointer to Anand
     std::shared_ptr<Mat::Viscoplastic::Anand> vplast_law_Anand_;
     // pointer to parameters of Anand
@@ -136,9 +136,8 @@ namespace
       FOUR_C_THROW("Error encountered during testing of TestEvaluatePlasticStrainRate");
 
 
-
     // compute solution from the viscoplasticity law
-    Core::LinAlg::Matrix<2, 1> deriv_plastic_strain_rate_Anand =
+    Core::LinAlg::Matrix<3, 1> deriv_plastic_strain_rate_Anand =
         vplast_law_Anand_->evaluate_derivatives_of_plastic_strain_rate(
             equiv_stress_, equiv_plastic_strain_, 1.0, 1.0e30, err_status, false);
 
