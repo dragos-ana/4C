@@ -8,6 +8,7 @@
 #include "4C_mat_elast_coupneohooke.hpp"
 
 #include "4C_material_parameter_base.hpp"
+#include "4C_utils_exceptions.hpp"
 
 #include <limits>
 

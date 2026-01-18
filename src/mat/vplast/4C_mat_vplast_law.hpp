@@ -134,17 +134,18 @@ namespace Mat
        * @param[in] equiv_plastic_strain Equivalent plastic strain \f$ \varepsilon^{\text{p}}\f$
        * @param[in] dt Time step size (used solely for overflow error checking, see @note of
        * evaluate_plastic_strain_rate)
-       * @param[in] max_plastic_strain_deriv_incre maximum,
+       * @param[in] max_plastic_strain_deriv_incr maximum,
        * numerically evaluable increment of the
        * plastic strain derivatives (before throwing an overflow error),
        * i.e. \f$ \Delta t \frac{\partial
        * \dot{\varepsilon}^{\text{p}}}{\partial s},~s \in
        * \left\{\varepsilon^{\text{p}}, \overline{\sigma}\right\} \f$
-       * @param[out] err_status output variable: error of the terms considered in @note?
+       * @param[out] err_status output variable: evaluation error?
        * @return Derivatives of the equivalent plastic strain rate w.r.t. the equivalent stress
-       *         (element 0 of matrix) and the plastic strain (element 1 of matrix)
+       *         (element 0 of matrix), the plastic strain (element 1 of matrix), the emperature
+       * (element 2 of matrix)
        */
-      virtual Core::LinAlg::Matrix<2, 1> evaluate_derivatives_of_plastic_strain_rate(
+      virtual Core::LinAlg::Matrix<3, 1> evaluate_derivatives_of_plastic_strain_rate(
           const double equiv_stress, const double equiv_plastic_strain, const double dt,
           const double max_plastic_strain_deriv_incr,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,

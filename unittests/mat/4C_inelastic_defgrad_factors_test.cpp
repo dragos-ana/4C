@@ -48,47 +48,47 @@ namespace
     void SetUp() override
     {
       // clang-format off
-      // set up the deformation gradient
-      FM_(0, 0) = 1.1;  FM_(0, 1) = 0.01; FM_(0, 2) = 0.03;
-      FM_(1, 0) = 0.04; FM_(1, 1) = 1.2;  FM_(1, 2) = 0.02;
-      FM_(2, 0) = 0.06; FM_(2, 1) = 0.05; FM_(2, 2) = 1.3;
+  // set up the deformation gradient
+  FM_(0, 0) = 1.1;  FM_(0, 1) = 0.01; FM_(0, 2) = 0.03;
+  FM_(1, 0) = 0.04; FM_(1, 1) = 1.2;  FM_(1, 2) = 0.02;
+  FM_(2, 0) = 0.06; FM_(2, 1) = 0.05; FM_(2, 2) = 1.3;
 
-      // set up the derivative of the second Piola-Kirchhoff stress tensor
-      dSdiFin_(0, 0) =  9.83e+03; dSdiFin_(0, 1) =  2.15e+03; dSdiFin_(0, 2) =  2.14e+03; dSdiFin_(0, 3) = -5.49e+00; dSdiFin_(0, 4) =  6.38e-01; dSdiFin_(0, 5) = -3.29e+00; dSdiFin_(0, 6) =  2.13e+00; dSdiFin_(0, 7) =  6.38e-01; dSdiFin_(0, 8) =  1.28e+00;
-      dSdiFin_(1, 0) =  1.80e+03; dSdiFin_(1, 1) =  9.49e+03; dSdiFin_(1, 2) =  1.80e+03; dSdiFin_(1, 3) =  1.79e+00; dSdiFin_(1, 4) = -1.75e+00; dSdiFin_(1, 5) =  1.07e+00; dSdiFin_(1, 6) = -5.83e+00; dSdiFin_(1, 7) =  5.36e-01; dSdiFin_(1, 8) =  1.07e+00;
-      dSdiFin_(2, 0) =  1.55e+03; dSdiFin_(2, 1) =  1.54e+03; dSdiFin_(2, 2) =  9.23e+03; dSdiFin_(2, 3) =  1.53e+00; dSdiFin_(2, 4) =  4.59e-01; dSdiFin_(2, 5) =  9.18e-01; dSdiFin_(2, 6) =  1.53e+00; dSdiFin_(2, 7) = -1.82e+00; dSdiFin_(2, 8) = -3.65e+00;
-      dSdiFin_(3, 0) = -8.76e+01; dSdiFin_(3, 1) = -8.75e+01; dSdiFin_(3, 2) = -8.37e+01; dSdiFin_(3, 3) =  3.84e+03; dSdiFin_(3, 4) = -2.31e+00; dSdiFin_(3, 5) = -1.19e+00; dSdiFin_(3, 6) =  3.84e+03; dSdiFin_(3, 7) = -2.49e-02; dSdiFin_(3, 8) = -4.98e-02;
-      dSdiFin_(4, 0) = -8.97e+01; dSdiFin_(4, 1) = -9.08e+01; dSdiFin_(4, 2) = -9.07e+01; dSdiFin_(4, 3) = -8.89e-02; dSdiFin_(4, 4) =  3.85e+03; dSdiFin_(4, 5) = -5.33e-02; dSdiFin_(4, 6) = -2.37e+00; dSdiFin_(4, 7) =  3.84e+03; dSdiFin_(4, 8) = -3.86e+00;
-      dSdiFin_(5, 0) = -1.40e+02; dSdiFin_(5, 1) = -1.37e+02; dSdiFin_(5, 2) = -1.40e+02; dSdiFin_(5, 3) = -1.28e+00; dSdiFin_(5, 4) = -4.09e-02; dSdiFin_(5, 5) =  3.85e+03; dSdiFin_(5, 6) = -1.36e-01; dSdiFin_(5, 7) = -3.85e+00; dSdiFin_(5, 8) =  3.84e+03;
+  // set up the derivative of the second Piola-Kirchhoff stress tensor
+  dSdiFin_(0, 0) =  9.83e+03; dSdiFin_(0, 1) =  2.15e+03; dSdiFin_(0, 2) =  2.14e+03; dSdiFin_(0, 3) = -5.49e+00; dSdiFin_(0, 4) =  6.38e-01; dSdiFin_(0, 5) = -3.29e+00; dSdiFin_(0, 6) =  2.13e+00; dSdiFin_(0, 7) =  6.38e-01; dSdiFin_(0, 8) =  1.28e+00;
+  dSdiFin_(1, 0) =  1.80e+03; dSdiFin_(1, 1) =  9.49e+03; dSdiFin_(1, 2) =  1.80e+03; dSdiFin_(1, 3) =  1.79e+00; dSdiFin_(1, 4) = -1.75e+00; dSdiFin_(1, 5) =  1.07e+00; dSdiFin_(1, 6) = -5.83e+00; dSdiFin_(1, 7) =  5.36e-01; dSdiFin_(1, 8) =  1.07e+00;
+  dSdiFin_(2, 0) =  1.55e+03; dSdiFin_(2, 1) =  1.54e+03; dSdiFin_(2, 2) =  9.23e+03; dSdiFin_(2, 3) =  1.53e+00; dSdiFin_(2, 4) =  4.59e-01; dSdiFin_(2, 5) =  9.18e-01; dSdiFin_(2, 6) =  1.53e+00; dSdiFin_(2, 7) = -1.82e+00; dSdiFin_(2, 8) = -3.65e+00;
+  dSdiFin_(3, 0) = -8.76e+01; dSdiFin_(3, 1) = -8.75e+01; dSdiFin_(3, 2) = -8.37e+01; dSdiFin_(3, 3) =  3.84e+03; dSdiFin_(3, 4) = -2.31e+00; dSdiFin_(3, 5) = -1.19e+00; dSdiFin_(3, 6) =  3.84e+03; dSdiFin_(3, 7) = -2.49e-02; dSdiFin_(3, 8) = -4.98e-02;
+  dSdiFin_(4, 0) = -8.97e+01; dSdiFin_(4, 1) = -9.08e+01; dSdiFin_(4, 2) = -9.07e+01; dSdiFin_(4, 3) = -8.89e-02; dSdiFin_(4, 4) =  3.85e+03; dSdiFin_(4, 5) = -5.33e-02; dSdiFin_(4, 6) = -2.37e+00; dSdiFin_(4, 7) =  3.84e+03; dSdiFin_(4, 8) = -3.86e+00;
+  dSdiFin_(5, 0) = -1.40e+02; dSdiFin_(5, 1) = -1.37e+02; dSdiFin_(5, 2) = -1.40e+02; dSdiFin_(5, 3) = -1.28e+00; dSdiFin_(5, 4) = -4.09e-02; dSdiFin_(5, 5) =  3.85e+03; dSdiFin_(5, 6) = -1.36e-01; dSdiFin_(5, 7) = -3.85e+00; dSdiFin_(5, 8) =  3.84e+03;
 
-      // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradLinScalarIso
-      iFin_lin_scalar_iso_solution_.clear();
-      iFin_lin_scalar_iso_solution_(0, 0) = iFin_lin_scalar_iso_solution_(1, 1) = iFin_lin_scalar_iso_solution_(2, 2) = 0.9948803003804159;
+  // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradLinScalarIso
+  iFin_lin_scalar_iso_solution_.clear();
+  iFin_lin_scalar_iso_solution_(0, 0) = iFin_lin_scalar_iso_solution_(1, 1) = iFin_lin_scalar_iso_solution_(2, 2) = 0.9948803003804159;
 
-      // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradLinScalarAniso
-      iFin_lin_scalar_aniso_solution_(0, 0) =  0.9885965678505413; iFin_lin_scalar_aniso_solution_(0, 1) = -0.0057017160747293; iFin_lin_scalar_aniso_solution_(0, 2) = -0.0034210296448376;
-      iFin_lin_scalar_aniso_solution_(1, 0) = -0.0057017160747293; iFin_lin_scalar_aniso_solution_(1, 1) =  0.9971491419626352; iFin_lin_scalar_aniso_solution_(1, 2) = -0.0017105148224188;
-      iFin_lin_scalar_aniso_solution_(2, 0) = -0.0034210296448376; iFin_lin_scalar_aniso_solution_(2, 1) = -0.0017105148224188; iFin_lin_scalar_aniso_solution_(2, 2) =  0.9989736911065487;
+  // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradLinScalarAniso
+  iFin_lin_scalar_aniso_solution_(0, 0) =  0.9885965678505413; iFin_lin_scalar_aniso_solution_(0, 1) = -0.0057017160747293; iFin_lin_scalar_aniso_solution_(0, 2) = -0.0034210296448376;
+  iFin_lin_scalar_aniso_solution_(1, 0) = -0.0057017160747293; iFin_lin_scalar_aniso_solution_(1, 1) =  0.9971491419626352; iFin_lin_scalar_aniso_solution_(1, 2) = -0.0017105148224188;
+  iFin_lin_scalar_aniso_solution_(2, 0) = -0.0034210296448376; iFin_lin_scalar_aniso_solution_(2, 1) = -0.0017105148224188; iFin_lin_scalar_aniso_solution_(2, 2) =  0.9989736911065487;
 
-      // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradPolyIntercalFracIso
-      iFin_poly_intercal_frac_iso_solution_.clear();
-      iFin_poly_intercal_frac_iso_solution_(0, 0) = iFin_poly_intercal_frac_iso_solution_(1, 1) = iFin_poly_intercal_frac_iso_solution_(2, 2) = 0.9991151119224016;
+  // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradPolyIntercalFracIso
+  iFin_poly_intercal_frac_iso_solution_.clear();
+  iFin_poly_intercal_frac_iso_solution_(0, 0) = iFin_poly_intercal_frac_iso_solution_(1, 1) = iFin_poly_intercal_frac_iso_solution_(2, 2) = 0.9991151119224016;
 
-      // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradPolyIntercalFracAniso
-      iFin_poly_intercal_frac_aniso_solution_(0, 0) =  0.9980206598171963; iFin_poly_intercal_frac_aniso_solution_(0, 1) = -0.0009896700914018; iFin_poly_intercal_frac_aniso_solution_(0, 2) = -0.0005938020548410;
-      iFin_poly_intercal_frac_aniso_solution_(1, 0) = -0.0009896700914018; iFin_poly_intercal_frac_aniso_solution_(1, 1) =  0.9995051649542991; iFin_poly_intercal_frac_aniso_solution_(1, 2) = -0.0002969010274205;
-      iFin_poly_intercal_frac_aniso_solution_(2, 0) = -0.0005938020548410; iFin_poly_intercal_frac_aniso_solution_(2, 1) = -0.0002969010274205; iFin_poly_intercal_frac_aniso_solution_(2, 2) =  0.9998218593835476;
+  // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradPolyIntercalFracAniso
+  iFin_poly_intercal_frac_aniso_solution_(0, 0) =  0.9980206598171963; iFin_poly_intercal_frac_aniso_solution_(0, 1) = -0.0009896700914018; iFin_poly_intercal_frac_aniso_solution_(0, 2) = -0.0005938020548410;
+  iFin_poly_intercal_frac_aniso_solution_(1, 0) = -0.0009896700914018; iFin_poly_intercal_frac_aniso_solution_(1, 1) =  0.9995051649542991; iFin_poly_intercal_frac_aniso_solution_(1, 2) = -0.0002969010274205;
+  iFin_poly_intercal_frac_aniso_solution_(2, 0) = -0.0005938020548410; iFin_poly_intercal_frac_aniso_solution_(2, 1) = -0.0002969010274205; iFin_poly_intercal_frac_aniso_solution_(2, 2) =  0.9998218593835476;
 
-      // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradLinTemIso
-      iFin_lin_temp_iso_solution_.clear();
-      iFin_lin_temp_iso_solution_(0, 0) = iFin_lin_temp_iso_solution_(1, 1) = iFin_lin_temp_iso_solution_(2, 2) = 1.006073023359708;
+  // set up reference solution of inverse inelastic deformation gradient of InelasticDefgradLinTemIso
+  iFin_lin_temp_iso_solution_.clear();
+  iFin_lin_temp_iso_solution_(0, 0) = iFin_lin_temp_iso_solution_(1, 1) = iFin_lin_temp_iso_solution_(2, 2) = 1.006073023359708;
 
-      // set up reference solution of inverse inelastic deformation gradient and plastic strain of InelasticDefgradTransvIsotropElastViscoplast
-      iFin_transv_isotrop_vplast_refJC_solution_.clear();
-      iFin_transv_isotrop_vplast_refJC_solution_(0,0)= 0.988; iFin_transv_isotrop_vplast_refJC_solution_(0, 1) = 0.006; iFin_transv_isotrop_vplast_refJC_solution_(0, 2) = 0.008;
-      iFin_transv_isotrop_vplast_refJC_solution_(1,0)= -0.005; iFin_transv_isotrop_vplast_refJC_solution_(1, 1) = 0.997; iFin_transv_isotrop_vplast_refJC_solution_(1, 2) = -0.004;
-      iFin_transv_isotrop_vplast_refJC_solution_(2,0)= -0.003; iFin_transv_isotrop_vplast_refJC_solution_(2, 1) = -0.002; iFin_transv_isotrop_vplast_refJC_solution_(2, 2) = 0.999;
-      plastic_strain_transv_isotrop_vplast_refJC_solution_ = 1.1;
+  // set up reference solution of inverse inelastic deformation gradient and plastic strain of InelasticDefgradTransvIsotropElastViscoplast
+  iFin_transv_isotrop_vplast_refJC_solution_.clear();
+  iFin_transv_isotrop_vplast_refJC_solution_(0,0)= 0.988; iFin_transv_isotrop_vplast_refJC_solution_(0, 1) = 0.006; iFin_transv_isotrop_vplast_refJC_solution_(0, 2) = 0.008;
+  iFin_transv_isotrop_vplast_refJC_solution_(1,0)= -0.005; iFin_transv_isotrop_vplast_refJC_solution_(1, 1) = 0.997; iFin_transv_isotrop_vplast_refJC_solution_(1, 2) = -0.004;
+  iFin_transv_isotrop_vplast_refJC_solution_(2,0)= -0.003; iFin_transv_isotrop_vplast_refJC_solution_(2, 1) = -0.002; iFin_transv_isotrop_vplast_refJC_solution_(2, 2) = 0.999;
+  plastic_strain_transv_isotrop_vplast_refJC_solution_ = 1.1;
 
 
       // clang-format on
@@ -552,18 +552,28 @@ namespace
                                          // class after the SetUp method ends
       Mat::Elastic::CoupTransverselyIsotropic fiber_reader_{params_fiber_reader_.get()};
 
+
+      // set thermal values
+      const double ref_temperature = 293.0;
+      const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type =
+          FourC::Mat::ThermalExpansionMaterialType::isotropic;
+      const double thermal_expansion_fac = 0.1;
+
       // finally construct the InelasticDefgradTransvIsotropElastViscoplast objects
       transv_isotrop_vplast_refJC_ =
           std::make_shared<Mat::InelasticDefgradTransvIsotropElastViscoplast>(
               params_transv_isotrop_vplast_refJC_.get(), viscoplastic_law_reformulated_Johnson_Cook,
-              fiber_reader_, pot_sum_el, pot_sum_el_transv_iso);
+              fiber_reader_, pot_sum_el, pot_sum_el_transv_iso, ref_temperature,
+              thermal_expansion_mat_type, thermal_expansion_fac);
 
       isotrop_vplast_refJC_ = std::make_shared<Mat::InelasticDefgradTransvIsotropElastViscoplast>(
           params_isotrop_vplast_refJC_.get(), viscoplastic_law_reformulated_Johnson_Cook,
-          fiber_reader_, pot_sum_el, pot_sum_el_transv_iso);
+          fiber_reader_, pot_sum_el, pot_sum_el_transv_iso, ref_temperature,
+          thermal_expansion_mat_type, thermal_expansion_fac);
       isotrop_vplast_Anand_ = std::make_shared<Mat::InelasticDefgradTransvIsotropElastViscoplast>(
           params_isotrop_vplast_refJC_.get(), viscoplastic_law_Anand, fiber_reader_,
-          pot_sum_el_Anand, pot_sum_el_transv_iso);
+          pot_sum_el_Anand, pot_sum_el_transv_iso, ref_temperature, thermal_expansion_mat_type,
+          thermal_expansion_fac);
 
 
       // create a dummy fiber direction container
@@ -611,59 +621,59 @@ namespace
           state_quantities_solution_isotrop_;
 
       // clang-format off
-      // curr_CeM_
-      transv.curr_CeM_(0, 0) = 1.1849888441; transv.curr_CeM_(0, 1) = 0.0606037319; transv.curr_CeM_(0, 2) = 0.1142177392;
-      transv.curr_CeM_(1, 0) = 0.0606037319; transv.curr_CeM_(1, 1) = 1.4343908522; transv.curr_CeM_(1, 2) = 0.0810311701;
-      transv.curr_CeM_(2, 0) = 0.1142177392; transv.curr_CeM_(2, 1) = 0.0810311701; transv.curr_CeM_(2, 2) = 1.6890893033;
+  // curr_CeM_
+  transv.curr_CeM_(0, 0) = 1.1849888441; transv.curr_CeM_(0, 1) = 0.0606037319; transv.curr_CeM_(0, 2) = 0.1142177392;
+  transv.curr_CeM_(1, 0) = 0.0606037319; transv.curr_CeM_(1, 1) = 1.4343908522; transv.curr_CeM_(1, 2) = 0.0810311701;
+  transv.curr_CeM_(2, 0) = 0.1142177392; transv.curr_CeM_(2, 1) = 0.0810311701; transv.curr_CeM_(2, 2) = 1.6890893033;
 
-      iso.curr_CeM_ = transv.curr_CeM_;
+  iso.curr_CeM_ = transv.curr_CeM_;
 
-      // curr_gamma_, curr_delta_
-      transv.curr_gamma_(0) = 77519.37984496124; transv.curr_gamma_(1) = 0; transv.curr_gamma_(2) = -37710.707742398015;
-      iso.curr_gamma_ = transv.curr_gamma_;
-      transv.curr_delta_(0, 0) = 0.0000000000; transv.curr_delta_(1, 0) = 0.0000000000; transv.curr_delta_(2, 0) = 0.0000000000;
-      transv.curr_delta_(3, 0) = 0.0000000000; transv.curr_delta_(4, 0) = 0.0000000000;  transv.curr_delta_(5, 0) = 52076.6916442639;
-      transv.curr_delta_(6, 0) = 75421.4154847960; transv.curr_delta_(7, 0) = 0.0000000000;
-      iso.curr_delta_ = transv.curr_delta_;
+  // curr_gamma_, curr_delta_
+  transv.curr_gamma_(0) = 77519.37984496124; transv.curr_gamma_(1) = 0; transv.curr_gamma_(2) = -37710.707742398015;
+  iso.curr_gamma_ = transv.curr_gamma_;
+  transv.curr_delta_(0, 0) = 0.0000000000; transv.curr_delta_(1, 0) = 0.0000000000; transv.curr_delta_(2, 0) = 0.0000000000;
+  transv.curr_delta_(3, 0) = 0.0000000000; transv.curr_delta_(4, 0) = 0.0000000000;  transv.curr_delta_(5, 0) = 52076.6916442639;
+  transv.curr_delta_(6, 0) = 75421.4154847960; transv.curr_delta_(7, 0) = 0.0000000000;
+  iso.curr_delta_ = transv.curr_delta_;
 
-      // curr_Me_dev_sym_M_
-      transv.curr_Me_dev_sym_M_(0, 0) = -19470.3479922481; transv.curr_Me_dev_sym_M_(0, 1) = 4697.9637131783; transv.curr_Me_dev_sym_M_(0, 2) = 8854.0883100775;
-      transv.curr_Me_dev_sym_M_(1, 0) = 4697.9637131783; transv.curr_Me_dev_sym_M_(1, 1) = -136.8589922481; transv.curr_Me_dev_sym_M_(1, 2) = 6281.4860542636;
-      transv.curr_Me_dev_sym_M_(2, 0) = 8854.0883100775; transv.curr_Me_dev_sym_M_(2, 1) = 6281.4860542636; transv.curr_Me_dev_sym_M_(2, 2) = 19607.2069844961;
-      iso.curr_Me_dev_sym_M_ = transv.curr_Me_dev_sym_M_;
+  // curr_Me_dev_sym_M_
+  transv.curr_Me_dev_sym_M_(0, 0) = -19470.3479922481; transv.curr_Me_dev_sym_M_(0, 1) = 4697.9637131783; transv.curr_Me_dev_sym_M_(0, 2) = 8854.0883100775;
+  transv.curr_Me_dev_sym_M_(1, 0) = 4697.9637131783; transv.curr_Me_dev_sym_M_(1, 1) = -136.8589922481; transv.curr_Me_dev_sym_M_(1, 2) = 6281.4860542636;
+  transv.curr_Me_dev_sym_M_(2, 0) = 8854.0883100775; transv.curr_Me_dev_sym_M_(2, 1) = 6281.4860542636; transv.curr_Me_dev_sym_M_(2, 2) = 19607.2069844961;
+  iso.curr_Me_dev_sym_M_ = transv.curr_Me_dev_sym_M_;
 
-      // curr_equiv_stress_
-      transv.curr_equiv_stress_ = 58944.20584626558;
-      iso.curr_equiv_stress_ = 39561.370682681154;
+  // curr_equiv_stress_
+  transv.curr_equiv_stress_ = 58944.20584626558;
+  iso.curr_equiv_stress_ = 39561.370682681154;
 
-      // curr_equiv_plastic_strain_rate_
-      transv.curr_equiv_plastic_strain_rate_ =  720196.224582188;
-      iso.curr_equiv_plastic_strain_rate_ =  317.579965736033;
+  // curr_equiv_plastic_strain_rate_
+  transv.curr_equiv_plastic_strain_rate_ =  720196.224582188;
+  iso.curr_equiv_plastic_strain_rate_ =  317.579965736033;
 
-      // curr_NpM_
-      transv.curr_NpM_(0, 0) = -1.3189512330; transv.curr_NpM_(0, 1) = 0.3985093739; transv.curr_NpM_(0, 2) = 0.3755283570;
-      transv.curr_NpM_(1, 0) = 0.3985093739; transv.curr_NpM_(1, 1) = 0.3210309097; transv.curr_NpM_(1, 2) = 0.2664166038;
-      transv.curr_NpM_(2, 0) = 0.3755283570; transv.curr_NpM_(2, 1) = 0.2664166038; transv.curr_NpM_(2, 2) = 0.9979203233;
+  // curr_NpM_
+  transv.curr_NpM_(0, 0) = -1.3189512330; transv.curr_NpM_(0, 1) = 0.3985093739; transv.curr_NpM_(0, 2) = 0.3755283570;
+  transv.curr_NpM_(1, 0) = 0.3985093739; transv.curr_NpM_(1, 1) = 0.3210309097; transv.curr_NpM_(1, 2) = 0.2664166038;
+  transv.curr_NpM_(2, 0) = 0.3755283570; transv.curr_NpM_(2, 1) = 0.2664166038; transv.curr_NpM_(2, 2) = 0.9979203233;
 
-      iso.curr_NpM_(0, 0) = -0.7382333191; iso.curr_NpM_(0, 1) = 0.1781269316; iso.curr_NpM_(0, 2) = 0.3357096136;
-      iso.curr_NpM_(1, 0) = 0.1781269316; iso.curr_NpM_(1, 1) = -0.0051891147; iso.curr_NpM_(1, 2) = 0.2381674072;
-      iso.curr_NpM_(2, 0) = 0.3357096136; iso.curr_NpM_(2, 1) = 0.2381674072; iso.curr_NpM_(2, 2) = 0.7434224338;
+  iso.curr_NpM_(0, 0) = -0.7382333191; iso.curr_NpM_(0, 1) = 0.1781269316; iso.curr_NpM_(0, 2) = 0.3357096136;
+  iso.curr_NpM_(1, 0) = 0.1781269316; iso.curr_NpM_(1, 1) = -0.0051891147; iso.curr_NpM_(1, 2) = 0.2381674072;
+  iso.curr_NpM_(2, 0) = 0.3357096136; iso.curr_NpM_(2, 1) = 0.2381674072; iso.curr_NpM_(2, 2) = 0.7434224338;
 
-      // curr_dpM_
-      transv.curr_dpM_(0, 0) =  -949903.69838536996; transv.curr_dpM_(0, 1) = 287004.94653194677; transv.curr_dpM_(0, 2) = 270454.10492365930;
-      transv.curr_dpM_(1, 0) = 287004.94653194677; transv.curr_dpM_(1, 1) = 231205.24912650112; transv.curr_dpM_(1, 2) = 191872.23222776141;
-      transv.curr_dpM_(2, 0) = 270454.10492365930; transv.curr_dpM_(2, 1) = 191872.23222776141; transv.curr_dpM_(2, 2) = 718698.44925886812;
+  // curr_dpM_
+  transv.curr_dpM_(0, 0) =  -949903.69838536996; transv.curr_dpM_(0, 1) = 287004.94653194677; transv.curr_dpM_(0, 2) = 270454.10492365930;
+  transv.curr_dpM_(1, 0) = 287004.94653194677; transv.curr_dpM_(1, 1) = 231205.24912650112; transv.curr_dpM_(1, 2) = 191872.23222776141;
+  transv.curr_dpM_(2, 0) = 270454.10492365930; transv.curr_dpM_(2, 1) = 191872.23222776141; transv.curr_dpM_(2, 2) = 718698.44925886812;
 
-      iso.curr_dpM_(0, 0) = -234.4481121942; iso.curr_dpM_(0, 1) = 56.5695448356; iso.curr_dpM_(0, 2) = 106.6146475823;
-      iso.curr_dpM_(1, 0) = 56.5695448356; iso.curr_dpM_(1, 1) = -1.6479588543; iso.curr_dpM_(1, 2) = 75.6371970230;
-      iso.curr_dpM_(2, 0) = 106.6146475823; iso.curr_dpM_(2, 1) = 75.6371970230; iso.curr_dpM_(2, 2) = 236.0960710485;
+  iso.curr_dpM_(0, 0) = -234.4481121942; iso.curr_dpM_(0, 1) = 56.5695448356; iso.curr_dpM_(0, 2) = 106.6146475823;
+  iso.curr_dpM_(1, 0) = 56.5695448356; iso.curr_dpM_(1, 1) = -1.6479588543; iso.curr_dpM_(1, 2) = 75.6371970230;
+  iso.curr_dpM_(2, 0) = 106.6146475823; iso.curr_dpM_(2, 1) = 75.6371970230; iso.curr_dpM_(2, 2) = 236.0960710485;
 
-      // curr_lpM_
-      transv.curr_lpM_(0, 0) = -949903.69838536996; transv.curr_lpM_(0, 1) = 287004.94653194677; transv.curr_lpM_(0, 2) = 0.0000000000;
-      transv.curr_lpM_(1, 0) = 287004.94653194677; transv.curr_lpM_(1, 1) = 231205.24912650112; transv.curr_lpM_(1, 2) = 0.0000000000;
-      transv.curr_lpM_(2, 0) = 540908.20984731859; transv.curr_lpM_(2, 1) = 383744.46445552283; transv.curr_lpM_(2, 2) = 718698.44925886812;
+  // curr_lpM_
+  transv.curr_lpM_(0, 0) = -949903.69838536996; transv.curr_lpM_(0, 1) = 287004.94653194677; transv.curr_lpM_(0, 2) = 0.0000000000;
+  transv.curr_lpM_(1, 0) = 287004.94653194677; transv.curr_lpM_(1, 1) = 231205.24912650112; transv.curr_lpM_(1, 2) = 0.0000000000;
+  transv.curr_lpM_(2, 0) = 540908.20984731859; transv.curr_lpM_(2, 1) = 383744.46445552283; transv.curr_lpM_(2, 2) = 718698.44925886812;
 
-      iso.curr_lpM_ = iso.curr_dpM_;
+  iso.curr_lpM_ = iso.curr_dpM_;
     }
 
     void set_up_state_quantity_derivatives_solution(){
@@ -1282,6 +1292,200 @@ namespace
       iso.curr_dlpdepsp_(2, 0) = iso.curr_ddpdepsp_(2, 0);
     }
 
+
+    void set_up_thermo_viscoplast_material()
+    {
+      // get problem information
+      const int problemid(0);
+      Global::Problem& problem = (*Global::Problem::instance());
+      problem.materials()->set_read_from_problem(problemid);
+
+      // create InelasticDefgradTransvIsotropElastViscoplast object initialize container for
+      // material parameters
+      Core::IO::InputParameterContainer inelastic_defgrad_isotrop_thermo_vplast_data;
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("ANALYZE_TIMINT", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("ANALYZE_TIMINT_TIMER_REL_TOL", 1.0e-03);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("CHECK_LINE_SEARCH_ANGLE_CONDITION", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("FIBER_READER_ID", 104);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LINEARIZATION",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "LINE_SEARCH_ANGLE_CONDITION_TOLERANCE", 5.0e-01);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_CHECK_CONSISTENCY", true);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_INTERVAL_SCAN_PARAM", 5.0e-01);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_MAX_NUM_REINTERP", 30);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-05);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvalType::eliminate);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvectRotType::elastic_predictor);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_PLASTIC_PRED_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorRotationType::elastic_predictor);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_PRECONDITION_MATRICES", true);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-03);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_STARTING_POINT", 0.0e+00);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LNGI_STARTING_POINT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              LocalNewtonGuessInterpolationStartingPointType::user_set);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LOCAL_NEWTON_CONV_CHECK",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+              ResidualOnly);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LOCAL_NEWTON_DIVER_CONT",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
+              ContinueWithSafeGuard);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LOCAL_NEWTON_INCR_TOL", 1.0e-08);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("LOCAL_NEWTON_RES_TOL", 1.0e-08);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::default_method);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::default_method);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "MATRIX_LOG_CALC_METHOD", Core::LinAlg::MatrixLogCalcMethod::inv_scal_square);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("MATRIX_LOG_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("MAT_BEHAVIOR",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior::isotrop);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", 1.1e+13);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("MAX_PLASTIC_STRAIN_INCR", 1.1e+13);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("TIME_INTEGRATION_HIST_VARS",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "USE_CSV_OUTPUT_FAILED_LOCAL_NEWTON_ITER", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "USE_CSV_OUTPUT_LINE_SEARCH_MICRO_ITER", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("USE_CSV_OUTPUT_LNGI_MICRO_ITER", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("USE_LINE_SEARCH", true);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("USE_LNGI", true);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add(
+          "USE_STEEPEST_DESCENT_UPDATE_CORRECTION", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("VISCOPLAST_LAW_ID", 103);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("YIELD_COND_A", 0.0e+00);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("YIELD_COND_B", 0.0e+00);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("YIELD_COND_F", 0.0e+00);
+
+
+      // get pointer to parameter class
+      params_isotrop_thermo_vplast_refJC_ =
+          std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
+              std::shared_ptr(Mat::make_parameter(100000,
+                  Core::Materials::MaterialType::mfi_transv_isotrop_elast_viscoplast,
+                  inelastic_defgrad_isotrop_thermo_vplast_data)));
+
+
+      // manually create vector of elastic potentials
+      std::vector<std::shared_ptr<Mat::Elastic::Summand>> pot_sum_el;
+      std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>>
+          pot_sum_el_transv_iso;  // keep empty
+      // we only look at a single CoupNeoHooke component
+      Core::IO::InputParameterContainer elast_pot_coup_neo_hooke_data;
+      elast_pot_coup_neo_hooke_data.add("YOUNG", 200.0e3);
+      elast_pot_coup_neo_hooke_data.add("NUE", 0.29);
+      problem.materials()->insert(
+          200000, Mat::make_parameter(200000, Core::Materials::MaterialType::mes_coupneohooke,
+                      elast_pot_coup_neo_hooke_data));
+      auto elastic_summand = Mat::Elastic::Summand::factory(200000);
+      pot_sum_el.emplace_back(elastic_summand);
+
+      // manually create viscoplastic law (Reformulated Johnson-Cook)
+      Core::IO::InputParameterContainer viscoplastic_law_reformulated_Johnson_Cook_data;
+      // ---> Ref. JC params thermo-viscoplasticity
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("STRAIN_RATE_PREFAC", 1.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("STRAIN_RATE_EXP_FAC", 0.014);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("INIT_YIELD_STRENGTH", 792.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("ISOTROP_HARDEN_PREFAC", 510.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("ISOTROP_HARDEN_EXP", 0.26);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("REF_TEMPERATURE", 293.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("MELT_TEMPERATURE", 1793.0);
+      viscoplastic_law_reformulated_Johnson_Cook_data.add("TEMPERATURE_SENS", 1.03);
+
+
+      // add material to problem instance
+      problem.materials()->insert(400000,
+          Mat::make_parameter(400000, Core::Materials::MaterialType::mvl_reformulated_Johnson_Cook,
+              viscoplastic_law_reformulated_Johnson_Cook_data));
+      std::shared_ptr<Mat::Viscoplastic::ReformulatedJohnsonCook> viscoplastic_law =
+          std::make_shared<Mat::Viscoplastic::ReformulatedJohnsonCook>(
+              problem.materials()->parameter_by_id(400000));
+
+      // create the parameter container for the fiber reader
+      Core::IO::InputParameterContainer fiber_reader_data;
+      fiber_reader_data.add("ALPHA", 1.0);
+      fiber_reader_data.add("BETA", 1.0);
+      fiber_reader_data.add("GAMMA", 1.0);
+      fiber_reader_data.add("ANGLE", 0.0);
+      fiber_reader_data.add("STR_TENS_ID", 100);
+      fiber_reader_data.add<std::string>("STRATEGY", "Standard");
+      fiber_reader_data.add<std::string>("DISTR", "none");
+      fiber_reader_data.add("C1", 1.0);
+      fiber_reader_data.add("C2", 0.0);
+      fiber_reader_data.add("C3", 0.0);
+      fiber_reader_data.add("C4", 1e16);
+      fiber_reader_data.add("FIBER", 1);
+      fiber_reader_data.add("INIT", 1);
+
+      // add material to problem instance
+      problem.materials()->insert(100000,
+          Mat::make_parameter(100000, Core::Materials::MaterialType::mes_structuraltensorstratgy,
+              fiber_reader_data));
+      // create params and then the fiber reader
+      std::shared_ptr<Mat::Elastic::PAR::CoupTransverselyIsotropic> params_fiber_reader_ =
+          std::dynamic_pointer_cast<Mat::Elastic::PAR::CoupTransverselyIsotropic>(
+              std::shared_ptr(Mat::make_parameter(100000,
+                  Core::Materials::MaterialType::mes_couptransverselyisotropic,
+                  fiber_reader_data)));  // the fiber reader is only required for the setup of
+                                         // InelasticDefgradTransvIsotropElastViscoplast, that's
+                                         // why: we don't need to worry about it losing its params
+                                         // class after the SetUp method ends
+      Mat::Elastic::CoupTransverselyIsotropic fiber_reader_{params_fiber_reader_.get()};
+
+      // set thermal values
+      const double ref_temperature = 293.0;
+      const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type =
+          FourC::Mat::ThermalExpansionMaterialType::isotropic;
+      const double thermal_expansion_fac = 0.1;
+
+
+      // finally construct the InelasticDefgradTransvIsotropElastViscoplast objects
+      isotrop_thermo_vplast_refJC_ =
+          std::make_shared<Mat::InelasticDefgradTransvIsotropElastViscoplast>(
+              params_isotrop_thermo_vplast_refJC_.get(), viscoplastic_law, fiber_reader_,
+              pot_sum_el, pot_sum_el_transv_iso, ref_temperature, thermal_expansion_mat_type,
+              thermal_expansion_fac);
+
+      // define setup parameter for InelasticDefGradTransvIsotropElastViscoplast
+      Core::IO::InputParameterContainer setup_thermo_vplast;
+      setup_thermo_vplast.add<std::optional<std::vector<double>>>(
+          "FIBER1", std::vector<double>{0.0, 0.0, 1.0});
+      setup_thermo_vplast.add<std::optional<std::vector<double>>>("RAD", std::nullopt);
+      setup_thermo_vplast.add<std::optional<std::vector<double>>>("AXI", std::nullopt);
+      setup_thermo_vplast.add<std::optional<std::vector<double>>>("CIR", std::nullopt);
+
+      // create a dummy fiber direction container
+      Discret::Elements::Fibers fibers;
+      fibers.element_fibers.emplace_back(Core::LinAlg::Tensor<double, 3>{{0.0, 0.0, 1.0}});
+
+      // call setup method for InelasticDefGradTransvIsotropElastViscoplast
+      isotrop_thermo_vplast_refJC_->setup(8, fibers, {});
+
+      // parameter list for InelasticDefGradTransvIsotropElastViscoplast
+      Teuchos::ParameterList param_list_thermo_vplast{};
+      param_list_thermo_vplast.set<double>("delta time", 4e-5);
+      param_list_thermo_vplast.set<double>("total time", 4e-5);
+      param_list_thermo_vplast.set<double>("temperature", 20.0);
+      // call pre_evaluate
+      isotrop_thermo_vplast_refJC_->pre_evaluate(param_list_thermo_vplast, 0, 0);
+      isotrop_thermo_vplast_refJC_->prepare_non_repeat_tasks(FM_);
+    }
+
     void set_up_dummy_viscoplast_material()
     {
       // get problem information
@@ -1438,10 +1642,18 @@ namespace
                                          // class after the SetUp method ends
       Mat::Elastic::CoupTransverselyIsotropic fiber_reader_{params_fiber_reader_.get()};
 
+      // set thermal values
+      const double ref_temperature = 293.0;
+      const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type =
+          FourC::Mat::ThermalExpansionMaterialType::isotropic;
+      const double thermal_expansion_fac = 0.1;
+
+
       // finally construct the InelasticDefgradTransvIsotropElastViscoplast objects
       debug_vplast_ = std::make_shared<Mat::InelasticDefgradTransvIsotropElastViscoplast>(
           params_debug_vplast_.get(), viscoplastic_law, fiber_reader_, pot_sum_el,
-          pot_sum_el_transv_iso);
+          pot_sum_el_transv_iso, ref_temperature, thermal_expansion_mat_type,
+          thermal_expansion_fac);
 
       // define setup parameter for InelasticDefGradTransvIsotropElastViscoplast
       Core::IO::InputParameterContainer setup_debug_vplast;
@@ -1529,6 +1741,9 @@ namespace
     // pointer to InelasticDefgradTransvIsotropElastViscoplast (isotropic, logarithmic substepping,
     // Anand viscoplasticity)
     std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> isotrop_vplast_Anand_;
+    // pointer to InelasticDefgradTransvIsotropElastViscoplast (isotropic, logarithmic substepping,
+    // reformulated Johnson-Cook thermo-viscoplasticity)
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> isotrop_thermo_vplast_refJC_;
     // pointer to InelasticDefgradTransvIsotropElastViscoplast (dummy
     // material used for the debugging dummy test below)
     std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> debug_vplast_;
@@ -1537,9 +1752,13 @@ namespace
     std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
         params_transv_isotrop_vplast_refJC_;
     // pointer to parameters of InelasticDefgradTransvIsotropElastViscoplast (isotropic, logarithmic
-    // substepping, Reformulated Johnson-Cook viscoplasticity)
+    // substepping, reformulated Johnson-Cook viscoplasticity)
     std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
         params_isotrop_vplast_refJC_;
+    // pointer to parameters of InelasticDefgradTransvIsotropElastViscoplast (isotropic, logarithmic
+    // substepping, reformulated Johnson-Cook thermo-viscoplasticity)
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
+        params_isotrop_thermo_vplast_refJC_;
     // pointer to parameters of
     // InelasticDefgradTransvIsotropElastViscoplast (dummy material used
     // for the debugging dummy test below)
@@ -1865,8 +2084,12 @@ namespace
     dSdc_ref_solution(0) = -4.1608801904598307e-03; dSdc_ref_solution(1) = -3.8573598932803953e-03; dSdc_ref_solution(2) = -3.6304563701462541e-03; dSdc_ref_solution(3) = 7.6263158165085275e-05; dSdc_ref_solution(4) = 7.9917188927245458e-05; dSdc_ref_solution(5) = 1.2288151837264513e-04;
     // clang-format on
 
+    Core::LinAlg::Matrix<3, 3> id3x3{Core::LinAlg::Initialization::zero};
+    for (int i = 0; i < 3; ++i) id3x3(i, i) = 1.0;
+
     // evaluate the method
-    lin_scalar_iso_->evaluate_od_stiff_mat(&FM_, iFin_lin_scalar_iso_solution_, dSdiFin_, dSdc);
+    lin_scalar_iso_->evaluate_od_stiff_mat(
+        &FM_, id3x3, iFin_lin_scalar_iso_solution_, dSdiFin_, dSdc);
 
     // compare the results
     FOUR_C_EXPECT_NEAR(dSdc, dSdc_ref_solution, 1.0e-10);
@@ -1880,7 +2103,8 @@ namespace
     // clang-format on
 
     // evaluate the method
-    lin_scalar_aniso_->evaluate_od_stiff_mat(&FM_, iFin_lin_scalar_aniso_solution_, dSdiFin_, dSdc);
+    lin_scalar_aniso_->evaluate_od_stiff_mat(
+        &FM_, id3x3, iFin_lin_scalar_aniso_solution_, dSdiFin_, dSdc);
 
     // compare the results
     FOUR_C_EXPECT_NEAR(dSdc, dSdc_ref_solution, 1.0e-10);
@@ -1895,7 +2119,7 @@ namespace
 
     // evaluate the method
     poly_intercal_frac_iso_->evaluate_od_stiff_mat(
-        &FM_, iFin_poly_intercal_frac_iso_solution_, dSdiFin_, dSdc);
+        &FM_, id3x3, iFin_poly_intercal_frac_iso_solution_, dSdiFin_, dSdc);
 
     // compare the results
     FOUR_C_EXPECT_NEAR(dSdc, dSdc_ref_solution, 1.0e-10);
@@ -1910,7 +2134,7 @@ namespace
 
     // evaluate the method
     poly_intercal_frac_aniso_->evaluate_od_stiff_mat(
-        &FM_, iFin_poly_intercal_frac_aniso_solution_, dSdiFin_, dSdc);
+        &FM_, id3x3, iFin_poly_intercal_frac_aniso_solution_, dSdiFin_, dSdc);
 
     // compare the results
     FOUR_C_EXPECT_NEAR(dSdc, dSdc_ref_solution, 1.0e-10);
@@ -1924,7 +2148,7 @@ namespace
     // clang-format on
 
     // evaluate the method
-    lin_temp_iso_->evaluate_od_stiff_mat(&FM_, iFin_lin_temp_iso_solution_, dSdiFin_, dSdc);
+    lin_temp_iso_->evaluate_od_stiff_mat(&FM_, id3x3, iFin_lin_temp_iso_solution_, dSdiFin_, dSdc);
 
     // compare the results
     FOUR_C_EXPECT_NEAR(dSdc, dSdc_ref_solution, 1.0e-15);
@@ -1965,11 +2189,6 @@ namespace
     {
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
     }
-
-    // DEBUG
-    computed_state_quantities_transv_isotrop.curr_Me_dev_sym_M_.print(std::cout);
-    std::cout << computed_state_quantities_transv_isotrop.curr_equiv_stress_ << std::endl;
-
 
 
     // compare the results
@@ -2107,6 +2326,78 @@ namespace
         computed_state_quantity_derivatives_isotrop.curr_dlpdepsp_, 1.0e-6);
   }
 
+  TEST_F(InelasticDefgradFactorsTest, ThermoViscoplastTest)
+  {
+    set_up_thermo_viscoplast_material();
+
+    Core::LinAlg::Matrix<3, 3> M_theta_dev_ref_{Core::LinAlg::Initialization::zero};
+    M_theta_dev_ref_(0, 0) = 368.5382665361394174;
+    M_theta_dev_ref_(0, 1) = 0.0000000000000000;
+    M_theta_dev_ref_(0, 2) = 0.0000000000000000;
+    M_theta_dev_ref_(1, 0) = 0.0000000000000000;
+    M_theta_dev_ref_(1, 1) = -184.2691332680624328;
+    M_theta_dev_ref_(1, 2) = 0.0000000000000000;
+    M_theta_dev_ref_(2, 0) = 0.0000000000000000;
+    M_theta_dev_ref_(2, 1) = 0.0000000000000000;
+    M_theta_dev_ref_(2, 2) = -184.2691332680624328;
+    Core::LinAlg::Matrix<3, 3> dM_theta_dev_dT_ref_{Core::LinAlg::Initialization::zero};
+    dM_theta_dev_dT_ref_(0, 0) = -90.5551169203070572;
+    dM_theta_dev_dT_ref_(0, 1) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(0, 2) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(1, 0) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(1, 1) = 45.2775584601534931;
+    dM_theta_dev_dT_ref_(1, 2) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(2, 0) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(2, 1) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(2, 2) = 45.2775584601535002;
+
+
+
+    // test out with unit stretch (and unit plastic defgrad, 0.0 plastic strain)
+    Core::LinAlg::Matrix<3, 3> CM{Core::LinAlg::Initialization::zero};
+    for (int i = 0; i < 3; ++i) CM(i, i) = 1.0;
+    CM(0, 0) = 2.0;
+    Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
+    for (int i = 0; i < 3; ++i) iFinM(i, i) = 1.0;
+    const double plastic_strain = 0.1;
+
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status{
+        FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors};
+
+    // compute StateQuantities objects
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
+        computed_state_quantities = isotrop_thermo_vplast_refJC_->evaluate_state_quantities(CM,
+            iFinM, plastic_strain, err_status, 1.0,
+            Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
+                FullEval);
+
+    FOUR_C_ASSERT_ALWAYS(computed_state_quantities.curr_equiv_plastic_strain_rate_ == 0.0,
+        "The plastic strain rate should be 0! It is currently {}, for the stress {}",
+        computed_state_quantities.curr_equiv_plastic_strain_rate_,
+        computed_state_quantities.curr_equiv_stress_);
+
+
+    // compute StateQuantityDerivatives objects
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
+        computed_state_quantity_derivatives =
+            isotrop_thermo_vplast_refJC_->evaluate_state_quantity_derivatives(CM, iFinM,
+                plastic_strain, err_status, 1.0,
+                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivEvalType::
+                    FullEval,
+                true);
+
+    // postprocessing for comparison
+    Core::LinAlg::Matrix<3, 3> curr_dMe_dev_sym_dT{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(
+        computed_state_quantity_derivatives.curr_dMe_dev_sym_dT_, curr_dMe_dev_sym_dT);
+
+
+    // assert equality
+    FOUR_C_EXPECT_NEAR(computed_state_quantities.curr_Me_dev_sym_M_, M_theta_dev_ref_, 1.0e-8);
+    FOUR_C_EXPECT_NEAR(curr_dMe_dev_sym_dT, dM_theta_dev_dT_ref_, 1.0e-8);
+  }
+
+
 
   TEST_F(InelasticDefgradFactorsTest, DummyViscoplastTimIntLinearizTest)
   {
@@ -2156,6 +2447,8 @@ namespace
     last_rightCG(2, 2) = 0.9887209527723911;
 
 
+    const double last_temperature = 0.0;
+
 
     double last_xi_lambda_1 = 0.0000000000000000;
     double last_xi_lambda_2 = 0.0000000000000000;
@@ -2173,11 +2466,13 @@ namespace
         0.0000000000000000, 0.0000000000000000, 0.0000000000000000};
 
 
+
     // set the values at the 0-th GP
     iso_mat->debug_set_last_quantities(0, last_plastic_defgrd_inverse, last_plastic_strain,
-        last_defgrad, last_rightCG, last_xi_lambda_1, last_xi_lambda_2, last_xi_eigenvect_rot,
-        last_max_xi_lambda_1, last_max_xi_lambda_2, last_max_xi_eigenvect_rot, optimal_xi_lambda_1,
-        optimal_xi_lambda_2, optimal_xi_eigenvect_rot);
+        last_defgrad, last_rightCG, last_temperature, last_xi_lambda_1, last_xi_lambda_2,
+        last_xi_eigenvect_rot, last_max_xi_lambda_1, last_max_xi_lambda_2,
+        last_max_xi_eigenvect_rot, optimal_xi_lambda_1, optimal_xi_lambda_2,
+        optimal_xi_eigenvect_rot);
 
 
     // define last_values to be set for the viscoplastic law (Anand)
@@ -2264,6 +2559,12 @@ namespace
     std::vector<int> inelastic_defgrad_factor_ids = {inelastic_defgrad_id};
     multiplicativeSplitDefgradData.add("INELDEFGRADFACIDS", inelastic_defgrad_factor_ids);
     multiplicativeSplitDefgradData.add("DENS", 7.85e-9);
+    multiplicativeSplitDefgradData.add("REF_TEMPERATURE", 293.0);
+    multiplicativeSplitDefgradData.add("THERMAL_EXPANSION_FAC", 0.1);
+    multiplicativeSplitDefgradData.add(
+        "THERMAL_EXPANSION_MAT_TYPE", Mat::ThermalExpansionMaterialType::isotropic);
+
+
 
     // add elastic material to problem instance
     problem.materials()->insert(matid_multsplit,
@@ -2350,15 +2651,15 @@ namespace
     // ----------------------------------------------------------------------- //
 
     // determine dSdiFinj with the multiplicative split material
-    Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities kin_quantities{};
+    Mat::KinematicQuantities kin_quantities{};
     kin_quantities.iFinM = iFinM;
     kin_quantities.detFin = 1.0 / kin_quantities.iFinM.determinant();
     multiplicative_split_defgrad->evaluate_kin_quant_elast(current_defgrad_ptr, kin_quantities);
-    multiplicative_split_defgrad->evaluate_invariant_derivatives(kin_quantities.prinv, 0, 0,
-        kin_quantities.dPIe,
+    Mat::evaluate_invariant_derivatives(kin_quantities.prinv, 0, 0,
+        multiplicative_split_defgrad->get_potsum_el(), kin_quantities.dPIe,
         kin_quantities.ddPIIe);  // NOTE: we exclude the transversely isotropic hyperelastic
                                  // components in this function --> we deal with them separately
-    Mat::MultiplicativeSplitDefgradElastHyper::StressFactors stress_factors;
+    Mat::StressFactors stress_factors;
     Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kin_quantities.prinv,
         kin_quantities.dPIe, kin_quantities.ddPIIe);
     Core::LinAlg::Matrix<6, 9> dSdiFinj =
