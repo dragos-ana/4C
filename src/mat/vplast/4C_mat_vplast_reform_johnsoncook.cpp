@@ -22,7 +22,6 @@
 
 FOUR_C_NAMESPACE_OPEN
 
-
 using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
 
 /*--------------------------------------------------------------------*
@@ -66,14 +65,16 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
   double T = parameter()->ref_temperature();
   if (params.isParameter("temperature"))
   {
-    T = params.get<double>("temperature");
+    T += params.get<double>("temperature");
   }
   const double T_ref = parameter()->ref_temperature();
   const double T_melt = parameter()->melt_temperature();
   const double M = parameter()->temperature_sens();
 
+
   // set temperature ratio
   temperature_ratio_ = 1.0;
+  log_temperature_ratio_ = 0.0;
   if (T != T_ref)
   {
     FOUR_C_ASSERT(T_ref != T_melt,
@@ -82,7 +83,13 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
         T_melt);
     temperature_ratio_ =
         1.0 - (std::pow(T, M) - std::pow(T_ref, M)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
+    log_temperature_ratio_ = std::log(temperature_ratio_);
   }
+
+  // set temperature ratio derivative
+  temperature_ratio_deriv_ =
+      -M * (std::pow(T, M - 1.0)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
+  log_neg_temperature_ratio_deriv_ = std::log(-temperature_ratio_deriv_);
 }
 
 /*--------------------------------------------------------------------*
@@ -164,13 +171,13 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Core::LinAlg::Matrix<2, 1>
+Core::LinAlg::Matrix<3, 1>
 Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_strain_rate(
     const double equiv_stress, const double equiv_plastic_strain, const double dt,
     const double max_plastic_strain_deriv_incr, ErrorType& err_status, const bool update_hist_var)
 {
   // declare derivatives to be computed
-  Core::LinAlg::Matrix<2, 1> equiv_plastic_strain_rate_ders(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Matrix<3, 1> equiv_plastic_strain_rate_ders(Core::LinAlg::Initialization::zero);
 
   // first set error status to "no errors"
   err_status = ErrorType::no_errors;
@@ -190,12 +197,14 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
   if (equiv_plastic_strain < 0.0)
   {
     err_status = ErrorType::negative_plastic_strain;
-    return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+    return Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero};
   }
 
   // extraction of the yield strength from the plastic strain and the material parameters
-  const double yield_strength =
+  const double yield_strength_reference_temp =
       const_pars_.sigma_Y0 + const_pars_.B * std::pow(used_equiv_plastic_strain, const_pars_.N);
+  const double yield_strength = yield_strength_reference_temp * temperature_ratio_;
+  const double log_yield_strength_reference_temperature = std::log(yield_strength_reference_temp);
   const double log_yield_strength = std::log(yield_strength);
   const double inv_yield_strength = 1.0 / yield_strength;
 
@@ -216,40 +225,53 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
     double log_deriv_sigma = const_pars_.log_p_e +
                              const_pars_.e * (equiv_stress * inv_yield_strength - 1.0) -
                              log_yield_strength;
+
+    const double log_neg_d_yield_strength_d_temperature =
+        log_yield_strength_reference_temperature + log_neg_temperature_ratio_deriv_;
+    const double log_deriv_temperature =
+        const_pars_.log_p_e + const_pars_.e * (equiv_stress * inv_yield_strength - 1.0) +
+        log_equiv_stress - 2.0 * log_yield_strength + log_neg_d_yield_strength_d_temperature;
+
     // hardening case
     if (const_pars_.B > 0.0)
     {
-      const double log_deriv_eps =
+      const double log_neg_deriv_eps =
           const_pars_.log_p_e + const_pars_.e * (equiv_stress * inv_yield_strength - 1.0) +
           log_equiv_stress - 2.0 * log_yield_strength + const_pars_.log_B_N +
-          (const_pars_.N - 1.0) * log_equiv_plastic_strain;
+          (const_pars_.N - 1.0) * log_equiv_plastic_strain + log_temperature_ratio_;
       // check overflow error using these logarithms
       double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
       if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) &&
-          (log_dt + log_deriv_eps > log_max_plastic_strain_deriv_value))
+          (log_dt + log_neg_deriv_eps > log_max_plastic_strain_deriv_value) &&
+          (log_dt + log_deriv_temperature > log_max_plastic_strain_deriv_value))
       {
         err_status = ErrorType::failed_computation_flow_resistance_derivs;
-        return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+        return Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero};
       }
+
+
 
       // compute the exact derivatives using these logarithms
       equiv_plastic_strain_rate_ders(0, 0) = std::exp(log_deriv_sigma);
-      equiv_plastic_strain_rate_ders(1, 0) = -std::exp(log_deriv_eps);
+      equiv_plastic_strain_rate_ders(1, 0) = -std::exp(log_neg_deriv_eps);
+      equiv_plastic_strain_rate_ders(2, 0) = std::exp(log_deriv_temperature);
     }
     // perfect plasticity
     else
     {
       // check overflow error using these logarithms
       double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
-      if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value))
+      if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) &&
+          (log_dt + log_deriv_temperature > log_max_plastic_strain_deriv_value))
       {
         err_status = ErrorType::failed_computation_flow_resistance_derivs;
-        return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+        return Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero};
       }
 
       // compute the exact derivatives using these logarithms
       equiv_plastic_strain_rate_ders(0, 0) = std::exp(log_deriv_sigma);
       equiv_plastic_strain_rate_ders(1, 0) = 0.0;
+      equiv_plastic_strain_rate_ders(2, 0) = std::exp(log_deriv_temperature);
     }
   }
 

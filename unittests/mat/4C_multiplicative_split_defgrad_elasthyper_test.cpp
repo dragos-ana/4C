@@ -8,10 +8,12 @@
 #include <gtest/gtest.h>
 
 #include "4C_global_data.hpp"
+#include "4C_io_input_parameter_container.templates.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_material_factory.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_material_parameter_base.hpp"
 #include "4C_ssi_input.hpp"
@@ -121,6 +123,10 @@ namespace
       std::vector<int> inelastic_defgrad_factor_ids = {inelastic_defgrad_id};
       multiplicativeSplitDefgradData.add("INELDEFGRADFACIDS", inelastic_defgrad_factor_ids);
       multiplicativeSplitDefgradData.add("DENS", 1.32e1);
+      multiplicativeSplitDefgradData.add("REF_TEMPERATURE", 293.0);
+      multiplicativeSplitDefgradData.add("THERMAL_EXPANSION_FAC", 0.1);
+      multiplicativeSplitDefgradData.add(
+          "THERMAL_EXPANSION_MAT_TYPE", Mat::ThermalExpansionMaterialType::isotropic);
 
       // get pointer to parameter class
       parameters_multiplicative_split_defgrad_ =
@@ -385,6 +391,8 @@ namespace
       dSdiFin_ref_(5, 8) = 57.95243768164728;
     }
 
+
+
     // defined input quantities
     Core::LinAlg::Tensor<double, 3, 3> F_;
     Core::LinAlg::Matrix<3, 3> FM_;
@@ -531,7 +539,7 @@ namespace
 
   TEST_F(MultiplicativeSplitDefgradElastHyperTest, TestEvaluatedSdiFin)
   {
-    Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities kinemat_quant;
+    Mat::KinematicQuantities kinemat_quant;
     kinemat_quant.iFinM = iFinM_;
     kinemat_quant.iCinCM = iCinCM_ref_;
     kinemat_quant.iCinV = iCinV_ref_;
@@ -543,7 +551,7 @@ namespace
     kinemat_quant.iFinCeM = iFinCeM_ref_;
     kinemat_quant.detFin = detFin_;
 
-    Mat::MultiplicativeSplitDefgradElastHyper::StressFactors stress_fact;
+    Mat::StressFactors stress_fact;
     stress_fact.gamma = gamma_ref_;
     stress_fact.delta = delta_ref_;
 
@@ -560,8 +568,8 @@ namespace
     const int eleGID(0);
     Core::LinAlg::Matrix<3, 1> dPIe(Core::LinAlg::Initialization::zero);
     Core::LinAlg::Matrix<6, 1> ddPIIe(Core::LinAlg::Initialization::zero);
-    multiplicative_split_defgrad_->evaluate_invariant_derivatives(
-        prinv_ref_, gp, eleGID, dPIe, ddPIIe);
+    Mat::evaluate_invariant_derivatives(
+        prinv_ref_, gp, eleGID, multiplicative_split_defgrad_->get_potsum_el(), dPIe, ddPIIe);
 
     FOUR_C_EXPECT_NEAR(dPIe, dPIe_ref_, 1.0e-10);
     FOUR_C_EXPECT_NEAR(ddPIIe, ddPIIe_ref_, 1.0e-10);
@@ -569,7 +577,7 @@ namespace
 
   TEST_F(MultiplicativeSplitDefgradElastHyperTest, TestEvaluateKinQuantElast)
   {
-    Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities kinemat_quant;
+    Mat::KinematicQuantities kinemat_quant;
     // set known values
     kinemat_quant.iFinM = iFinM_;
     kinemat_quant.detFin = detFin_;
@@ -691,12 +699,12 @@ namespace
     cMatIso_ref(5, 4) = -0.394102458936374;
     cMatIso_ref(5, 5) = 13.451712479073098;
 
-    Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities kinemat_quant;
+    Mat::KinematicQuantities kinemat_quant;
     kinemat_quant.iCV = iCV_ref_;
     kinemat_quant.iCinV = iCinV_ref_;
     kinemat_quant.iCinCiCinV = iCinCiCinV_ref_;
     kinemat_quant.detFin = detFin_;
-    Mat::MultiplicativeSplitDefgradElastHyper::StressFactors stress_fact;
+    Mat::StressFactors stress_fact;
     stress_fact.gamma = gamma_ref_;
     stress_fact.delta = delta_ref_;
 
