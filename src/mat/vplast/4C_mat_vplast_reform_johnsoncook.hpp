@@ -125,7 +125,7 @@ namespace Mat
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var) override;
 
-      Core::LinAlg::Matrix<2, 1> evaluate_derivatives_of_plastic_strain_rate(
+      Core::LinAlg::Matrix<3, 1> evaluate_derivatives_of_plastic_strain_rate(
           const double equiv_stress, const double equiv_plastic_strain, const double dt,
           const double max_plastic_strain_deriv_incr,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
@@ -216,6 +216,21 @@ namespace Mat
       /// temperature ratio \f$ D_T = 1 - \frac{T^M - T_{\mathrm{ref}}^M}{T_{\mathrm{melt}}^M -
       /// T_{\mathrm{ref}}^M} \f$
       double temperature_ratio_;
+
+
+      /// logarithm of temperature ratio \f$ log(D_T) =  log( 1 - \frac{T^M -
+      /// T_{\mathrm{ref}}^M}{T_{\mathrm{melt}}^M - T_{\mathrm{ref}}^M} ) \f$
+      double log_temperature_ratio_;
+
+      /// temperature ratio derivative wrt temperature \f$ \partial D_T / \partial T = - M
+      /// \frac{T^{M-1}}{T_{\mathrm{melt}}^M - T_{\mathrm{ref}}^M} \f$
+      double temperature_ratio_deriv_;
+
+      /// logarithm of negative temperature ratio derivative wrt temperature \f$ log( - \partial D_T
+      /// / \partial T) = log(M
+      /// \frac{T^{M-1}}{T_{\mathrm{melt}}^M - T_{\mathrm{ref}}^M} ) \f$
+      double log_neg_temperature_ratio_deriv_;
+
 
       //! struct containing quantities at the current time point (i.e., at \f[ t_n \f]). The
       //! quantities are tracked at all Gauss points, in order to update them simultaneously during

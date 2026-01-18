@@ -768,6 +768,12 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
     adapt_interpolation_intervals(const unsigned int gp, const ErrorType eval_err_type)
 {
+  // return directly if there is no error
+  if (eval_err_type == ErrorType::no_errors)
+  {
+    return;
+  }
+
   // collect all current interpolation factors
   std::vector<double> all_current_xi;
 
@@ -786,16 +792,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   }
 
 
-  if (eval_err_type == ErrorType::no_errors)
-  {
-    return;
-  }
-  else if (eval_err_type ==
-           ErrorType::under_yield_surface)  // check whether we are "under" the yield surface:
+  if (eval_err_type ==
+      ErrorType::under_yield_surface)  // check whether we are "under" the yield surface:
   // if the plastic strain rate is 0.0 (the adapted predictor maps the stress
-  // "under" the yield surface): set \f$ \xi_{\text{curr}} \leftarrow
-  // \xi_{\text{curr}} + \xi_{\text{user}} ( 1.0 - \xi_{\text{curr}})
-  // \f$
+  // "under" the yield surface)
   {
     // get maximum out of the interpolation factors
     const double max_current_xi = *std::max_element(all_current_xi.begin(), all_current_xi.end());

@@ -18,6 +18,7 @@
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_mat_vplast_law.hpp"
 #include "4C_material_parameter_base.hpp"
@@ -838,6 +839,8 @@ namespace Mat
      *        cross-linearizations
      *
      * @param[in] defgrad Deformation gradient
+     *  @param[in] iFin_other Already computed inverse inelastic deformation gradient
+     *              (from already computed inelastic factors in the multiplicative split material)
      * @param[in] iFinjM  Inverse inelastic deformation gradient of current inelastic contribution
      *                    as 3x3 matrix
      * @param[in] dSdiFinj  Derivative of 2nd Piola Kirchhoff stresses w.r.t. the inverse inelastic
@@ -846,8 +849,8 @@ namespace Mat
      *                          of different field
      */
     virtual void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdx) = 0;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdx) = 0;
 
     /*!
      * @brief pre-evaluation, intended to be used for stuff that has to be done only once per
@@ -955,8 +958,8 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& iFin_other, Core::LinAlg::Matrix<3, 3>& iFinM) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdx) override;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdx) override;
 
     PAR::InelasticSource get_inelastic_source() override;
 
@@ -1006,7 +1009,8 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& iFin_other, Core::LinAlg::Matrix<3, 3>& iFinM) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
         Core::LinAlg::Matrix<6, 1>& dstressdx) override {};
 
     PAR::InelasticSource get_inelastic_source() override;
@@ -1062,7 +1066,8 @@ namespace Mat
         Core::LinAlg::Matrix<3, 3>& iFinM) override = 0;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
         Core::LinAlg::Matrix<6, 1>& dstressdx) override = 0;
 
     PAR::InelasticSource get_inelastic_source() override = 0;
@@ -1156,7 +1161,8 @@ namespace Mat
         double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx) override = 0;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
         Core::LinAlg::Matrix<6, 1>& dstressdx) override = 0;
 
     Mat::PAR::InelasticSource get_inelastic_source() override;
@@ -1220,8 +1226,8 @@ namespace Mat
         double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdc) override;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdc) override;
 
     Mat::PAR::InelasticSource get_inelastic_source() override;
 
@@ -1291,8 +1297,8 @@ namespace Mat
         double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdc) override;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdc) override;
 
     Mat::PAR::InelasticSource get_inelastic_source() override;
 
@@ -1357,8 +1363,8 @@ namespace Mat
         double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdc) override;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdc) override;
 
     Mat::PAR::InelasticDefgradPolyIntercalFrac* parameter() const override
     {
@@ -1422,8 +1428,8 @@ namespace Mat
         double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdc) override;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdc) override;
 
     Mat::PAR::InelasticDefgradPolyIntercalFracAniso* parameter() const override
     {
@@ -1466,8 +1472,8 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& iFin_other, Core::LinAlg::Matrix<3, 3>& iFinM) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdT) override;
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdT) override;
 
     Mat::PAR::InelasticSource get_inelastic_source() override;
 
@@ -1550,8 +1556,10 @@ namespace Mat
         std::shared_ptr<Mat::Viscoplastic::Law> viscoplastic_law,
         Mat::Elastic::CoupTransverselyIsotropic fiber_reader,
         std::vector<std::shared_ptr<Mat::Elastic::Summand>> pot_sum_el,
-        std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>>
-            pot_sum_el_transv_iso);
+        std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>> pot_sum_el_transv_iso,
+        const double ref_temperature,
+        const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type,
+        const double thermal_expansion_fac);
 
     Core::Materials::MaterialType material_type() const override
     {
@@ -1570,10 +1578,13 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& iFin_other, Core::LinAlg::Matrix<3, 3>& iFinM) override;
 
     void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
-        const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
-        Core::LinAlg::Matrix<6, 1>& dstressdT) override {};
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdT) override;
 
-    Mat::PAR::InelasticSource get_inelastic_source() override { return PAR::InelasticSource::none; }
+    Mat::PAR::InelasticSource get_inelastic_source() override
+    {
+      return PAR::InelasticSource::temperature;
+    }
 
     Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast* parameter() const override
     {
@@ -1675,11 +1686,12 @@ namespace Mat
     void debug_set_last_quantities(const int gp,
         const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
         const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
-        const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi_lambda_1,
-        const double last_xi_lambda_2, const std::array<double, 3> last_xi_eigenvect_rot,
-        const double last_max_xi_lambda_1, const double last_max_xi_lambda_2,
-        const std::array<double, 3> last_max_xi_eigenvect_rot, const double optimal_xi_lambda_1,
-        const double optimal_xi_lambda_2, const std::array<double, 3> optimal_xi_eigenvect_rot);
+        const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_temperature,
+        const double last_xi_lambda_1, const double last_xi_lambda_2,
+        const std::array<double, 3> last_xi_eigenvect_rot, const double last_max_xi_lambda_1,
+        const double last_max_xi_lambda_2, const std::array<double, 3> last_max_xi_eigenvect_rot,
+        const double optimal_xi_lambda_1, const double optimal_xi_lambda_2,
+        const std::array<double, 3> optimal_xi_eigenvect_rot);
 
     /*!
      * @brief Get the utilized viscoplastic law object.
@@ -1713,6 +1725,15 @@ namespace Mat
 
     //! parameter list
     Teuchos::ParameterList params_;
+
+    /// reference temperature
+    const double ref_temperature_;
+
+    /// thermal expansion factor
+    const double thermal_expansion_fac_;
+
+    /// thermal expansion material type
+    const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type_;
 
 
     //! map to elastic materials/potential summands (only isotropic)
@@ -2135,6 +2156,10 @@ namespace Mat
       }
       // set control variable to true, since we exit the benchmarking procedure
       increment_timint_analysis_vars = true;
+
+      // DEBUG
+      std::cout << "Benchmark " << func_descr << ": avg_time = " << avg_time << " after "
+                << num_of_required_iters << " iters!" << std::endl;
 
       // return average time
       return avg_time;

@@ -1214,6 +1214,9 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
     Core::LinAlg::Matrix<nen_ * numdofpernode_, 1>* efint,  // internal force
     Teuchos::ParameterList& params)
 {
+  // DEBUG
+  std::cout << "THERMO ELE" << std::endl;
+
   // update element geometry
   Core::LinAlg::Matrix<nen_, nsd_> xcurr;      // current  coord. of element
   Core::LinAlg::Matrix<nen_, nsd_> xcurrrate;  // current  coord. of element
