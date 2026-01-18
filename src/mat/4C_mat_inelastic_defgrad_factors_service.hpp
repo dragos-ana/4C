@@ -177,6 +177,9 @@ namespace Mat
       //! Interpolation routine
       std::vector<Core::LinAlg::Matrix<3, 3>> last_defgrad_;
 
+      //! temperatures for all Gauss points at the previous time instant
+      std::vector<double> last_temperature_;
+
       //! temporary variable, for which we store the right Cauchy-Green deformation tensor at each
       //! evaluation (used in order to update last_rightCG_ once outer NR converges) (for all Gauss
       //! points)
@@ -195,6 +198,10 @@ namespace Mat
 
       //! current equivalent stress (for all Gauss points)
       std::vector<double> current_stress_;
+
+      //! temperatures for all Gauss points at the current time instant
+      std::vector<double> current_temperature_;
+
 
       //! inverse plastic deformation gradient at the last computed time instant (after the last
       //! converged substep)
@@ -1277,6 +1284,8 @@ namespace Mat
       //! derivatives of the equivalent tensile stress w.r.t. the right Cauchy-Green deformation
       //! tensor (Voigt stress form)
       Core::LinAlg::Matrix<1, 6> curr_dequiv_stress_dC_{Core::LinAlg::Initialization::zero};
+      //! derivatives of the equivalent tensile stress w.r.t. the temperature
+      double curr_dequiv_stress_dT_{0.0};
 
       //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
       //! inverse inelastic deformation gradient (Voigt stress form)
@@ -1284,11 +1293,19 @@ namespace Mat
       //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
       //! right Cauchy-Green deformation tensor (Voigt stress-stress form)
       Core::LinAlg::Matrix<6, 6> curr_dMe_dev_sym_dC_{Core::LinAlg::Initialization::zero};
+      //! derivative of the deviatoric, symmetric part of the Mandel stress tensor w.r.t. the
+      //! temperature (Voigt stress form)
+      Core::LinAlg::Matrix<6, 1> curr_dMe_dev_sym_dT_{Core::LinAlg::Initialization::zero};
+
 
       //! derivative of the plastic strain rate w.r.t. the equivalent stress
       double curr_dpsr_dequiv_stress_{0.0};
       //! derivative of the plastic strain rate w.r.t. the equivalent plastic strain
       double curr_dpsr_depsp_{0.0};
+      //! derivative of the plastic strain rate w.r.t. the temperature
+      double curr_dpsr_dT_{0.0};
+
+
 
       //! derivative of the plastic stretching tensor w.r.t. the inverse inelastic deformation
       //! gradient (Voigt stress form)
@@ -1299,6 +1316,10 @@ namespace Mat
       //! derivative of the plastic stretching tensor w.r.t. the right Cauchy-Green deformation
       //! tensor (Voigt stress-stress form)
       Core::LinAlg::Matrix<6, 6> curr_ddpdC_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic stretching tensor w.r.t. the temperature (Voigt stress form)
+      Core::LinAlg::Matrix<6, 1> curr_ddpdT_{Core::LinAlg::Initialization::zero};
+
+
 
       //! derivative of the plastic velocity gradient tensor w.r.t. the inverse inelastic
       //! deformation gradient (Voigt notation)
@@ -1309,6 +1330,10 @@ namespace Mat
       //! derivative of the plastic velocity gradient tensor w.r.t. the right Cauchy-Green
       //! deformation tensor (Voigt stress form)
       Core::LinAlg::Matrix<9, 6> curr_dlpdC_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic velocity gradient tensor w.r.t. the temperature
+      //! (Voigt notation)
+      Core::LinAlg::Matrix<9, 1> curr_dlpdT_{Core::LinAlg::Initialization::zero};
+
 
       //! derivative of the plastic update tensor w.r.t. the inverse inelastic deformation
       //! gradient (Voigt notation)
@@ -1319,6 +1344,9 @@ namespace Mat
       //! derivative of the plastic update tensor w.r.t. the right Cauchy-Green deformation tensor
       //! (Voigt stress form)
       Core::LinAlg::Matrix<9, 6> curr_dEpdC_{Core::LinAlg::Initialization::zero};
+      //! derivative of the plastic update tensor w.r.t. the temperature (Voigt
+      //! notation)
+      Core::LinAlg::Matrix<9, 1> curr_dEpdT_{Core::LinAlg::Initialization::zero};
     };
 
 

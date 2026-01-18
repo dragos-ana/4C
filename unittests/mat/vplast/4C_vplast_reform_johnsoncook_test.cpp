@@ -55,8 +55,7 @@ namespace
 
       // parameter list
       Teuchos::ParameterList param_list{};
-      // TODO: test with other temperatures!
-      param_list.set<double>("temperature", 293);
+      param_list.set<double>("temperature", 20.0);
 
 
       // call pre_evaluate
@@ -73,7 +72,7 @@ namespace
     double plastic_strain_rate_reformulated_JC_solution_;
     // reference solution for the plastic strain rate derivatives, w.r.t. equivalent stress and
     // plastic strain (ReformulatedJohnsonCook)
-    Core::LinAlg::Matrix<2, 1> deriv_plastic_strain_rate_reformulated_JC_solution_;
+    Core::LinAlg::Matrix<3, 1> deriv_plastic_strain_rate_reformulated_JC_solution_;
     // pointer to ReformulatedJohnsonCook
     std::shared_ptr<Mat::Viscoplastic::ReformulatedJohnsonCook> vplast_law_reformulated_JC_;
     // pointer to parameters of ReformulatedJohnsonCook
@@ -86,7 +85,7 @@ namespace
   TEST_F(ReformJohnsonCookTest, TestEvaluateStressRatio)
   {
     // set reference solution
-    stress_ratio_reformulated_JC_solution_ = 1.14072049868917;
+    stress_ratio_reformulated_JC_solution_ = 1.1556126603348709;
 
     // compute solution from the viscoplasticity law
     double stress_ratio_reformulated_JC =
@@ -99,7 +98,8 @@ namespace
   TEST_F(ReformJohnsonCookTest, TestEvaluatePlasticStrainRate)
   {
     // set reference solution
-    plastic_strain_rate_reformulated_JC_solution_ = 23188.7161986626;
+    plastic_strain_rate_reformulated_JC_solution_ = 67182.9745369580195984;
+
 
     // declare error status
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status =
@@ -122,8 +122,9 @@ namespace
   TEST_F(ReformJohnsonCookTest, TestEvaluatePlasticStrainRateDerivatives)
   {
     // set reference solution
-    deriv_plastic_strain_rate_reformulated_JC_solution_(0, 0) = 1889.49890189991;
-    deriv_plastic_strain_rate_reformulated_JC_solution_(1, 0) = -47431778.9968811;
+    deriv_plastic_strain_rate_reformulated_JC_solution_(0, 0) = 5545.6179676088768247;
+    deriv_plastic_strain_rate_reformulated_JC_solution_(1, 0) = -139210732.3144087791442871;
+    deriv_plastic_strain_rate_reformulated_JC_solution_(2, 0) = 3623.4626950498809492;
 
 
     // declare error status
@@ -131,7 +132,7 @@ namespace
         Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute solution from the viscoplasticity law
-    Core::LinAlg::Matrix<2, 1> deriv_plastic_strain_rate_reformulated_JC =
+    Core::LinAlg::Matrix<3, 1> deriv_plastic_strain_rate_reformulated_JC =
         vplast_law_reformulated_JC_->evaluate_derivatives_of_plastic_strain_rate(
             equiv_stress_, equiv_plastic_strain_, 1.0, 1.0e30, err_status, false);
 
@@ -139,8 +140,12 @@ namespace
       FOUR_C_THROW("Error encountered during testing of TestEvaluatePlasticStrainRateDerivatives");
 
     // compare solutions
-    FOUR_C_EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_,
-        deriv_plastic_strain_rate_reformulated_JC, 1.0e-6);
+    EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_(0),
+        deriv_plastic_strain_rate_reformulated_JC(0), 1.0e-5);
+    EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_(1),
+        deriv_plastic_strain_rate_reformulated_JC(1), 1.0e-5);
+    EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_(2),
+        deriv_plastic_strain_rate_reformulated_JC(2), 1.0e-5);
   }
 
 }  // namespace

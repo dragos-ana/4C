@@ -14,6 +14,7 @@
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_symmetric_tensor.hpp"
+#include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_linalg_tensor_matrix_conversion.hpp"
 #include "4C_mat_anisotropy.hpp"
@@ -23,13 +24,16 @@
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_service.hpp"
+#include "4C_scatra_ele_action.hpp"
 #include "4C_ssi_input.hpp"
 #include "4C_structure_new_enum_lists.hpp"
 #include "4C_utils_enum.hpp"
+#include "4C_utils_exceptions.hpp"
 
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
 #include <memory>
+
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -43,7 +47,11 @@ Mat::PAR::MultiplicativeSplitDefgradElastHyper::MultiplicativeSplitDefgradElastH
       matids_elast_(matdata.parameters.get<std::vector<int>>("MATIDSEL")),
       numfac_inel_(matdata.parameters.get<int>("NUMFACINEL")),
       inel_defgradfacids_(matdata.parameters.get<std::vector<int>>("INELDEFGRADFACIDS")),
-      density_(matdata.parameters.get<double>("DENS"))
+      density_(matdata.parameters.get<double>("DENS")),
+      ref_temperature_(matdata.parameters.get<double>("REF_TEMPERATURE")),
+      thermal_expansion_fac_(matdata.parameters.get<double>("THERMAL_EXPANSION_FAC")),
+      thermal_expansion_mat_type_(
+          matdata.parameters.get<Mat::ThermalExpansionMaterialType>("THERMAL_EXPANSION_MAT_TYPE"))
 {
   // check if sizes fit
   if (nummat_elast_ != static_cast<int>(matids_elast_.size()))
@@ -58,6 +66,9 @@ Mat::PAR::MultiplicativeSplitDefgradElastHyper::MultiplicativeSplitDefgradElastH
         "deformation gradient ID vector {}",
         numfac_inel_, inel_defgradfacids_.size());
   }
+
+  FOUR_C_ASSERT_ALWAYS(thermal_expansion_mat_type_ == ThermalExpansionMaterialType::isotropic,
+      "Only isotropic thermal expansion is enabled currently!");
 }
 
 std::shared_ptr<Core::Mat::Material>
@@ -230,13 +241,40 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   pre_evaluate(params, gp, eleGID);
 
   // compute kinematic quantities
-  KinematicQuantities kinematic_quantities =
+  Mat::KinematicQuantities kinematic_quantities =
       evaluate_kinematic_quantities(*this, *inelastic_, defgrd_mat, gp, eleGID);
 
   // compute stress factors
-  StressFactors stress_factors;
+  Mat::StressFactors stress_factors;
   Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kinematic_quantities.prinv,
       kinematic_quantities.dPIe, kinematic_quantities.ddPIIe);
+
+  // compute thermal quantities
+  // set temperature difference as 0 first; and then we add the temperature from the
+  // parameter container on top of it (in TSI: temperature is always 0 at beginning of simulation)
+  double delta_temperature = 0.0;
+  if (params.isParameter("temperature"))
+  {
+    delta_temperature += params.get<double>("temperature");
+  }
+  Mat::ThermalQuantities thermal_quantities =
+      Mat::evaluate_thermal_quantities(delta_temperature, params_->thermal_expansion_mat_type_,
+          params_->thermal_expansion_fac_, kinematic_quantities.iFinM, gp, eleGID, potsumel_);
+
+
+
+  // compute mixed thermo-elastic tensors required for reducing the Mandel stress based on
+  // temperature
+  Core::LinAlg::Matrix<3, 3> CT{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::Stresses::vector_to_matrix(thermal_quantities.CTV, CT);
+  Core::LinAlg::Matrix<3, 3> iCT{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::Stresses::vector_to_matrix(thermal_quantities.iCTV, iCT);
+
+
+  // compute thermal stress factors
+  Mat::StressFactors thermal_stress_factors;
+  Mat::calculate_gamma_delta(thermal_stress_factors.gamma, thermal_stress_factors.delta,
+      thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
 
   // derivative of 2nd Piola Kirchhoff stresses w.r.t. the inverse inelastic deformation
   // gradient
@@ -252,6 +290,14 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   // cmat = 2 dS/dC = 2 \frac{\partial S}{\partial C} + 2 \frac{\partial S}{\partial F_{in}^{-1}}
   // : \frac{\partial F_{in}^{-1}}{\partial C} = cmatiso + cmatadd
   evaluate_stress_cmat_iso(kinematic_quantities, stress_factors, stress_view, cmatiso);
+
+  // evaluate thermal stress and derivative wrt temperature
+  Core::LinAlg::Matrix<6, 1> thermal_stress = Mat::evaluate_thermal_stress(thermal_quantities,
+      thermal_stress_factors, kinematic_quantities.iCinV, kinematic_quantities.detFin);
+
+  // update stress using the thermal stress
+  stress_view.update(-1.0, thermal_stress, 1.0);
+
   // separate update coming from the transversely isotropic components
   if (!(potsumel_transviso_.empty()))
   {
@@ -293,7 +339,7 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
 
   KinematicQuantities kinematic_quantities =
       evaluate_kinematic_quantities(*this, *inelastic_, defgrad_mat, gp, eleGID);
-  StressFactors stress_factors;
+  Mat::StressFactors stress_factors;
   Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kinematic_quantities.prinv,
       kinematic_quantities.dPIe, kinematic_quantities.ddPIIe);
   Core::LinAlg::Matrix<6, 9> dSdiFin = evaluated_sdi_fin(kinematic_quantities, stress_factors);
@@ -301,6 +347,33 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
   Core::LinAlg::SymmetricTensor<double, 3, 3> d_stress_d_scalar{};
   Core::LinAlg::Matrix<6, 1> d_stress_d_scalar_view =
       Core::LinAlg::make_stress_like_voigt_view(d_stress_d_scalar);
+
+  // evaluate thermal stress derivative
+  if (source == PAR::InelasticSource::temperature)
+  {
+    // compute thermal quantities
+    // set temperature difference as 0 first; and then we add the temperature from the
+    // parameter container on top of it (in TSI: temperature is always 0 at beginning of simulation)
+    double delta_temperature = 0.0;
+    if (params.isParameter("temperature"))
+    {
+      delta_temperature += params.get<double>("temperature");
+    }
+    Mat::ThermalQuantities thermal_quantities =
+        Mat::evaluate_thermal_quantities(delta_temperature, params_->thermal_expansion_mat_type_,
+            params_->thermal_expansion_fac_, kinematic_quantities.iFinM, gp, eleGID, potsumel_);
+
+    // compute thermal stress factors
+    Mat::StressFactors thermal_stress_factors;
+    Mat::calculate_gamma_delta(thermal_stress_factors.gamma, thermal_stress_factors.delta,
+        thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
+
+    // compute thermal stress derivative
+    d_stress_d_scalar_view = Mat::evaluate_thermal_stress_deriv(
+        kinematic_quantities.iFinM, thermal_quantities, thermal_stress_factors);
+  }
+
+
   evaluate_od_stiff_mat(source, &defgrad_mat, dSdiFin, d_stress_d_scalar_view);
   return d_stress_d_scalar;
 }
@@ -362,7 +435,7 @@ double Mat::MultiplicativeSplitDefgradElastHyper::evaluate_cauchy_n_dir_and_deri
   // derivatives of principle invariants of elastic left cauchy-green tensor
   static Core::LinAlg::Matrix<3, 1> dPI(Core::LinAlg::Initialization::zero);
   static Core::LinAlg::Matrix<6, 1> ddPII(Core::LinAlg::Initialization::zero);
-  evaluate_invariant_derivatives(prinv, gp, eleGID, dPI, ddPII);
+  Mat::evaluate_invariant_derivatives(prinv, gp, eleGID, potsumel_, dPI, ddPII);
 
   const double detFe = FeM.determinant();
   const double nddir = n * dir;
@@ -527,8 +600,7 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_linearization_od(
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_stress_cmat_iso(
-    const Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities& kinemat_quant,
-    const Mat::MultiplicativeSplitDefgradElastHyper::StressFactors& stress_fact,
+    const Mat::KinematicQuantities& kinemat_quant, const Mat::StressFactors& stress_fact,
     Core::LinAlg::Matrix<6, 1>& stress, Core::LinAlg::Matrix<6, 6>& cmatiso) const
 {
   // extract variables from kinemat_quant
@@ -564,11 +636,11 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_stress_cmat_iso(
   cmatiso.scale(detFin);
 }
 
+
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kin_quant_elast(
-    const Core::LinAlg::Matrix<3, 3>* const defgrad,
-    Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities& kinemat_quant) const
+    const Core::LinAlg::Matrix<3, 3>* const defgrad, Mat::KinematicQuantities& kinemat_quant) const
 {
   // extract variables from kinemat_quant
   const Core::LinAlg::Matrix<3, 3>& iFinM = kinemat_quant.iFinM;
@@ -644,27 +716,8 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kin_quant_elast(
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_invariant_derivatives(
-    const Core::LinAlg::Matrix<3, 1>& prinv, const int gp, const int eleGID,
-    Core::LinAlg::Matrix<3, 1>& dPI, Core::LinAlg::Matrix<6, 1>& ddPII) const
-{
-  // clear variables
-  dPI.clear();
-  ddPII.clear();
-
-  // loop over map of associated potential summands
-  // derivatives of strain energy function w.r.t. principal invariants
-  for (const auto& p : potsumel_)  // only for isotropic components
-  {
-    p->add_derivatives_principal(dPI, ddPII, prinv, gp, eleGID);
-  }
-}
-
-/*--------------------------------------------------------------------*
- *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<6, 9> Mat::MultiplicativeSplitDefgradElastHyper::evaluated_sdi_fin(
-    const Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities& kinemat_quant,
-    const Mat::MultiplicativeSplitDefgradElastHyper::StressFactors& stress_fact) const
+    const Mat::KinematicQuantities& kinemat_quant, const Mat::StressFactors& stress_fact) const
 {
   // declare output variables
   Core::LinAlg::Matrix<6, 9> dSdiFin{Core::LinAlg::Initialization::zero};
@@ -735,9 +788,9 @@ Core::LinAlg::Matrix<6, 9> Mat::MultiplicativeSplitDefgradElastHyper::evaluated_
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_transv_iso_quantities(
-    const Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities& kinemat_quant,
-    const Core::LinAlg::Matrix<3, 3>& CM, const Teuchos::ParameterList& params, const int gp,
-    const int eleGID, Core::LinAlg::Matrix<6, 1>& stress, Core::LinAlg::Matrix<6, 6>& cmatiso,
+    const Mat::KinematicQuantities& kinemat_quant, const Core::LinAlg::Matrix<3, 3>& CM,
+    const Teuchos::ParameterList& params, const int gp, const int eleGID,
+    Core::LinAlg::Matrix<6, 1>& stress, Core::LinAlg::Matrix<6, 6>& cmatiso,
     Core::LinAlg::Matrix<6, 9>& dSdiFin) const
 {
   // extract variables from kinemat_quant
@@ -991,7 +1044,11 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_od_stiff_mat(PAR::Inela
   // implementation accordingly
   if (num_contributions == 1)
   {
-    facdefgradin[0].second->evaluate_od_stiff_mat(defgrad, iFinjM[0].second, dSdiFin, dstressdx);
+    Core::LinAlg::Matrix<3, 3> id3x3{Core::LinAlg::Initialization::zero};
+    for (int i = 0; i < 3; ++i) id3x3(i, i) = 1.0;
+
+    facdefgradin[0].second->evaluate_od_stiff_mat(
+        defgrad, id3x3, iFinjM[0].second, dSdiFin, dstressdx);
   }
   else if (num_contributions > 1)
   {
@@ -1048,7 +1105,7 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_od_stiff_mat(PAR::Inela
             1.0, producta, productb, diFindiFinj);
         dSdiFinj.multiply(1.0, dSdiFin, diFindiFinj, 0.0);
         facdefgradin[i].second->evaluate_od_stiff_mat(
-            defgrad, iFinjM[i].second, dSdiFinj, dstressdx);
+            defgrad, productb, iFinjM[i].second, dSdiFinj, dstressdx);
       }
     }
   }
@@ -1059,7 +1116,7 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_od_stiff_mat(PAR::Inela
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::pre_evaluate(
-    const Teuchos::ParameterList& params, const int gp, const int eleGID) const
+    const Teuchos::ParameterList& params, const int gp, const int eleGID)
 {
   // loop over all inelastic contributions
   for (int p = 0; p < inelastic_->num_inelastic_def_grad(); ++p)
@@ -1216,13 +1273,12 @@ void Mat::InelasticFactorsHandler::unpack_inelastic(Core::Communication::UnpackB
 }
 
 
-Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities
-Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kinematic_quantities(
+Mat::KinematicQuantities Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kinematic_quantities(
     const Mat::MultiplicativeSplitDefgradElastHyper& splitdefgrd,
     Mat::InelasticFactorsHandler& inelastic_factors_handler,
     const Core::LinAlg::Matrix<3, 3>& defgrad, const int gp, const int eleGID)
 {
-  Mat::MultiplicativeSplitDefgradElastHyper::KinematicQuantities quantities{};
+  Mat::KinematicQuantities quantities{};
 
   // build inverse inelastic deformation gradient
   inelastic_factors_handler.evaluate_inverse_inelastic_def_grad(&defgrad, quantities.iFinM);
@@ -1233,7 +1289,7 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kinematic_quantities(
   splitdefgrd.evaluate_kin_quant_elast(&defgrad, quantities);
 
   // derivatives of principle invariants
-  splitdefgrd.evaluate_invariant_derivatives(quantities.prinv, gp, eleGID, quantities.dPIe,
+  Mat::evaluate_invariant_derivatives(quantities.prinv, gp, eleGID, potsumel_, quantities.dPIe,
       quantities.ddPIIe);  // NOTE: we exclude the transversely isotropic hyperelastic
                            // components in this function --> we deal with them separately
 
