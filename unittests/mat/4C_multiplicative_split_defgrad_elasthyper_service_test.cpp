@@ -7,13 +7,17 @@
 
 #include <gtest/gtest.h>
 
+#include "4C_global_data.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
-#include "4C_linalg_fixedsizematrix_tensor_products.hpp"
+#include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_mat_elast_isoneohooke.hpp"
+#include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_material_factory.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
-#include "4C_material_parameter_base.hpp"
+#include "4C_mat_par_bundle.hpp"
 #include "4C_unittest_utils_assertions_test.hpp"
+
 
 namespace
 {
@@ -155,5 +159,160 @@ namespace
 
     FOUR_C_EXPECT_NEAR(S_stress, S_stress_target, 1.0e-9);
     FOUR_C_EXPECT_NEAR(cmat, cmat_target, 1.0e-9);
+  }
+
+  TEST_F(MultiplicativeSplitDefgradElastHyperServiceTest,
+      TestEvaluateThermalQuantitiesStressAndStiffness)
+  {
+    Core::LinAlg::Matrix<6, 1> S_stress;
+    Core::LinAlg::Matrix<6, 6> cmat;
+
+    // set reference values
+    Core::LinAlg::Matrix<3, 3> CTM_ref_{Core::LinAlg::Initialization::zero};
+    CTM_ref_(0, 0) = 21.0000000000000000;
+    CTM_ref_(0, 1) = 0.0000000000000000;
+    CTM_ref_(0, 2) = 0.0000000000000000;
+    CTM_ref_(1, 0) = 0.0000000000000000;
+    CTM_ref_(1, 1) = 21.0000000000000000;
+    CTM_ref_(1, 2) = 0.0000000000000000;
+    CTM_ref_(2, 0) = 0.0000000000000000;
+    CTM_ref_(2, 1) = 0.0000000000000000;
+    CTM_ref_(2, 2) = 21.0000000000000000;
+    Core::LinAlg::Matrix<3, 3> dCTM_dT_ref_{Core::LinAlg::Initialization::zero};
+    dCTM_dT_ref_(0, 0) = 0.2000000000000000;
+    dCTM_dT_ref_(0, 1) = 0.0000000000000000;
+    dCTM_dT_ref_(0, 2) = 0.0000000000000000;
+    dCTM_dT_ref_(1, 0) = 0.0000000000000000;
+    dCTM_dT_ref_(1, 1) = 0.2000000000000000;
+    dCTM_dT_ref_(1, 2) = 0.0000000000000000;
+    dCTM_dT_ref_(2, 0) = 0.0000000000000000;
+    dCTM_dT_ref_(2, 1) = 0.0000000000000000;
+    dCTM_dT_ref_(2, 2) = 0.2000000000000000;
+    Core::LinAlg::Matrix<3, 3> S_theta_ref_{Core::LinAlg::Initialization::zero};
+    S_theta_ref_(0, 0) = -57.6893976104649298;
+    S_theta_ref_(0, 1) = 0.0000000000000000;
+    S_theta_ref_(0, 2) = 0.0000000000000000;
+    S_theta_ref_(1, 0) = 0.0000000000000000;
+    S_theta_ref_(1, 1) = -57.6893976104649298;
+    S_theta_ref_(1, 2) = 0.0000000000000000;
+    S_theta_ref_(2, 0) = 0.0000000000000000;
+    S_theta_ref_(2, 1) = 0.0000000000000000;
+    S_theta_ref_(2, 2) = -57.6893976104649298;
+    Core::LinAlg::Matrix<3, 3> dS_theta_dT_ref_{Core::LinAlg::Initialization::zero};
+    dS_theta_dT_ref_(0, 0) = 0.0001801479235998;
+    dS_theta_dT_ref_(0, 1) = 0.0000000000000000;
+    dS_theta_dT_ref_(0, 2) = 0.0000000000000000;
+    dS_theta_dT_ref_(1, 0) = 0.0000000000000000;
+    dS_theta_dT_ref_(1, 1) = 0.0001801479235998;
+    dS_theta_dT_ref_(1, 2) = 0.0000000000000000;
+    dS_theta_dT_ref_(2, 0) = 0.0000000000000000;
+    dS_theta_dT_ref_(2, 1) = 0.0000000000000000;
+    dS_theta_dT_ref_(2, 2) = 0.0001801479235998;
+    Core::LinAlg::Matrix<3, 3> S_ref_{Core::LinAlg::Initialization::zero};
+    S_ref_(0, 0) = -57.6893976104649298;
+    S_ref_(0, 1) = 0.0000000000000000;
+    S_ref_(0, 2) = 0.0000000000000000;
+    S_ref_(1, 0) = 0.0000000000000000;
+    S_ref_(1, 1) = -57.6893976104649298;
+    S_ref_(1, 2) = 0.0000000000000000;
+    S_ref_(2, 0) = 0.0000000000000000;
+    S_ref_(2, 1) = 0.0000000000000000;
+    S_ref_(2, 2) = -57.6893976104649298;
+    Core::LinAlg::Matrix<3, 3> dS_dT_ref_{Core::LinAlg::Initialization::zero};
+    dS_dT_ref_(0, 0) = 0.0001801479235998;
+    dS_dT_ref_(0, 1) = 0.0000000000000000;
+    dS_dT_ref_(0, 2) = 0.0000000000000000;
+    dS_dT_ref_(1, 0) = 0.0000000000000000;
+    dS_dT_ref_(1, 1) = 0.0001801479235998;
+    dS_dT_ref_(1, 2) = 0.0000000000000000;
+    dS_dT_ref_(2, 0) = 0.0000000000000000;
+    dS_dT_ref_(2, 1) = 0.0000000000000000;
+    dS_dT_ref_(2, 2) = 0.0001801479235998;
+    Core::LinAlg::Matrix<3, 3> S_T_ref_{Core::LinAlg::Initialization::zero};
+    S_T_ref_(0, 0) = 57.6893976104649298;
+    S_T_ref_(0, 1) = 0.0000000000000000;
+    S_T_ref_(0, 2) = 0.0000000000000000;
+    S_T_ref_(1, 0) = 0.0000000000000000;
+    S_T_ref_(1, 1) = 57.6893976104649298;
+    S_T_ref_(1, 2) = 0.0000000000000000;
+    S_T_ref_(2, 0) = 0.0000000000000000;
+    S_T_ref_(2, 1) = 0.0000000000000000;
+    S_T_ref_(2, 2) = 57.6893976104649298;
+    Core::LinAlg::Matrix<3, 3> dS_T_dT_ref_{Core::LinAlg::Initialization::zero};
+    dS_T_dT_ref_(0, 0) = -0.0001801479235998;
+    dS_T_dT_ref_(0, 1) = 0.0000000000000000;
+    dS_T_dT_ref_(0, 2) = 0.0000000000000000;
+    dS_T_dT_ref_(1, 0) = 0.0000000000000000;
+    dS_T_dT_ref_(1, 1) = -0.0001801479235998;
+    dS_T_dT_ref_(1, 2) = 0.0000000000000000;
+    dS_T_dT_ref_(2, 0) = 0.0000000000000000;
+    dS_T_dT_ref_(2, 1) = 0.0000000000000000;
+    dS_T_dT_ref_(2, 2) = -0.0001801479235998;
+
+
+
+    // set thermal info
+    const double delta_temperature = 100.0;
+    const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type =
+        FourC::Mat::ThermalExpansionMaterialType::isotropic;
+    const double thermal_expansion_fac = 0.1;
+
+    // set inverse inelastic defgrad
+    Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
+    for (int i = 0; i < 3; ++i) iFinM(i, i) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iCinM{Core::LinAlg::Initialization::zero};
+    iCinM.multiply_nt(1.0, iFinM, iFinM, 0.0);
+    Core::LinAlg::Matrix<6, 1> iCinV{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::matrix_to_vector(iCinM, iCinV);
+
+    // get problem
+    const int problemid(0);
+    Global::Problem& problem = (*Global::Problem::instance());
+    problem.materials()->set_read_from_problem(problemid);
+
+
+    // Create summand vector
+    std::vector<std::shared_ptr<Mat::Elastic::Summand>> potsum;
+    Core::IO::InputParameterContainer elast_pot_coup_neo_hooke_data;
+    elast_pot_coup_neo_hooke_data.add("YOUNG", 1.5e2);
+    elast_pot_coup_neo_hooke_data.add("NUE", 0.3);
+    problem.materials()->insert(
+        200, Mat::make_parameter(200, Core::Materials::MaterialType::mes_coupneohooke,
+                 elast_pot_coup_neo_hooke_data));
+    auto elastic_summand = Mat::Elastic::Summand::factory(200);
+    potsum.emplace_back(elastic_summand);
+
+
+    // evaluate thermal quantities
+    Mat::ThermalQuantities thermal_quantities = Mat::evaluate_thermal_quantities(
+        delta_temperature, thermal_expansion_mat_type, thermal_expansion_fac, iFinM, 0, 0, potsum);
+
+    // evaluate thermal stress factors
+    Mat::StressFactors thermal_stress_factors;
+    Mat::calculate_gamma_delta(thermal_stress_factors.gamma, thermal_stress_factors.delta,
+        thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
+
+    // evaluate thermal stress
+    Core::LinAlg::Matrix<6, 1> ST_V = Mat::evaluate_thermal_stress(
+        thermal_quantities, thermal_stress_factors, iCinV, 1.0 / iFinM.determinant());
+    Core::LinAlg::Matrix<3, 3> ST_M{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(ST_V, ST_M);
+    // evaluate partial derivative of thermal stress wrt temperature
+    Core::LinAlg::Matrix<6, 1> dST_dT_V =
+        Mat::evaluate_thermal_stress_deriv(iFinM, thermal_quantities, thermal_stress_factors);
+    Core::LinAlg::Matrix<3, 3> dST_dT_M{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(dST_dT_V, dST_dT_M);
+
+
+    // postprocessed data for assertions
+    Core::LinAlg::Matrix<3, 3> CTM{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(thermal_quantities.CTV, CTM);
+    Core::LinAlg::Matrix<3, 3> dCTM_dT{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(thermal_quantities.dCTdTV, dCTM_dT);
+
+    FOUR_C_EXPECT_NEAR(CTM, CTM_ref_, 1.0e-10);
+    FOUR_C_EXPECT_NEAR(dCTM_dT, dCTM_dT_ref_, 1.0e-10);
+    FOUR_C_EXPECT_NEAR(ST_M, S_T_ref_, 1.0e-10);
+    FOUR_C_EXPECT_NEAR(dST_dT_M, dS_T_dT_ref_, 1.0e-10);
   }
 }  // namespace

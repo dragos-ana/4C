@@ -245,7 +245,7 @@ double Mat::Viscoplastic::Anand::evaluate_plastic_strain_rate(const double equiv
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Core::LinAlg::Matrix<2, 1> Mat::Viscoplastic::Anand::evaluate_derivatives_of_plastic_strain_rate(
+Core::LinAlg::Matrix<3, 1> Mat::Viscoplastic::Anand::evaluate_derivatives_of_plastic_strain_rate(
     const double equiv_stress, const double equiv_plastic_strain, const double dt,
     const double max_plastic_strain_deriv, ErrorType& err_status, const bool update_hist_var)
 {
@@ -257,13 +257,13 @@ Core::LinAlg::Matrix<2, 1> Mat::Viscoplastic::Anand::evaluate_derivatives_of_pla
   if (equiv_plastic_strain < 0.0)
   {
     err_status = ErrorType::negative_plastic_strain;
-    return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+    return Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero};
   }
 
   // computation of derivatives
 
   // first we set derivatives to 0
-  Core::LinAlg::Matrix<2, 1> equiv_plastic_strain_rate_ders(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Matrix<3, 1> equiv_plastic_strain_rate_ders(Core::LinAlg::Initialization::zero);
 
   // then we check the yield condition
   if (equiv_stress > 0.0)
@@ -288,7 +288,7 @@ Core::LinAlg::Matrix<2, 1> Mat::Viscoplastic::Anand::evaluate_derivatives_of_pla
     if (err_status != ErrorType::no_errors)
     {
       err_status = ErrorType::failed_computation_flow_resistance;
-      return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+      return Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero};
     }
 
     // get signs of the derivatives
@@ -330,7 +330,7 @@ Core::LinAlg::Matrix<2, 1> Mat::Viscoplastic::Anand::evaluate_derivatives_of_pla
         (log_dt + log_deriv_eps > log_max_plastic_strain_deriv))
     {
       err_status = ErrorType::overflow_error;
-      return Core::LinAlg::Matrix<2, 1>{Core::LinAlg::Initialization::zero};
+      return Core::LinAlg::Matrix<3, 1>{Core::LinAlg::Initialization::zero};
     }
 
     // compute the exact derivatives using these logarithms
