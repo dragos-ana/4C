@@ -118,7 +118,7 @@ namespace Mat
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var) override;
 
-      Core::LinAlg::Matrix<2, 1> evaluate_derivatives_of_plastic_strain_rate(
+      Core::LinAlg::Matrix<3, 1> evaluate_derivatives_of_plastic_strain_rate(
           const double equiv_stress, const double equiv_plastic_strain, const double dt,
           const double max_plastic_strain_deriv,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
