@@ -14,6 +14,7 @@
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
 #include "4C_linalg_symmetric_tensor.hpp"
+#include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_linalg_tensor_matrix_conversion.hpp"
 #include "4C_mat_anisotropy.hpp"
@@ -26,10 +27,12 @@
 #include "4C_ssi_input.hpp"
 #include "4C_structure_new_enum_lists.hpp"
 #include "4C_utils_enum.hpp"
+#include "4C_utils_exceptions.hpp"
 
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
 #include <memory>
+
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -43,7 +46,11 @@ Mat::PAR::MultiplicativeSplitDefgradElastHyper::MultiplicativeSplitDefgradElastH
       matids_elast_(matdata.parameters.get<std::vector<int>>("MATIDSEL")),
       numfac_inel_(matdata.parameters.get<int>("NUMFACINEL")),
       inel_defgradfacids_(matdata.parameters.get<std::vector<int>>("INELDEFGRADFACIDS")),
-      density_(matdata.parameters.get<double>("DENS"))
+      density_(matdata.parameters.get<double>("DENS")),
+      ref_temperature_(matdata.parameters.get<double>("REF_TEMPERATURE")),
+      thermal_expansion_fac_(matdata.parameters.get<double>("THERMAL_EXPANSION_FAC")),
+      thermal_expansion_mat_type_(
+          matdata.parameters.get<Mat::ThermalExpansionMaterialType>("THERMAL_EXPANSION_MAT_TYPE"))
 {
   // check if sizes fit
   if (nummat_elast_ != static_cast<int>(matids_elast_.size()))
@@ -58,6 +65,9 @@ Mat::PAR::MultiplicativeSplitDefgradElastHyper::MultiplicativeSplitDefgradElastH
         "deformation gradient ID vector {}",
         numfac_inel_, inel_defgradfacids_.size());
   }
+
+  FOUR_C_ASSERT_ALWAYS(thermal_expansion_mat_type_ == ThermalExpansionMaterialType::isotropic,
+      "Only isotropic thermal expansion is enabled currently!");
 }
 
 std::shared_ptr<Core::Mat::Material>
@@ -237,6 +247,64 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   StressFactors stress_factors;
   Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kinematic_quantities.prinv,
       kinematic_quantities.dPIe, kinematic_quantities.ddPIIe);
+
+  // compute the thermal stretch, along with its temperature
+  // derivative
+  Core::LinAlg::SymmetricTensor<double, 3, 3> thermal_right_cg_tensor{
+      Core::LinAlg::TensorGenerators::identity<double, 3, 3>};
+  Core::LinAlg::SymmetricTensor<double, 3, 3> thermal_right_cg_temp_deriv_tensor{};
+  double temperature = params_->ref_temperature_;
+  if (params.isParameter("temperature"))
+  {
+    // verify the thermal expansion material type
+    FOUR_C_ASSERT_ALWAYS(
+        params_->thermal_expansion_mat_type_ == ThermalExpansionMaterialType::isotropic,
+        "Only isotropic thermal expansion is enabled currently!");
+
+    // get temperature difference (delta)
+    temperature = params.get<double>("temperature");
+    double delta_temperature = temperature;  // this is already the delta temperature, since
+                                             // the initial temperature is always 0.0 for TSI
+
+    // update the thermal stretch and the temperature derivative
+    thermal_right_cg_tensor += 2 * params_->thermal_expansion_fac_ * delta_temperature *
+                               Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
+    thermal_right_cg_temp_deriv_tensor += 2 * params_->thermal_expansion_fac_ *
+                                          Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
+  }
+
+  // compute principal invariants of the thermal stretch
+  Core::LinAlg::Matrix<3, 1> thermal_prinv{Core::LinAlg::Initialization::zero};
+  const Core::LinAlg::Matrix<6, 1> thermal_right_cg_strain_like_voigt =
+      Core::LinAlg::make_stress_like_voigt_view(thermal_right_cg_tensor);
+  Core::LinAlg::Voigt::Strains::invariants_principal(
+      thermal_prinv, thermal_right_cg_strain_like_voigt);
+
+
+  // compute derivatives of the thermal stretch principal invariants
+  Core::LinAlg::Matrix<3, 1> thermal_dPI{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<6, 1> thermal_ddPII{Core::LinAlg::Initialization::zero};
+  evaluate_invariant_derivatives(thermal_prinv, gp, eleGID, thermal_dPI, thermal_ddPII);
+
+  // compute thermal stress factors
+  StressFactors stress_factors_thermal;
+  Mat::calculate_gamma_delta(stress_factors_thermal.gamma, stress_factors_thermal.delta,
+      thermal_prinv, thermal_dPI, thermal_ddPII);
+
+
+  // DEBUG
+  const Core::LinAlg::Matrix<6, 1> thermal_right_cg_deriv_strain_like_voigt =
+      Core::LinAlg::make_strain_like_voigt_matrix(thermal_right_cg_temp_deriv_tensor);
+  thermal_right_cg_strain_like_voigt.print(std::cout);
+  thermal_right_cg_deriv_strain_like_voigt.print(std::cout);
+  thermal_prinv.print(std::cout);
+  thermal_dPI.print(std::cout);
+  thermal_ddPII.print(std::cout);
+  stress_factors_thermal.gamma.print(std::cout);
+  stress_factors_thermal.delta.print(std::cout);
+  stress_factors.gamma.print(std::cout);
+  stress_factors.delta.print(std::cout);
+  FOUR_C_THROW("Stop");
 
   // derivative of 2nd Piola Kirchhoff stresses w.r.t. the inverse inelastic deformation
   // gradient
@@ -1059,7 +1127,7 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_od_stiff_mat(PAR::Inela
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::pre_evaluate(
-    const Teuchos::ParameterList& params, const int gp, const int eleGID) const
+    const Teuchos::ParameterList& params, const int gp, const int eleGID)
 {
   // loop over all inelastic contributions
   for (int p = 0; p < inelastic_->num_inelastic_def_grad(); ++p)

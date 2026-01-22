@@ -66,11 +66,17 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
   double T = parameter()->ref_temperature();
   if (params.isParameter("temperature"))
   {
-    T = params.get<double>("temperature");
+    T += params.get<double>("temperature");
   }
   const double T_ref = parameter()->ref_temperature();
   const double T_melt = parameter()->melt_temperature();
   const double M = parameter()->temperature_sens();
+
+
+  // DEBUG
+  std::cout << "T: " << T << std::endl;
+  std::cout << "T_ref: " << T_ref << std::endl;
+  std::cout << "T_melt: " << T_melt << std::endl;
 
   // set temperature ratio
   temperature_ratio_ = 1.0;
@@ -85,6 +91,9 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
         1.0 - (std::pow(T, M) - std::pow(T_ref, M)) / (std::pow(T_melt, M) - std::pow(T_ref, M));
     log_temperature_ratio_ = std::log(temperature_ratio_);
   }
+
+  // DEBUG
+  std::cout << "Do we get here?" << std::endl;
 
   // set temperature ratio derivative
   temperature_ratio_deriv_ =
