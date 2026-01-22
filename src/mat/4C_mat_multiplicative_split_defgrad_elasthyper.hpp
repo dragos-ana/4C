@@ -14,6 +14,7 @@
 #include "4C_mat_anisotropy.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_monolithic_solid_scalar_material.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_material_parameter_base.hpp"
 
@@ -63,6 +64,15 @@ namespace Mat
 
       /// material mass density
       const double density_;
+
+      /// reference temperature
+      const double ref_temperature_;
+
+      /// thermal expansion factor
+      const double thermal_expansion_fac_;
+
+      /// thermal expansion material type
+      const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type_;
 
     };  // class MultiplicativeSplitDefgrad_ElastHyper
 
@@ -189,7 +199,7 @@ namespace Mat
     /// struct containing various kinematic quantities for the model evaluation
     struct KinematicQuantities
     {
-      // ----- variables of kinetic quantities ----- //
+      // ----- variables of kinematic quantities ----- //
 
       /// inverse right Cauchy-Green tensor \f$ \mathbf{C}^{-1} \f$ stored as 6x1 vector
       Core::LinAlg::Matrix<6, 1> iCV{Core::LinAlg::Initialization::zero};
@@ -457,7 +467,7 @@ namespace Mat
      * @param[in] gp      current gauss point
      * @param[in] eleGID  Element ID
      */
-    void pre_evaluate(const Teuchos::ParameterList& params, int gp, int eleGID) const;
+    void pre_evaluate(const Teuchos::ParameterList& params, int gp, int eleGID);
 
     /*!
      * @brief set the gauss point concentration to the respective parameter class of the inelastic

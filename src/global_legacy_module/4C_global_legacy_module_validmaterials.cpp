@@ -19,6 +19,7 @@
 #include "4C_mat_fluidporo_singlephase.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_mat_micromaterial.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_muscle_combo.hpp"
 #include "4C_porofluid_pressure_based_elast_scatra_input.hpp"
 
@@ -2595,6 +2596,13 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         .default_value = std::vector{0},
                         .size = from_parameter<int>("NUMFACINEL")}),
                 parameter<double>("DENS", {.description = "material mass density"}),
+                parameter<double>("REF_TEMPERATURE", {.description = "reference temperature T_0"}),
+                parameter<double>(
+                    "THERMAL_EXPANSION_FAC", {.description = "thermal expansion factor alpha_T"}),
+                parameter<Mat::ThermalExpansionMaterialType>("THERMAL_EXPANSION_MAT_TYPE",
+                    {.description = "thermal expansion material type: isotropic | anisotropic ...",
+                        .default_value = Mat::ThermalExpansionMaterialType::isotropic}),
+
             },
             {.description = "multiplicative split of deformation gradient"});
   }
