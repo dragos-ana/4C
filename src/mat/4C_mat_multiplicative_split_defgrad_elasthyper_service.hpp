@@ -19,6 +19,13 @@ FOUR_C_NAMESPACE_OPEN
 
 namespace Mat
 {
+
+  enum class ThermalExpansionMaterialType
+  {
+    isotropic,
+    anisotropic
+  };
+
   inline void evaluate_ce(const Core::LinAlg::Matrix<3, 3>& F,
       const Core::LinAlg::Matrix<3, 3>& iFin, Core::LinAlg::Matrix<3, 3>& Ce)
   {
