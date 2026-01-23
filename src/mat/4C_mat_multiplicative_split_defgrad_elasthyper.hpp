@@ -11,6 +11,7 @@
 #include "4C_config.hpp"
 
 #include "4C_comm_parobjectfactory.hpp"
+#include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_mat_anisotropy.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_monolithic_solid_scalar_material.hpp"
@@ -243,6 +244,38 @@ namespace Mat
       /// second derivatives of principle invariants
       Core::LinAlg::Matrix<6, 1> ddPIIe{Core::LinAlg::Initialization::zero};
     };
+
+    /// struct containing various quantities related to temperature for the model evaluation
+    struct ThermalQuantities
+    {
+      // ----- variables of thermal quantities ----- //
+      /// thermal right Cauchy-Green deformation tensor \f$ \mathbf{C}_T \f$ stored as 6x1
+      /// vector
+      Core::LinAlg::Matrix<6, 1> CTV{Core::LinAlg::Initialization::zero};
+      /// inverse thermal right Cauchy-Green deformation tensor \f$ \mathbf{C}_T{-1} \f$ stored as
+      /// 6x1 vector
+      Core::LinAlg::Matrix<6, 1> iCTV{Core::LinAlg::Initialization::zero};
+      /// \f$ \mathbf{F}_{\text{in}}^{-1} \mathbf{C}_T \mathbf{F}_{\text{in}}^{-T} \f$ stored as 6x1
+      /// vector
+      Core::LinAlg::Matrix<6, 1> iFinCTiFinTV{Core::LinAlg::Initialization::zero};
+      /// \f$ \mathbf{F}_{\text{in}}^{-1} \mathbf{C}_T^{-1} \mathbf{F}_{\text{in}}^{-T} \f$ stored
+      /// as 6x1 vector
+      Core::LinAlg::Matrix<6, 1> iFiniCTiFinTV{Core::LinAlg::Initialization::zero};
+      /// derivative of thermal right Cauchy-Green deformation tensor wrt temperature \f$ \mathrm{d}
+      /// \mathbf{C}_T / \mathrm{d} T \f$ stored as 6x1 vector
+      Core::LinAlg::Matrix<6, 1> dCTdTV{Core::LinAlg::Initialization::zero};
+
+      /// principal invariants of the thermal right Cauchy-Green tensor
+      Core::LinAlg::Matrix<3, 1> prinv{Core::LinAlg::Initialization::zero};
+
+      // ----- derivatives of principal invariants ----- //
+
+      /// first derivatives of principle invariants
+      Core::LinAlg::Matrix<3, 1> dPI{Core::LinAlg::Initialization::zero};
+      /// second derivatives of principle invariants
+      Core::LinAlg::Matrix<6, 1> ddPII{Core::LinAlg::Initialization::zero};
+    };
+
 
     /// struct containing free-energy related stress factors, as presented in Holzapfel-Nonlinear
     /// Solid Mechanics
@@ -497,6 +530,9 @@ namespace Mat
         const Mat::MultiplicativeSplitDefgradElastHyper& splitdefgrd,
         Mat::InelasticFactorsHandler& inelastic_factors_handler,
         const Core::LinAlg::Matrix<3, 3>& defgrad, const int gp, const int eleGID);
+
+    ThermalQuantities evaluate_thermal_quantities(const double temperature,
+        const Core::LinAlg::Matrix<3, 3>& iFin, const int gp, const int eleGID);
   };
 
 }  // namespace Mat
