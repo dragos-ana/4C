@@ -248,58 +248,29 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kinematic_quantities.prinv,
       kinematic_quantities.dPIe, kinematic_quantities.ddPIIe);
 
-  // compute the thermal stretch, along with its temperature
-  // derivative
-  Core::LinAlg::SymmetricTensor<double, 3, 3> thermal_right_cg_tensor{
-      Core::LinAlg::TensorGenerators::identity<double, 3, 3>};
-  Core::LinAlg::SymmetricTensor<double, 3, 3> thermal_right_cg_temp_deriv_tensor{};
-  double temperature = params_->ref_temperature_;
+  // compute thermal quantities
+  // set temperature difference as 0 first; and then we add the temperature from the
+  // parameter container on top of it (in TSI: temperature is always 0 at beginning of simulation)
+  double delta_temperature = 0.0;
   if (params.isParameter("temperature"))
   {
-    // verify the thermal expansion material type
-    FOUR_C_ASSERT_ALWAYS(
-        params_->thermal_expansion_mat_type_ == ThermalExpansionMaterialType::isotropic,
-        "Only isotropic thermal expansion is enabled currently!");
-
-    // get temperature difference (delta)
-    temperature = params.get<double>("temperature");
-    double delta_temperature = temperature;  // this is already the delta temperature, since
-                                             // the initial temperature is always 0.0 for TSI
-
-    // update the thermal stretch and the temperature derivative
-    thermal_right_cg_tensor += 2 * params_->thermal_expansion_fac_ * delta_temperature *
-                               Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
-    thermal_right_cg_temp_deriv_tensor += 2 * params_->thermal_expansion_fac_ *
-                                          Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
+    delta_temperature += params.get<double>("temperature");
   }
-
-  // compute principal invariants of the thermal stretch
-  Core::LinAlg::Matrix<3, 1> thermal_prinv{Core::LinAlg::Initialization::zero};
-  const Core::LinAlg::Matrix<6, 1> thermal_right_cg_strain_like_voigt =
-      Core::LinAlg::make_stress_like_voigt_view(thermal_right_cg_tensor);
-  Core::LinAlg::Voigt::Strains::invariants_principal(
-      thermal_prinv, thermal_right_cg_strain_like_voigt);
-
-
-  // compute derivatives of the thermal stretch principal invariants
-  Core::LinAlg::Matrix<3, 1> thermal_dPI{Core::LinAlg::Initialization::zero};
-  Core::LinAlg::Matrix<6, 1> thermal_ddPII{Core::LinAlg::Initialization::zero};
-  evaluate_invariant_derivatives(thermal_prinv, gp, eleGID, thermal_dPI, thermal_ddPII);
+  ThermalQuantities thermal_quantities =
+      evaluate_thermal_quantities(delta_temperature, kinematic_quantities.iFinM, gp, eleGID);
 
   // compute thermal stress factors
   StressFactors stress_factors_thermal;
   Mat::calculate_gamma_delta(stress_factors_thermal.gamma, stress_factors_thermal.delta,
-      thermal_prinv, thermal_dPI, thermal_ddPII);
-
+      thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
 
   // DEBUG
-  const Core::LinAlg::Matrix<6, 1> thermal_right_cg_deriv_strain_like_voigt =
-      Core::LinAlg::make_strain_like_voigt_matrix(thermal_right_cg_temp_deriv_tensor);
-  thermal_right_cg_strain_like_voigt.print(std::cout);
-  thermal_right_cg_deriv_strain_like_voigt.print(std::cout);
-  thermal_prinv.print(std::cout);
-  thermal_dPI.print(std::cout);
-  thermal_ddPII.print(std::cout);
+  thermal_quantities.CTV.print(std::cout);
+  thermal_quantities.iCTV.print(std::cout);
+  thermal_quantities.iFinCTiFinTV.print(std::cout);
+  thermal_quantities.iFiniCTiFinTV.print(std::cout);
+  thermal_quantities.dCTdTV.print(std::cout);
+  thermal_quantities.prinv.print(std::cout);
   stress_factors_thermal.gamma.print(std::cout);
   stress_factors_thermal.delta.print(std::cout);
   stress_factors.gamma.print(std::cout);
@@ -1304,6 +1275,65 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kinematic_quantities(
   splitdefgrd.evaluate_invariant_derivatives(quantities.prinv, gp, eleGID, quantities.dPIe,
       quantities.ddPIIe);  // NOTE: we exclude the transversely isotropic hyperelastic
                            // components in this function --> we deal with them separately
+
+  return quantities;
+}
+
+Mat::MultiplicativeSplitDefgradElastHyper::ThermalQuantities
+Mat::MultiplicativeSplitDefgradElastHyper::evaluate_thermal_quantities(
+    const double delta_temperature, const Core::LinAlg::Matrix<3, 3>& iFinM, const int gp,
+    const int eleGID)
+{
+  Mat::MultiplicativeSplitDefgradElastHyper::ThermalQuantities quantities{};
+
+  // verify the thermal expansion material type
+  FOUR_C_ASSERT_ALWAYS(
+      params_->thermal_expansion_mat_type_ == ThermalExpansionMaterialType::isotropic,
+      "Only isotropic thermal expansion is enabled currently!");
+
+  // compute the thermal stretch, along with its temperature
+  // derivative
+  Core::LinAlg::SymmetricTensor<double, 3, 3> thermal_right_cg_tensor{
+      Core::LinAlg::TensorGenerators::identity<double, 3, 3>};
+  Core::LinAlg::SymmetricTensor<double, 3, 3> thermal_right_cg_temp_deriv_tensor{};
+  thermal_right_cg_tensor += 2 * params_->thermal_expansion_fac_ * delta_temperature *
+                             Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
+  thermal_right_cg_temp_deriv_tensor +=
+      2 * params_->thermal_expansion_fac_ * Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
+
+  // compute inverse of the thermal stretch
+  Core::LinAlg::SymmetricTensor<double, 3, 3> inv_thermal_right_cg_tensor =
+      inv(thermal_right_cg_tensor);
+
+  // get matrices for the thermal stretch
+  const Core::LinAlg::Matrix<3, 3> CTM =
+      Core::LinAlg::make_matrix(get_full(thermal_right_cg_tensor));
+  const Core::LinAlg::Matrix<3, 3> iCTM =
+      Core::LinAlg::make_matrix(Core::LinAlg::get_full(inv_thermal_right_cg_tensor));
+
+  // compute terms with iFin
+  Core::LinAlg::Matrix<3, 3> iFinCT{};
+  iFinCT.multiply(1.0, iFinM, CTM, 0.0);
+  Core::LinAlg::Matrix<3, 3> iFinCTiFinT{};
+  iFinCTiFinT.multiply_nt(1.0, iFinCT, iFinM, 0.0);
+  Core::LinAlg::Matrix<3, 3> iFiniCT{};
+  iFiniCT.multiply(1.0, iFinM, iCTM, 0.0);
+  Core::LinAlg::Matrix<3, 3> iFiniCTiFinT{};
+  iFiniCTiFinT.multiply_nt(1.0, iFiniCT, iFinM, 0.0);
+
+  // add computed tensors to quantities in the specified form
+  quantities.CTV = Core::LinAlg::make_stress_like_voigt_view(thermal_right_cg_tensor);
+  quantities.iCTV = Core::LinAlg::make_stress_like_voigt_view(inv_thermal_right_cg_tensor);
+  Core::LinAlg::Voigt::Stresses::matrix_to_vector(iFinCTiFinT, quantities.iFinCTiFinTV);
+  Core::LinAlg::Voigt::Stresses::matrix_to_vector(iFiniCTiFinT, quantities.iFiniCTiFinTV);
+  quantities.dCTdTV = Core::LinAlg::make_stress_like_voigt_view(thermal_right_cg_temp_deriv_tensor);
+
+  // compute principal invariants of the thermal stretch
+  Core::LinAlg::Voigt::Strains::invariants_principal(quantities.prinv, quantities.CTV);
+
+  // compute derivatives of the thermal stretch principal invariants
+  evaluate_invariant_derivatives(quantities.prinv, gp, eleGID, quantities.dPI, quantities.ddPII);
+
 
   return quantities;
 }
