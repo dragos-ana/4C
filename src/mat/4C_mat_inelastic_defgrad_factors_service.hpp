@@ -165,22 +165,10 @@ namespace Mat
       //! inverse plastic deformation gradient at the last time step (for all Gauss points)
       std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_inverse_;
 
-      //! spatial stretch of the plastic deformation gradient
-      //! at the last time step (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_spatial_stretch_;
-
-      //! inverse material stretch of the elastic deformation gradient
-      //! at the last time step (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_elastic_defgrad_material_stretch_inverse_;
-
-      //! inverse elastic stretch eigenvalues (inverse values ordered from
-      //! smallest to highest) at the
+      //! elastic stretch eigenvalues (ordered from
+      //! highest to smallest) at the
       //! last time step (for all Gauss points)
-      std::vector<std::array<double, 3>> last_inverse_elastic_stretch_eigenval_;
-
-      //! rotation of the inverse plastic deformation gradient
-      //! at the last time step (for all Gauss points)
-      std::vector<Core::LinAlg::Matrix<3, 3>> last_plastic_defgrad_inverse_rot_;
+      std::vector<std::array<double, 3>> last_elastic_stretch_eigenval_;
 
       //! (equivalent) plastic strain at the last time step (for all Gauss points)
       std::vector<double> last_plastic_strain_;
@@ -274,60 +262,71 @@ namespace Mat
       void set_material_const_tensors(const Core::LinAlg::Matrix<3, 1>& m);
     };
 
-    //! plastic predictor stretch assignment types (initial guess interpolation)
-    enum class PlasticPredictorStretchAssignType
-    {
-      maintain_elastic_stretch,  ///< elastic deformation gradient maintains its elastic stretch
-                                 ///< from the previous time instant
-      rotate_previous_elastic_stretch,  ///< maintain elastic stretch
-                                        ///< eigenvalues of the previous time instant, but rotate
-                                        ///< the related eigenvectors to match the eigenvectors
-                                        ///< within the trial state
-      eliminate_elastic_stretch,  ///< elastic deformation gradient becomes a pure rotation tensor,
-                                  ///< motivated by stress relaxation (elastic deformation ->
-                                  ///< plastic deformation) -> only makes sense for no-yield-surface
-                                  ///< viscoplastic models
-    };
-
-    //! plastic predictor rotation assignment types (initial guess interpolation)
-    enum class PlasticPredictorRotAssignType
-    {
-      trial_elastic_rotation,     ///< elastic rotation = trial elastic rotation
-                                  /// within the plastic predictor (for isotropic models, this is
-                                  /// generally the right choice)
-      preserve_plastic_rotation,  ///< plastic rotation = plastic rotation from
-                                  /// previous time instant
-    };
-
-
-    //! starting point type (initial guess interpolation)
-    enum class LocalNewtonGuessInterpolationStartingPointType
-    {
-      user_set,                  ///< User-set constant factor
-      last_interpolation_point,  ///< Takes the interpolation point of the previous timestep, which
-                                 ///< led to a valid initial guess, as the starting point for the
-                                 ///< interpolation within the current timestep
-      optimal_interpolation_point,  ///< Takes the optimal interpolation point
-                                    ///< of the previous timestep, i.e., the interpolation point
-                                    ///< leading to the solution of the Local Newton loop of the
-                                    ///< last global Newton iteration, as the starting point for th
-                                    ///< interpolation within the current timestep
-      optimal_equiv_stress          ///< Similar to optimal_interpolation_point, but
-                                    ///< considers the interpolation factor of the equivalent
-      ///< stress for the previous timestep with respect to the previous
-      ///< elastic and plastic predictors. Hence, all components of the interpolation point are
-      ///< effectively set to this one factor, instead of the generally
-      ///< different interpolation components obtained with optimal_interpolation_point
-    };
-
     //! class containing utilities for initial guess interpolation in the Local
     // Newton scheme for InelasticDefgradTransvIsotropElastViscoplast
     class LocalNewtonGuessInterpolation
     {
      public:
-      //! struct: components of deformation gradient (standard, elastic, plastic) within elastic and
-      //! plastic predictors extracted from combined spectral-polar decomposition as in Satheesh et
-      //! al. 2023 (10.1002/nme.7373)
+      //! plastic predictor: types of elastic stretch eigenvalues
+      enum class PlasticPredictorElasticStretchEigenvalType
+      {
+        maintain,   ///< elastic deformation gradient maintains its elastic stretch eigenvalues
+                    ///< from the previous time instant
+        eliminate,  ///< no elastic stretch: elastic stretch = unit tensor
+                    ///< ; motivated by stress relaxation (elastic deformation
+                    ///< -> plastic deformation) -> only completely consistent for
+                    ///< no-yield-surface viscoplastic models, but numerically comfortable for
+                    ///< all formulations in general
+      };
+
+      //! plastic predictor: types of elastic stretch eigenvector rotations
+      enum class PlasticPredictorElasticStretchEigenvectRotType
+      {
+        elastic_predictor,  ///< eigenvector rotation is taken from the trial elastic state / the
+                            ///< elastic predictor (for isotropic materials this is generally
+                            ///< consistent with the solution of the Local Newton)
+      };
+
+
+
+      //! plastic predictor rotation assignment types (initial guess interpolation)
+      enum class PlasticPredictorRotationType
+      {
+        elastic_predictor,  ///< elastic rotation = trial elastic rotation (elastic
+                            ///< predictor)
+                            /// within the plastic predictor (for isotropic models this is
+                            /// generally consistent with the solution of the Local Newton)
+      };
+
+
+
+      //! starting point type (initial guess interpolation)
+      enum class LocalNewtonGuessInterpolationStartingPointType
+      {
+        user_set,                     ///< User-set constant factor
+        last_interpolation_point,     ///< Takes the interpolation point of the previous timestep,
+                                      ///< which led to a valid initial guess, as the starting
+                                      ///< point for the interpolation within the current timestep
+        optimal_interpolation_point,  ///< Takes the optimal interpolation point
+                                      ///< of the previous timestep, i.e., the interpolation
+                                      ///< point leading to the solution of the Local Newton
+                                      ///< loop of the last global Newton iteration, as the
+                                      ///< starting point for th interpolation within the
+                                      ///< current timestep
+        optimal_equiv_stress          ///< Similar to optimal_interpolation_point, but
+                                      ///< considers the interpolation factor of the equivalent
+        ///< stress for the previous timestep with respect to the previous
+        ///< elastic and plastic predictors. Hence, all components of the interpolation point
+        ///< are effectively set to this one factor, instead of the generally different
+        ///< interpolation components obtained with optimal_interpolation_point
+      };
+
+
+
+      //! struct: components of deformation gradient (standard deformation gradient | elastic
+      //! deformation gradient | plastic deformation gradient) within elastic and plastic
+      //! predictors extracted from combined spectral-polar decomposition as in Satheesh et al.
+      //! 2023 (10.1002/nme.7373)
       struct PredictorDefgradDecomposition
       {
         //! elastic predictor: full, non-decomposed specific deformation
@@ -340,7 +339,8 @@ namespace Mat
         std::array<double, 3> lambda_elast_pred_;
         //! plastic predictor: eigenvalues \f$ \lambda_{\mathrm{plast}, i} \f$
         std::array<double, 3> lambda_plast_pred_;
-        //! elastic predictor: logarithm of eigenvalues \f$ \log(\lambda_{\mathrm{elast}, i}) \f$
+        //! elastic predictor: logarithm of eigenvalues \f$ \log(\lambda_{\mathrm{elast}, i})
+        //! \f$
         std::array<double, 3> log_lambda_elast_pred_;
         //! plastic predictor: logarithm eigenvalues \f$ \log(\lambda_{\mathrm{plast}, i}) \f$
         std::array<double, 3> log_lambda_plast_pred_;
@@ -348,11 +348,13 @@ namespace Mat
         Core::LinAlg::Matrix<3, 3> Qmat_elast_pred_;
         //! plastic predictor: eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{plast}} \f$
         Core::LinAlg::Matrix<3, 3> Qmat_plast_pred_;
-        //! plastic predictor: relative eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{plast,
-        //! rel}} \f$ with respect to the eigenvector rotation of the elastic predictor
+        //! plastic predictor: relative eigenvector rotation matrix \f$
+        //! \mathbf{Q}_{\mathrm{plast, rel}} \f$ with respect to the eigenvector rotation of the
+        //! elastic predictor
         Core::LinAlg::Matrix<3, 3> Qmat_plast_pred_rel_;
-        //! plastic predictor: relative eigenvector rotation vector \f$ \mathbf{q}_{\mathrm{plast,
-        //! rel}} \f$ with respect to the eigenvector rotation of the elastic predictor
+        //! plastic predictor: relative eigenvector rotation vector \f$
+        //! \mathbf{q}_{\mathrm{plast, rel}} \f$ with respect to the eigenvector rotation of the
+        //! elastic predictor
         Core::LinAlg::Matrix<3, 1> Qvec_plast_pred_rel_;
         //! elastic predictor: rotation matrix \f$ \mathbf{R}_{\mathrm{elast}} \f$
         Core::LinAlg::Matrix<3, 3> Rmat_elast_pred_;
@@ -414,22 +416,7 @@ namespace Mat
        * plastic deformation gradients within the plastic predictor.
        *
        */
-      DefgradType get_defgrad_type(const PlasticPredictorRotAssignType rot_assign_type)
-      {
-        if (rot_assign_type == PlasticPredictorRotAssignType::trial_elastic_rotation)
-        {
-          return DefgradType::elastic_defgrad;
-        }
-        else if (rot_assign_type == PlasticPredictorRotAssignType::preserve_plastic_rotation)
-        {
-          return DefgradType::inv_plastic_defgrad;
-        }
-        else
-        {
-          FOUR_C_THROW("Unsupported rotation assignment type {} for initial guess interpolation!",
-              rot_assign_type);
-        }
-      }
+      DefgradType get_defgrad_type() { return defgrad_type_; }
 
 
       //! struct: specified point in interpolation space used to interpolate the
@@ -491,8 +478,9 @@ namespace Mat
        *  lower (2-norm in interpolation space)
        */
       LocalNewtonGuessInterpolation(const double k_scan, const unsigned int max_num_reinterp,
-          const PlasticPredictorStretchAssignType stretch_assign_type,
-          const PlasticPredictorRotAssignType rot_assign_type, const double min_interp_interval);
+          const PlasticPredictorElasticStretchEigenvalType elastic_stretch_eigenval_type,
+          const PlasticPredictorElasticStretchEigenvectRotType elastic_stretch_eigenvect_rot_type,
+          const PlasticPredictorRotationType rot_type, const double min_interp_interval);
 
       //! setup method: set the correct number of Gauss Points to track the internal variables
       //! of the class
@@ -855,8 +843,18 @@ namespace Mat
       std::vector<PredictorDefgradDecomposition> all_pred_decomp_specific_defgrad_;
 
      private:
+      //! type of elastic stretch eigenvalues within plastic predictor
+      PlasticPredictorElasticStretchEigenvalType plast_pred_elast_stretch_eigenval_type_;
+
+      //! type of elastic stretch eigenvector rotation within plastic predictor
+      PlasticPredictorElasticStretchEigenvectRotType plast_pred_elast_stretch_eigenvect_rot_type_;
+
+      //! type of rotation within plastic predictor
+      PlasticPredictorRotationType plast_pred_rot_type_;
+
       //! decomposed deformation gradient type
       const DefgradType defgrad_type_;
+
 
       /**
        * @brief Component interpolator storing arrays of interpolation parameters
@@ -884,14 +882,6 @@ namespace Mat
         std::array<double, num_items> xi_u_;
       };
 
-      //! user-specified stretch assignment for the elastic and
-      //! plastic deformation gradient within the plastic predictor
-      const PlasticPredictorStretchAssignType plast_pred_stretch_assign_type_;
-
-      //! user-specified rotation assignment for the elastic and
-      //! plastic deformation gradient within the plastic predictor
-      const PlasticPredictorRotAssignType plast_pred_rot_assign_type_;
-
       //! interpolator for each GP for first eigenvalue \f$ \lambda_1 \f$ of either the
       //! elastic or the plastic defgrad (depending on rotation assignment)
       std::vector<ComponentInterpolator<1>> all_component_interp_lambda_1_;
@@ -907,7 +897,11 @@ namespace Mat
 
       //! control variable: should eigenvector rotations be interpolated (if
       //! not, take the eigenvector rotation of the elastic predictor)
-      const bool interpolate_eigenvect_rot_;
+      const bool interpolate_elastic_stretch_eigenvect_rot_;
+
+      //! control variable: should rotations be interpolated (if
+      //! not, take the rotation of the elastic predictor)
+      const bool interpolate_rot_;
     };
 
     //! struct with local substepping utilities
@@ -1684,6 +1678,7 @@ namespace Mat
     // #define DEBUG_MODE ;
     // #define DEBUG_PRED_ADAPT ;
     // #define DEBUG_LNL ;
+    //  #define DEBUG_INTEGRATE_PLASTIC_STRAIN ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
