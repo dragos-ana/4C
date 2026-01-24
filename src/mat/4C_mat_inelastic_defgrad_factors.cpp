@@ -445,17 +445,20 @@ namespace
   //! (Note the inverse eigenvalues last_FeM_matstretch_inverse_eigenval must be
   //! ordered from small to high)
   Core::LinAlg::Matrix<3, 3> compute_inverse_plastic_defgrad_plastic_pred(
-      const Core::LinAlg::Matrix<3, 3>& FM, const Core::LinAlg::Matrix<3, 3> last_FM,
-      const Core::LinAlg::Matrix<3, 3>& last_iFinM,
-      const Core::LinAlg::Matrix<3, 3>& last_FinM_spatstretch,
-      const Core::LinAlg::Matrix<3, 3>& last_iFinM_rot,
-      const Core::LinAlg::Matrix<3, 3>& last_FeM_matstretch_inverse,
-      const std::array<double, 3>& last_FeM_matstretch_inverse_eigenval,
-      const PlasticPredictorStretchAssignType plast_pred_stretch_assign_type,
-      const PlasticPredictorRotAssignType plast_pred_rot_assign_type)
+      const Core::LinAlg::Matrix<3, 3>& FM, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
+      const std::array<double, 3>& last_FeM_matstretch_eigenval,
+      const LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType
+          plast_pred_elastic_stretch_eigenval_type,
+      const LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvectRotType
+          plast_pred_elastic_stretch_eigenvect_rot_type,
+      const LocalNewtonGuessInterpolation::PlasticPredictorRotationType plast_pred_rot_type)
   {
     // declare output
     Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad_plastic_pred(Core::LinAlg::Initialization::zero);
+
+    // get determinant of the current deformation gradient
+    const double detF = FM.determinant();
+
 
     // compute elastic deformation gradient $ \boldsymbol{F}_{\mathrm{e}, n+1}^{0\mathrm{e}}  =
     // \boldsymbol{F}_{n+1} \boldsymbol{F}^{\text{p}^{-1}}}_n$ within the elastic predictor
@@ -472,168 +475,119 @@ namespace
     Core::LinAlg::matrix_3x3_polar_decomposition(Fenp_elast_pred, R_Fenp_elast_pred,
         U_Fenp_elast_pred, lambda_Fenp_elast_pred, spectral_pairs_Fenp_elast_pred);
 
-    // compute stretch transfer tensor $ \boldsymbol{T}$
-    Core::LinAlg::Matrix<3, 3> Tnp{Core::LinAlg::Initialization::zero};
-    switch (plast_pred_stretch_assign_type)
+
+    // compute elastic deformation gradient within the plastic predictor
+    Core::LinAlg::Matrix<3, 3> eigenvalue_matrix{Core::LinAlg::Initialization::zero};
+    switch (plast_pred_elastic_stretch_eigenval_type)
     {
-      case Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-          PlasticPredictorStretchAssignType::maintain_elastic_stretch:
-      case Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-          PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch:
+      case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType::eliminate:
       {
-        // compute inverse of the relevant stretch tensor, which depends on stretch assignment
-        Core::LinAlg::Matrix<3, 3> elastic_stretch_inverse{Core::LinAlg::Initialization::zero};
-        if (plast_pred_stretch_assign_type ==
-            Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                PlasticPredictorStretchAssignType::maintain_elastic_stretch)
-        {
-          elastic_stretch_inverse = last_FeM_matstretch_inverse;
-        }
-        else if (plast_pred_stretch_assign_type ==
-                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                     PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch)
-        {
-          // declare placeholder for the currently considered eigenvector
-          Core::LinAlg::Matrix<3, 1> q{Core::LinAlg::Initialization::zero};
-
-
-          // loop through inverse eigenvalues of the previous elastic
-          // stretch and add the contributions to the relevant tensor
-          for (int i = 0; i < 3; ++i)
-          {
-            // save current vector
-            q = spectral_pairs_Fenp_elast_pred[i].second;
-
-            // add contribution: q_i * lambda_i * q_i^T
-            elastic_stretch_inverse.multiply_nt(last_FeM_matstretch_inverse_eigenval[i], q, q, 1.0);
-          }
-        }
-        else
-        {
-          FOUR_C_THROW("Unknown stretch assignment type for the plastic predictor {}",
-              plast_pred_stretch_assign_type);
-        }
-
-
-        // compute $ \boldsymbol{T}_{n+1} = \boldsymbol{U}^{-1}_{\boldsymbol{F}_{\mathrm{e}, n}}
-        // \boldsymbol{S}_{\boldsymbol{F}_{\mathrm{e}, n+1}^{0\mathrm{e}}}
-        // \boldsymbol{U}_{\left[\boldsymbol{F}_{\mathrm{p},n}\right]^{-1}},
-        // where \boldsymbol{S} denotes the relevant elastic stretch
-        // tensor depending on the used method
-        // $
-        Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
-        temp.multiply_nn(1.0, elastic_stretch_inverse, U_Fenp_elast_pred, 0.0);
-        Tnp.multiply_nn(1.0, temp, last_FinM_spatstretch, 0.0);
+        for (int i = 0; i < 3; ++i) eigenvalue_matrix(i, i) = 1.0;
         break;
       }
-      case Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-          PlasticPredictorStretchAssignType::eliminate_elastic_stretch:
+      case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType::maintain:
       {
-        // compute $ \boldsymbol{T}_{n+1} =
-        // \boldsymbol{U}_{\boldsymbol{F}_{\mathrm{e}, n+1}^{0\mathrm{e}}}
-        // \boldsymbol{U}_{\left[\boldsymbol{F}_{\mathrm{p},n}\right]^{-1}}
-        // $
-        Tnp.multiply_nn(1.0, U_Fenp_elast_pred, last_FinM_spatstretch, 0.0);
+        for (int i = 0; i < 3; ++i) eigenvalue_matrix(i, i) = last_FeM_matstretch_eigenval[i];
+        break;
+      }
+
+      default:
+      {
+        FOUR_C_THROW("You should not be here, incompatible elastic stretch eigenvalue type {}",
+            EnumTools::enum_name(plast_pred_elastic_stretch_eigenval_type));
+      }
+    }
+    const double inv_det_eigenvalue_matrix = 1.0 / eigenvalue_matrix.determinant();
+    const double det_fac = std::pow(detF * inv_det_eigenvalue_matrix, 1.0 / 3.0);
+    eigenvalue_matrix.scale(det_fac);  // scale eigenvalue matrix such that the elastic deformation
+                                       // gradient carries the entire determinant
+    Core::LinAlg::Matrix<3, 3> eigenvector_matrix{Core::LinAlg::Initialization::zero};
+    switch (plast_pred_elastic_stretch_eigenvect_rot_type)
+    {
+      case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvectRotType::
+              elastic_predictor:
+      {
+        for (int i = 0; i < 3; ++i)
+        {
+          for (int j = 0; j < 3; ++j)
+          {
+            eigenvector_matrix(i, j) = spectral_pairs_Fenp_elast_pred[i].second(j);
+          }
+        }
         break;
       }
       default:
       {
         FOUR_C_THROW(
-            "Unknown plastic predictor stretch assignment type {}", plast_pred_stretch_assign_type);
+            "You should not be here, incompatible elastic stretch eigenvector rotation type {}",
+            EnumTools::enum_name(plast_pred_elastic_stretch_eigenvect_rot_type));
+      }
+    }
+    Core::LinAlg::Matrix<3, 3> rotation_matrix{Core::LinAlg::Initialization::zero};
+    switch (plast_pred_rot_type)
+    {
+      case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          LocalNewtonGuessInterpolation::PlasticPredictorRotationType::elastic_predictor:
+      {
+        rotation_matrix = R_Fenp_elast_pred;
+        break;
+      }
+      default:
+      {
+        FOUR_C_THROW(
+            "You should not be here, incompatible elastic stretch eigenvector rotation type {}",
+            EnumTools::enum_name(plast_pred_elastic_stretch_eigenvect_rot_type));
+      }
+    }
+    Core::LinAlg::Matrix<3, 3> QTLambda{Core::LinAlg::Initialization::zero};
+    QTLambda.multiply_tn(1.0, eigenvector_matrix, eigenvalue_matrix, 0.0);
+    Core::LinAlg::Matrix<3, 3> QTLambdaQ{Core::LinAlg::Initialization::zero};
+    QTLambdaQ.multiply_nn(1.0, QTLambda, eigenvector_matrix, 0.0);
+    Core::LinAlg::Matrix<3, 3> elast_defgrad{Core::LinAlg::Initialization::zero};
+    elast_defgrad.multiply_nn(1.0, rotation_matrix, QTLambdaQ, 0.0);
+    // compute inverse deformation gradient
+    Core::LinAlg::Matrix<3, 3> inv_FM{Core::LinAlg::Initialization::zero};
+    inv_FM.invert(FM);
+
+    // compute inverse plastic deformation gradient
+    inv_plastic_defgrad_plastic_pred.multiply_nn(1.0, inv_FM, elast_defgrad, 0.0);
+
+    return inv_plastic_defgrad_plastic_pred;
+  }
+
+  // precondition matrix for spectral-polar decomposition: set entries
+  // smaller than a set numerical tolerance to 0
+  Core::LinAlg::Matrix<3, 3> precondition_matrix(
+      const Core::LinAlg::Matrix<3, 3>& input_matrix, const double num_tolerance)
+  {
+    Core::LinAlg::Matrix<3, 3> output_matrix{input_matrix};
+    for (int i = 0; i < 3; ++i)
+    {
+      for (int j = 0; j < 3; ++j)
+      {
+        if (std::abs(output_matrix(i, j)) < num_tolerance) output_matrix(i, j) = 0.0;
       }
     }
 
+    return output_matrix;
+  }
 
-    // assignment of rotations within the plastic predictor
-    if (plast_pred_rot_assign_type == Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                                          PlasticPredictorRotAssignType::preserve_plastic_rotation)
-    {
-      // compute the material stretch matrix $
-      // \boldsymbol{U}_{\boldsymbol{T}_{n+1}} $ and its isochoric
-      // component $\boldsymbol{U}_{\mathrm{iso}} = \left[ \det
-      // \boldsymbol{U} \right]^{-1/3} \boldsymbol{U}$
-      Core::LinAlg::Matrix<3, 3> U_Tnp = Core::LinAlg::matrix_3x3_material_stretch(Tnp);
-      Core::LinAlg::Matrix<3, 3> U_iso_Tnp{U_Tnp};
-      U_iso_Tnp.scale(std::pow(U_Tnp.determinant(), -1.0 / 3.0));
+  // LNGI in InelasticDefgradTransvIsotropElastViscoplast: check whether two interpolation points
+  // p1, p2 are equal (within a numerical tolerance)
+  bool is_equal_interp_points(const LocalNewtonGuessInterpolation::InterpolationPoint& p1,
+      const LocalNewtonGuessInterpolation::InterpolationPoint& p2)
+  {
+    // set numerical tolerance for equality
+    const double num_tolerance = 1.0e-8;
 
-      // compute the inverse of the isochoric component
-      Core::LinAlg::Matrix<3, 3> inv_U_iso_Tnp{Core::LinAlg::Initialization::zero};
-      inv_U_iso_Tnp.invert(U_iso_Tnp);
-
-      // compute the inverse plastic deformation gradient
-      inv_plastic_defgrad_plastic_pred.multiply_nn(1.0, last_iFinM_rot, inv_U_iso_Tnp, 0.0);
-    }
-    else if (plast_pred_rot_assign_type ==
-             Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-                 trial_elastic_rotation)
-    {
-      // get isochoric stretch transfer tensor
-      Core::LinAlg::Matrix<3, 3> Tnp_iso{Tnp};
-      Tnp_iso.scale(std::pow(Tnp.determinant(), -1.0 / 3.0));
-
-      // compute the inverse of the isochoric component
-      Core::LinAlg::Matrix<3, 3> inv_Tnp_iso{Core::LinAlg::Initialization::zero};
-      inv_Tnp_iso.invert(Tnp_iso);
-
-      // compute the inverse plastic deformation gradient
-      inv_plastic_defgrad_plastic_pred.multiply_nn(1.0, last_iFinM_rot, inv_Tnp_iso, 0.0);
-    }
-    else
-    {
-      FOUR_C_THROW(
-          "Unknown plastic predictor rotation assignment type {}", plast_pred_rot_assign_type);
-    }
+    // get difference of the two interpolation points
+    const double diff_p = LocalNewtonGuessInterpolation::get_diff_interp_points(p1, p2);
 
 
-    return inv_plastic_defgrad_plastic_pred;
-
-    /*
-    Core::LinAlg::Matrix<3, 3> Fnp_iFin{Core::LinAlg::Initialization::zero};
-    Fnp_iFin.multiply_nn(1.0, FM, last_iFinM, 0.0);
-
-    // determine stretch factor $\boldsymbol{U}_{\boldsymbol{F}_{n+1}
-    // \boldsymbol{F}^{\text{p}^{-1}}_n}$ and its inverse
-    Core::LinAlg::Matrix<3, 3> U_Fnp_iFin = Core::LinAlg::matrix_3x3_material_stretch(Fnp_iFin);
-    Core::LinAlg::Matrix<3, 3> iU_Fnp_iFin{Core::LinAlg::Initialization::zero};
-    iU_Fnp_iFin.invert(U_Fnp_iFin);
-    // compute $\boldsymbol{F}_{n} \boldsymbol{F}^{\text{p}^{-1}}}_n$
-    Core::LinAlg::Matrix<3, 3> Fn_iFin{Core::LinAlg::Initialization::zero};
-    Fn_iFin.multiply_nn(1.0, last_FM, last_iFinM, 0.0);
-
-    // determine stretch factor $\boldsymbol{U}_{\boldsymbol{F}_{n}
-    // \boldsymbol{F}^{\text{p}^{-1}}_n}}$
-    Core::LinAlg::Matrix<3, 3> U_Fn_iFin = Core::LinAlg::matrix_3x3_material_stretch(Fn_iFin);
-    // determine $\boldsymbol{K}^{-1} = \boldsymbol{v}^{\text{p}^{-1}}_n
-    // \boldsymbol{U}^{-1}_{\boldsymbol{F}_{n+1}
-    // \boldsymbol{F}^{\text{p}^{-1}}_n}  \boldsymbol{U}_{\boldsymbol{F}_{n}
-    // \boldsymbol{F}^{\text{p}^{-1}}_n}$
-    Core::LinAlg::Matrix<3, 3> iK{Core::LinAlg::Initialization::zero};
-    Core::LinAlg::Matrix<3, 3> temp{Core::LinAlg::Initialization::zero};
-    temp.multiply_nn(1.0, last_iFinM_matstretch, iU_Fnp_iFin, 0.0);
-    iK.update(1.0, temp, 0.0);
-
-    iK.multiply_nn(1.0, temp, U_Fn_iFin,
-        0.0);  // HERE:  we can remove this line to account for stress relaxation
-
-
-    // determine the spatial stretch \f$
-    // \boldsymbol{v}_{\boldsymbol{K}^{-1}} \f and its isochoric component
-    Core::LinAlg::Matrix<3, 3> v_iK = Core::LinAlg::matrix_3x3_spatial_stretch(iK);
-    Core::LinAlg::Matrix<3, 3> v_iK_iso{v_iK};
-    v_iK_iso.scale(std::pow(v_iK.determinant(), -1.0 / 3.0));
-
-    // save the reference matrices and their spatial locations for the
-    // interpolation
-    inv_plastic_defgrad_plastic_pred.multiply_nn(1.0, last_iFinM_rot, v_iK_iso);
-    std::vector<Core::LinAlg::Matrix<3, 3>> ref_matrices{
-        last_iFinM, inv_plastic_defgrad_plastic_pred};
-    std::vector<double> ref_locs{0.0, 1.0};
-
-
-
-    return inv_plastic_defgrad_plastic_pred;
-
-    */
+    return (diff_p <= num_tolerance);
   }
 
   // compute matrix from its spectral-polar decomposed components \f$ \boldsymbol{T}
@@ -677,45 +631,13 @@ namespace
   }
 
 
-  // precondition matrix for spectral-polar decomposition: set entries
-  // smaller than a set numerical tolerance to 0
-  Core::LinAlg::Matrix<3, 3> precondition_matrix(
-      const Core::LinAlg::Matrix<3, 3>& input_matrix, const double num_tolerance)
-  {
-    Core::LinAlg::Matrix<3, 3> output_matrix{input_matrix};
-    for (int i = 0; i < 3; ++i)
-    {
-      for (int j = 0; j < 3; ++j)
-      {
-        if (std::abs(output_matrix(i, j)) < num_tolerance) output_matrix(i, j) = 0.0;
-      }
-    }
-
-    return output_matrix;
-  }
-
-  // LNGI in InelasticDefgradTransvIsotropElastViscoplast: check whether two interpolation points
-  // p1, p2 are equal (within a numerical tolerance)
-  bool is_equal_interp_points(const LocalNewtonGuessInterpolation::InterpolationPoint& p1,
-      const LocalNewtonGuessInterpolation::InterpolationPoint& p2)
-  {
-    // set numerical tolerance for equality
-    const double num_tolerance = 1.0e-8;
-
-    // get difference of the two interpolation points
-    const double diff_p = LocalNewtonGuessInterpolation::get_diff_interp_points(p1, p2);
-
-
-    return (diff_p <= num_tolerance);
-  }
-
 
 // DEBUG: check whether current gp and ele_gid match the debugging gp and ele_gid
 #ifdef DEBUG_MODE
   bool debug_mode(const int ele_gid, const int gp)
   {
     const int debug_ele_gid = 0;
-    const int debug_gp = 0;
+    const int debug_gp = 7;
 
     return (ele_gid == debug_ele_gid && gp == debug_gp);
   }
@@ -910,14 +832,18 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       max_plastic_strain_deriv_incr_(
           matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
       use_lngi_(matdata.parameters.get<bool>("USE_LNGI")),
-      lngi_plastic_pred_stretch_assign_type_(
-          matdata.parameters.get<PlasticPredictorStretchAssignType>(
-              "LNGI_PLASTIC_PRED_STRETCH_ASSIGN")),
-      lngi_plastic_pred_rot_assign_type_(
-          matdata.parameters.get<PlasticPredictorRotAssignType>("LNGI_PLASTIC_PRED_ROT_ASSIGN")),
-      lngi_starting_point_type_(
-          matdata.parameters.get<LocalNewtonGuessInterpolationStartingPointType>(
-              "LNGI_STARTING_POINT_TYPE")),
+      lngi_plastic_pred_elastic_stretch_eigenval_type_(matdata.parameters
+              .get<LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType>(
+                  "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE")),
+      lngi_plastic_pred_elastic_stretch_eigenvect_rot_type_(matdata.parameters
+              .get<LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvectRotType>(
+                  "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_ROT_TYPE")),
+      lngi_plastic_pred_rot_type_(
+          matdata.parameters.get<LocalNewtonGuessInterpolation::PlasticPredictorRotationType>(
+              "LNGI_PLASTIC_PRED_ROT_TYPE")),
+      lngi_starting_point_type_(matdata.parameters
+              .get<LocalNewtonGuessInterpolation::LocalNewtonGuessInterpolationStartingPointType>(
+                  "LNGI_STARTING_POINT_TYPE")),
       lngi_starting_point_(matdata.parameters.get<double>("LNGI_STARTING_POINT")),
       lngi_interval_scan_param_(matdata.parameters.get<double>("LNGI_INTERVAL_SCAN_PARAM")),
       lngi_max_num_reinterp_(matdata.parameters.get<int>("LNGI_MAX_NUM_REINTERP")),
@@ -1962,9 +1888,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       tensor_interpolator_{init_tensor_interpolator()},
       lnl_guess_interpolation_(parameter()->lngi_interval_scan_param(),
           parameter()->lngi_max_num_reinterp(),
-          parameter()->lngi_plastic_pred_stretch_assign_type(),
-          parameter()->lngi_plastic_pred_rot_assign_type(),
-          parameter()->lngi_min_interp_interval()),
+          parameter()->lngi_plastic_pred_elastic_stretch_eigenval_type(),
+          parameter()->lngi_plastic_pred_elastic_stretch_eigenvect_rot_type(),
+          parameter()->lngi_plastic_pred_rot_type(), parameter()->lngi_min_interp_interval()),
       globiter_(-1),  // initialized as -1, because this is called one time even
                       // prior to the first global predictor evaluation
       csv_output_lngi_micro_iter_data_{CSVOutputTrackingData{}},
@@ -1988,13 +1914,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       1, const_non_mat_tensors.id3x3_);  // value irrelevant at this point
   time_step_quantities_.last_substep_plastic_defgrad_inverse_.resize(
       1, const_non_mat_tensors.id3x3_);
-  time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_.resize(
-      1, const_non_mat_tensors.id3x3_);
-  time_step_quantities_.last_inverse_elastic_stretch_eigenval_.resize(
+  time_step_quantities_.last_elastic_stretch_eigenval_.resize(
       1, std::array<double, 3>{1.0, 1.0, 1.0});
-  time_step_quantities_.last_plastic_defgrad_spatial_stretch_.resize(
-      1, const_non_mat_tensors.id3x3_);
-  time_step_quantities_.last_plastic_defgrad_inverse_rot_.resize(1, const_non_mat_tensors.id3x3_);
 
 
   // update last_ and current_ values of the plastic strain
@@ -2079,8 +2000,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks(
     const Core::LinAlg::Matrix<3, 3>& defgrad)
 {
-  // set numerical tolerance to be considered as 0
-  const double numerical_tol{1.0e-8};
+  // numerical tolerance
+  const double numerical_tol = 1.0e-10;
 
   // set current evaluation gp for the viscoplastic law
   viscoplastic_law_->pre_evaluate(params_, gp_);  // set last_substep <- last_
@@ -2092,7 +2013,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     // set starting point of the Local Newton Guess Interpolation
     switch (parameter()->lngi_starting_point_type())
     {
-      case InelasticDefgradTransvIsotropElastViscoplastUtils::
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
           LocalNewtonGuessInterpolationStartingPointType::user_set:
       {
         // get user-set starting point
@@ -2102,17 +2023,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
             gp_, LocalNewtonGuessInterpolation::InterpolationPoint{sp, sp, {sp, sp, sp}});
         break;
       }
-      case InelasticDefgradTransvIsotropElastViscoplastUtils::
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
           LocalNewtonGuessInterpolationStartingPointType::last_interpolation_point:
       {
         lnl_guess_interpolation_.set_curr_interp_point(
             gp_, lnl_guess_interpolation_.get_last_interp_point(gp_));
         break;
       }
-      case InelasticDefgradTransvIsotropElastViscoplastUtils::
+      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
           LocalNewtonGuessInterpolationStartingPointType::optimal_interpolation_point:
       case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-          LocalNewtonGuessInterpolationStartingPointType::optimal_equiv_stress:
+          LocalNewtonGuessInterpolation::LocalNewtonGuessInterpolationStartingPointType::
+              optimal_equiv_stress:
       {
         lnl_guess_interpolation_.set_curr_interp_point(
             gp_, lnl_guess_interpolation_.get_optimal_interp_point(gp_));
@@ -2131,14 +2053,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     // get inverse plastic deformation gradient within the plastic predictor
     Core::LinAlg::Matrix<3, 3> inv_plastic_defgrad_plastic_pred =
         compute_inverse_plastic_defgrad_plastic_pred(defgrad,
-            time_step_quantities_.last_defgrad_[gp_],
             time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
-            time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_],
-            time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_],
-            time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp_],
-            time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_],
-            parameter()->lngi_plastic_pred_stretch_assign_type(),
-            parameter()->lngi_plastic_pred_rot_assign_type());
+            time_step_quantities_.last_elastic_stretch_eigenval_[gp_],
+            parameter()->lngi_plastic_pred_elastic_stretch_eigenval_type(),
+            parameter()->lngi_plastic_pred_elastic_stretch_eigenvect_rot_type(),
+            parameter()->lngi_plastic_pred_rot_type());
 
     /*
     #ifdef DEBUG_PRED_ADAPT
@@ -2152,262 +2071,132 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
     #endif
     */
 
-
     // consistency check:
     if (parameter()->lngi_check_consistency())
     {
-      // save the determinant of the deformation gradient
-      const double detF = defgrad.determinant();
-
-      // elastic deformation gradient within the plastic predictor
-      Core::LinAlg::Matrix<3, 3> elastic_defgrad_plastic_pred{Core::LinAlg::Initialization::zero};
-      elastic_defgrad_plastic_pred.multiply_nn(1.0, defgrad, inv_plastic_defgrad_plastic_pred, 0.0);
-      Core::LinAlg::Matrix<3, 3> U_elastic_defgrad_plastic_pred{Core::LinAlg::Initialization::zero};
-      Core::LinAlg::Matrix<3, 3> lambda_elastic_defgrad_plastic_pred{
+      // compute elastic deformation gradient within the plastic predictor, along with its combined
+      // polar and spectral decompositions
+      Core::LinAlg::Matrix<3, 3> elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
+      elastic_defgrad_plast_pred.multiply_nn(1.0, defgrad, inv_plastic_defgrad_plastic_pred, 0.0);
+      Core::LinAlg::Matrix<3, 3> R_elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
+      Core::LinAlg::Matrix<3, 3> U_elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
+      Core::LinAlg::Matrix<3, 3> lambda_elastic_defgrad_plast_pred{
           Core::LinAlg::Initialization::zero};
-      Core::LinAlg::Matrix<3, 3> R_elastic_defgrad_plastic_pred{Core::LinAlg::Initialization::zero};
       std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>
-          spectral_pairs_elastic_defgrad_plastic_pred;
-      // perform polar-spectral decomposition of the elastic deformation
-      // gradient within the plastic predictor
-      Core::LinAlg::matrix_3x3_polar_decomposition(elastic_defgrad_plastic_pred,
-          R_elastic_defgrad_plastic_pred, U_elastic_defgrad_plastic_pred,
-          lambda_elastic_defgrad_plastic_pred, spectral_pairs_elastic_defgrad_plastic_pred);
+          spectral_pairs_elastic_defgrad_plast_pred;
+      Core::LinAlg::matrix_3x3_polar_decomposition(elastic_defgrad_plast_pred,
+          R_elastic_defgrad_plast_pred, U_elastic_defgrad_plast_pred,
+          lambda_elastic_defgrad_plast_pred, spectral_pairs_elastic_defgrad_plast_pred);
+      Core::LinAlg::Matrix<3, 3> Q_elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
+      Core::LinAlg::Matrix<3, 1> q{Core::LinAlg::Initialization::zero};
+      for (int i = 0; i < 3; ++i)
+      {
+        q = spectral_pairs_elastic_defgrad_plast_pred[i].second;
+        for (int j = 0; j < 3; ++j)
+        {
+          Q_elastic_defgrad_plast_pred(i, j) = q(j);
+        }
+      }
 
-      // elastic deformation gradient within the elastic predictor
-      Core::LinAlg::Matrix<3, 3> elastic_defgrad_elastic_pred{Core::LinAlg::Initialization::zero};
-      elastic_defgrad_elastic_pred.multiply_nn(
+
+      // compute elastic deformation gradient within the elastic predictor, along with its combined
+      // polar and spectral decompositions
+
+      Core::LinAlg::Matrix<3, 3> elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
+      elastic_defgrad_elast_pred.multiply_nn(
           1.0, defgrad, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
-      // perform polar-spectral decomposition of the elastic deformation
-      // gradient within the elastic predictor
-      Core::LinAlg::Matrix<3, 3> U_elastic_defgrad_elastic_pred{Core::LinAlg::Initialization::zero};
-      Core::LinAlg::Matrix<3, 3> lambda_elastic_defgrad_elastic_pred{
+      Core::LinAlg::Matrix<3, 3> R_elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
+      Core::LinAlg::Matrix<3, 3> U_elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
+      Core::LinAlg::Matrix<3, 3> lambda_elastic_defgrad_elast_pred{
           Core::LinAlg::Initialization::zero};
-      Core::LinAlg::Matrix<3, 3> R_elastic_defgrad_elastic_pred{Core::LinAlg::Initialization::zero};
       std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>
-          spectral_pairs_elastic_defgrad_elastic_pred;
-      Core::LinAlg::matrix_3x3_polar_decomposition(elastic_defgrad_elastic_pred,
-          R_elastic_defgrad_elastic_pred, U_elastic_defgrad_elastic_pred,
-          lambda_elastic_defgrad_elastic_pred, spectral_pairs_elastic_defgrad_elastic_pred);
-
-
-
-      // compute stretch transfer tensor
-      Core::LinAlg::Matrix<3, 3> Tnp{Core::LinAlg::Initialization::zero};
-      Core::LinAlg::Matrix<3, 3> inv_U_Fen =
-          time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp_];
-      Core::LinAlg::Matrix<3, 3> U_Fe_elast_pred =
-          Core::LinAlg::matrix_3x3_material_stretch(elastic_defgrad_elastic_pred);
-      Core::LinAlg::Matrix<3, 3> v_Fpn =
-          time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_];
-      Core::LinAlg::Matrix<3, 3> U_Fe_elast_pred_v_Fpn{Core::LinAlg::Initialization::zero};
-      U_Fe_elast_pred_v_Fpn.multiply_nn(1.0, U_Fe_elast_pred, v_Fpn, 0.0);
-      Tnp.multiply_nn(1.0, inv_U_Fen, U_Fe_elast_pred_v_Fpn, 0.0);
-
-      // set numerical tolerance for the performed numerical checks
-      const double num_tol{1.0e-12};
-
-      // stretch assignment: if eliminating the elastic stretch entirely: is the resulting
-      // elastic right CG tensor (plastic predictor) a scaled identity matrix?
-      if (parameter()->lngi_plastic_pred_stretch_assign_type() ==
-          InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorStretchAssignType::
-              eliminate_elastic_stretch)
+          spectral_pairs_elastic_defgrad_elast_pred;
+      Core::LinAlg::matrix_3x3_polar_decomposition(elastic_defgrad_elast_pred,
+          R_elastic_defgrad_elast_pred, U_elastic_defgrad_elast_pred,
+          lambda_elastic_defgrad_elast_pred, spectral_pairs_elastic_defgrad_elast_pred);
+      Core::LinAlg::Matrix<3, 3> Q_elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
+      for (int i = 0; i < 3; ++i)
       {
-        Core::LinAlg::Matrix<3, 3> elastic_right_CG_plastic_pred{
-            Core::LinAlg::Initialization::zero};
-        elastic_right_CG_plastic_pred.multiply_tn(
-            1.0, elastic_defgrad_plastic_pred, elastic_defgrad_plastic_pred, 0.0);
-        Core::LinAlg::Matrix<3, 3> elastic_defgrad_elastic_pred{Core::LinAlg::Initialization::zero};
-        elastic_defgrad_elastic_pred.multiply_nn(
-            1.0, defgrad, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
-        const double det_elastic_defgrad_elastic_pred{elastic_defgrad_elastic_pred.determinant()};
-        const double det_last_plastic_defgrad_spatial_stretch{
-            time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp_].determinant()};
-        const double det_Knp =
-            det_elastic_defgrad_elastic_pred * det_last_plastic_defgrad_spatial_stretch;
-        Core::LinAlg::Matrix<3, 3> id_3x3_scaled_det_Knp{const_non_mat_tensors.id3x3_};
-        id_3x3_scaled_det_Knp.scale(std::pow(det_Knp, 2.0 / 3.0));
-        Core::LinAlg::Matrix<3, 3> elastic_right_CG_min_scaled_id_3x3{
-            Core::LinAlg::Initialization::zero};
-        elastic_right_CG_min_scaled_id_3x3.update(
-            1.0, elastic_right_CG_plastic_pred, -1.0, id_3x3_scaled_det_Knp, 0.0);
-        if (elastic_right_CG_min_scaled_id_3x3.norm2() > numerical_tol)
+        q = spectral_pairs_elastic_defgrad_elast_pred[i].second;
+        for (int j = 0; j < 3; ++j)
         {
-          std::cout << "Elastic deformation gradient within plastic predictor does not match the "
-                       "underlying computation, i.e., its right Cauchy-Green tensor is not a "
-                       "scaled "
-                       "3-by-3 identity matrix! "
-                    << std::endl;
-          elastic_defgrad_plastic_pred.print(std::cout);
-          std::cout << "It should actually equal: " << std::endl;
-          id_3x3_scaled_det_Knp.print(std::cout);
-
-          FOUR_C_THROW("Failed consistency check for Local Newton Guess Interpolation");
+          Q_elastic_defgrad_elast_pred(i, j) = q(j);
         }
       }
-      else if (parameter()->lngi_plastic_pred_stretch_assign_type() ==
-               InelasticDefgradTransvIsotropElastViscoplastUtils::
-                   PlasticPredictorStretchAssignType::maintain_elastic_stretch)
+
+
+      if (parameter()->lngi_plastic_pred_elastic_stretch_eigenvect_rot_type() ==
+              InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+                  PlasticPredictorElasticStretchEigenvectRotType::elastic_predictor &&
+          parameter()->lngi_plastic_pred_rot_type() ==
+              InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+                  PlasticPredictorRotationType::elastic_predictor)
       {
-        if (parameter()->lngi_plastic_pred_rot_assign_type() ==
-            InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-                trial_elastic_rotation)
+        // reference elastic stretch eigenvalues
+        Core::LinAlg::Matrix<3, 3> ref_lambda_elastic_defgrad{Core::LinAlg::Initialization::zero};
+        switch (parameter()->lngi_plastic_pred_elastic_stretch_eigenval_type())
         {
-          // compute isochoric stretch transfer tensor
-          Core::LinAlg::Matrix<3, 3> iso_Tnp{Tnp};
-          iso_Tnp.scale(std::pow(Tnp.determinant(), -1.0 / 3.0));
-
-          // reconstruct plastic deformation gradient within plastic
-          // predictor
-          Core::LinAlg::Matrix<3, 3> rec_plast_defgrad_plast_pred{
-              Core::LinAlg::Initialization::zero};
-          rec_plast_defgrad_plast_pred.multiply_nt(
-              1.0, iso_Tnp, time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_], 0.0);
-
-          // invert reconstructed plastic deformation gradient and
-          // assert equality with computed one
-          Core::LinAlg::Matrix<3, 3> inv_rec_plast_defgrad_plast_pred{
-              Core::LinAlg::Initialization::zero};
-          inv_rec_plast_defgrad_plast_pred.invert(rec_plast_defgrad_plast_pred);
-
-          for (int i = 0; i < 3; ++i)
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvalType::eliminate:
           {
-            for (int j = 0; j < 3; ++j)
+            for (int i = 0; i < 3; ++i)
             {
-              FOUR_C_ASSERT_ALWAYS(std::abs(inv_rec_plast_defgrad_plast_pred(i, j) -
-                                            inv_plastic_defgrad_plastic_pred(i, j)) < num_tol,
-                  "Test failed for component {}, {}", i, j);
+              ref_lambda_elastic_defgrad(i, i) = 1.0;
             }
+            break;
+          }
+          case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvalType::maintain:
+          {
+            for (int i = 0; i < 3; ++i)
+            {
+              ref_lambda_elastic_defgrad(i, i) =
+                  time_step_quantities_.last_elastic_stretch_eigenval_[gp_][i];
+            }
+            break;
+          }
+          default:
+          {
+            FOUR_C_THROW(
+                "You should not be here in the consistency check! Incompatible elastic stretch "
+                "eigenvalue type {}",
+                EnumTools::enum_name(
+                    parameter()->lngi_plastic_pred_elastic_stretch_eigenval_type()));
           }
         }
-        else if (parameter()->lngi_plastic_pred_rot_assign_type() ==
-                 InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-                     preserve_plastic_rotation)
+        const double temp_det = ref_lambda_elastic_defgrad.determinant();
+        ref_lambda_elastic_defgrad.scale(std::pow(defgrad.determinant() / temp_det, 1.0 / 3.0));
+
+
+        // reference elastic deformation gradient to check against
+        Core::LinAlg::Matrix<3, 3> ref_elastic_defgrad{Core::LinAlg::Initialization::zero};
+        Core::LinAlg::Matrix<3, 3> ref_QTLambda{Core::LinAlg::Initialization::zero};
+        ref_QTLambda.multiply_tn(
+            1.0, Q_elastic_defgrad_elast_pred, ref_lambda_elastic_defgrad, 0.0);
+        Core::LinAlg::Matrix<3, 3> ref_QTLambdaQ{Core::LinAlg::Initialization::zero};
+        ref_QTLambdaQ.multiply_nn(1.0, ref_QTLambda, Q_elastic_defgrad_elast_pred, 0.0);
+        ref_elastic_defgrad.multiply_nn(1.0, R_elastic_defgrad_elast_pred, ref_QTLambdaQ, 0.0);
+
+
+        // calculate difference between reference elastic deformation gradient and elastic
+        // deformation gradient within the plastic predictor
+        Core::LinAlg::Matrix<3, 3> delta_elastic_defgrad{Core::LinAlg::Initialization::zero};
+        delta_elastic_defgrad.update(
+            1.0, elastic_defgrad_plast_pred, -1.0, ref_elastic_defgrad, 0.0);
+
+        if (delta_elastic_defgrad.norm2() > numerical_tol)
         {
-          // compute material stretch of stretch transfer tensor
-          Core::LinAlg::Matrix<3, 3> U_Tnp = Core::LinAlg::matrix_3x3_material_stretch(Tnp);
-          // compute isochoric part of the material stretch
-          Core::LinAlg::Matrix<3, 3> iso_U_Tnp{U_Tnp};
-          iso_U_Tnp.scale(std::pow(U_Tnp.determinant(), -1.0 / 3.0));
-
-          // reconstruct plastic deformation gradient within plastic
-          // predictor
-          Core::LinAlg::Matrix<3, 3> rec_plast_defgrad_plast_pred{
-              Core::LinAlg::Initialization::zero};
-          rec_plast_defgrad_plast_pred.multiply_nt(
-              1.0, iso_U_Tnp, time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp_], 0.0);
-
-          // invert reconstructed plastic deformation gradient and
-          // assert equality with computed one
-          Core::LinAlg::Matrix<3, 3> inv_rec_plast_defgrad_plast_pred{
-              Core::LinAlg::Initialization::zero};
-          inv_rec_plast_defgrad_plast_pred.invert(rec_plast_defgrad_plast_pred);
-
-          for (int i = 0; i < 3; ++i)
-          {
-            for (int j = 0; j < 3; ++j)
-            {
-              FOUR_C_ASSERT_ALWAYS(std::abs(inv_rec_plast_defgrad_plast_pred(i, j) -
-                                            inv_plastic_defgrad_plastic_pred(i, j)) < num_tol,
-                  "Test failed for component {}, {}", i, j);
-            }
-          }
+          std::cout << "Difference of elastic defgrad (plastic predictor) wrt to reference value "
+                       "(consistency "
+                       "check) is "
+                    << delta_elastic_defgrad.norm2() << " > " << numerical_tol
+                    << " (numerical tolerance)!" << std::endl;
+          std::cout << "plastic_pred: " << std::endl;
+          elastic_defgrad_plast_pred.print(std::cout);
+          std::cout << "reference: " << std::endl;
+          ref_elastic_defgrad.print(std::cout);
+          FOUR_C_THROW("Stop");
         }
-        else
-        {
-          FOUR_C_THROW("Unsupported plastic predictor rotation assignment type {}",
-              parameter()->lngi_plastic_pred_rot_assign_type());
-        }
-      }
-      else if (parameter()->lngi_plastic_pred_stretch_assign_type() ==
-               InelasticDefgradTransvIsotropElastViscoplastUtils::
-                   PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch)
-      {
-        // compute the previous defgrad determinant
-        const double det_last_F =
-            1.0 / (time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_][0] *
-                      time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_][1] *
-                      time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_][2]);
-        // compute ratio between current and previous defgrad determinants
-        const double det_ratio = detF / det_last_F;
-
-        // reconstructed elastic stretch matrix (from elastic predictor eigenvectors and
-        // plastic predictor eigenvalues)
-        Core::LinAlg::Matrix<3, 3> reconstructed_elastic_stretch{
-            Core::LinAlg::Initialization::zero};
-
-        // loop through eigenpairs
-        for (int i = 0; i < 3; ++i)
-        {
-          // verify elastic stretch eigenvalues: should be the values at the
-          // previous time instant scaled with the determinant of the defgrad
-          const double scaled_last_eigenval =
-              1.0 / time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp_][i] *
-              std::pow(det_ratio, 1.0 / 3.0);
-          FOUR_C_ASSERT_ALWAYS(
-              std::abs(scaled_last_eigenval -
-                       spectral_pairs_elastic_defgrad_plastic_pred[i].first) <= 1.0e-8,
-              "Consistency check for plastic predictor: The elastic stretch eigenvalues (index {}) "
-              "do not match the determinant-scaled values at the previous timestep "
-              "values! Previous (scaled): {}, Current: {}",
-              i, scaled_last_eigenval, spectral_pairs_elastic_defgrad_plastic_pred[i].first);
-
-          // verify eigenvectors (absolute value of the scalar product with the elastic stretch
-          // eigenvectors within the elastic predictor with the should be 0) ->  that's why we
-          // reconstruct the stretch : we don't only check
-          // the eigenvectors, but also include the eigenvalues to form the relevant stretch
-          // matrices and compare them (only comparing eigenvectors is dangerous in case of multiple
-          // eigenvalues, where the same subspace is spanned with infinitely many eigenvector pairs)
-          Core::LinAlg::Matrix<3, 1> current_eigenvect{
-              spectral_pairs_elastic_defgrad_elastic_pred[i].second};
-          reconstructed_elastic_stretch.multiply_nt(
-              spectral_pairs_elastic_defgrad_plastic_pred[i].first, current_eigenvect,
-              current_eigenvect, 1.0);
-
-          /*
-                     Core::LinAlg::Matrix<3, 1> current_eigenvect{
-              spectral_pairs_elastic_defgrad_plastic_pred[i].second};
-
-
-          Core::LinAlg::Matrix<1, 1> scalar_prod_current_eigenvect_vs_elastic_pred{
-              Core::LinAlg::Initialization::zero};
-          scalar_prod_current_eigenvect_vs_elastic_pred.multiply_tn(
-              1.0, current_eigenvect, spectral_pairs_elastic_defgrad_elastic_pred[i].second, 0.0);
-            FOUR_C_ASSERT_ALWAYS(
-                std::abs(std::abs(scalar_prod_current_eigenvect_vs_elastic_pred(0, 0)) - 1.0) <=
-                    1.0e-8,
-                "Consistency check for plastic predictor: The elastic stretch eigenvector with index
-            "
-                "{} "
-                "does not match the corresponding value within the elastic predictor! Elastic "
-                "predictor: [{}, {}, {}], Current: [{}, {}, {}]",
-                i, spectral_pairs_elastic_defgrad_elastic_pred[i].second(0),
-                spectral_pairs_elastic_defgrad_elastic_pred[i].second(1),
-                spectral_pairs_elastic_defgrad_elastic_pred[i].second(2), current_eigenvect(0),
-                current_eigenvect(1), current_eigenvect(2));
-          */
-        }
-
-        // verify whether reconstructed elastic stretch matches the
-        // elastic stretch of the plastic predictor
-        Core::LinAlg::Matrix<3, 3> diff_elastic_stretch{Core::LinAlg::Initialization::zero};
-        diff_elastic_stretch.update(
-            1.0, U_elastic_defgrad_plastic_pred, -1.0, reconstructed_elastic_stretch, 0.0);
-        if (diff_elastic_stretch.norm2() >= 1.0e-8)
-        {
-          std::cout << "Consistency check for plastic predictor: The reconstructed elastic stretch "
-                       "does not match the elastic stretch within the plastic predictor:"
-                    << std::endl;
-          std::cout << "plastic predictor: " << std::endl;
-          U_elastic_defgrad_plastic_pred.print(std::cout);
-          std::cout << "reconstructed: " << std::endl;
-          reconstructed_elastic_stretch.print(std::cout);
-        }
-      }
-      else
-      {
-        FOUR_C_THROW("Unsupported plastic predictor stretch assignment type {}",
-            parameter()->lngi_plastic_pred_stretch_assign_type());
       }
     }
 
@@ -2446,8 +2235,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
           lnl_guess_interpolation_.all_pred_decomp_specific_defgrad_[gp_].Rmat_plast_pred_);
       // verify inverse inelastic deformation gradient
       Core::LinAlg::Matrix<3, 3> recovered_inv_plastic_defgrad{Core::LinAlg::Initialization::zero};
-      if (lnl_guess_interpolation_.get_defgrad_type(
-              parameter()->lngi_plastic_pred_rot_assign_type()) ==
+      if (lnl_guess_interpolation_.get_defgrad_type() ==
           InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
               DefgradType::elastic_defgrad)
       {
@@ -2458,8 +2246,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
         // compute recovered inverse plastic defgrad
         recovered_inv_plastic_defgrad.multiply_nn(1.0, inv_defgrad, recovered_matrix, 0.0);
       }
-      else if (lnl_guess_interpolation_.get_defgrad_type(
-                   parameter()->lngi_plastic_pred_rot_assign_type()) ==
+      else if (lnl_guess_interpolation_.get_defgrad_type() ==
                InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
                    DefgradType::inv_plastic_defgrad)
       {
@@ -2468,8 +2255,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
       else
       {
         FOUR_C_THROW("Unsupported deformation gradient type {} for interpolation",
-            lnl_guess_interpolation_.get_defgrad_type(
-                parameter()->lngi_plastic_pred_rot_assign_type()));
+            lnl_guess_interpolation_.get_defgrad_type());
       }
 
 
@@ -2510,7 +2296,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
       }
     }
   }
-
   // general local time integration analysis:
   if (parameter()->analyze_timint() &&
       !general_local_timint_analysis_utils.is_reset_current_timestep_)
@@ -2526,7 +2311,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   // each GP). We assume that this method is only called in new global iterations!
   if (gp_ == 0) ++globiter_;
 }
-
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -3418,8 +3202,8 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplast::re
   CredM.multiply_tn(1.0, FredM, FredM, 0.0);
 
   // perform non-repeatable pre-evaluation tasks (non-repeatable: not
-  // called in the redundant evaluate call, which is already handled -> direct return without
-  // calling this function)
+  // called in the redundant evaluate call, which is already handled -> direct return
+  // without calling this function)
   prepare_non_repeat_tasks(FredM);
 
   // set predictor: assume purely elastic behavior in this time step
@@ -3641,7 +3425,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi_next_timest
     // --> compute the optimal interpolation
     // factors for each gp if specified by user
     if (parameter()->lngi_starting_point_type() ==
-        InelasticDefgradTransvIsotropElastViscoplastUtils::
+        InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
             LocalNewtonGuessInterpolationStartingPointType::optimal_interpolation_point)
     {
       // ----------------------------------------------- //
@@ -3690,7 +3474,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi_next_timest
       }
     }
     else if (parameter()->lngi_starting_point_type() ==
-             InelasticDefgradTransvIsotropElastViscoplastUtils::
+             InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
                  LocalNewtonGuessInterpolationStartingPointType::optimal_equiv_stress)
     {
       // ----------------------------------------------- //
@@ -3735,17 +3519,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi_next_timest
                                                           // stress
         FOUR_C_ASSERT_ALWAYS(
             err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors,
-            "Something went wrong while evaluating the stress state associated with the elastic "
+            "Something went wrong while evaluating the stress state associated with the "
+            "elastic "
             "predictor "
             "during update!");
 
         StateQuantities plastic_pred_state_quantities = evaluate_state_quantities(
             time_step_quantities_.current_rightCG_[gp], plastic_pred_inv_inelastic_defgrad,
             time_step_quantities_.last_plastic_strain_[gp], err_status, time_step_tracker_.dt_,
-            StateQuantityEvalType::EquivStressOnly);  // using the last plastic strain should
-                                                      // have no influence, because we only
-                                                      // evaluate the state up to the
-                                                      // equivalent stress
+            StateQuantityEvalType::EquivStressOnly);  // using the last plastic strain
+                                                      // should have no influence, because
+                                                      // we only evaluate the state up to
+                                                      // the equivalent stress
         FOUR_C_ASSERT_ALWAYS(
             err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors,
             "Something went wrong while evaluating the state associated with the plastic "
@@ -3754,10 +3539,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi_next_timest
 
 
         // stress-based interpolation of the optimal interpolation factors
-        const double optimal_interp_fact = (current_state_quantities.curr_equiv_stress_ -
-                                               elastic_pred_state_quantities.curr_equiv_stress_) /
-                                           (plastic_pred_state_quantities.curr_equiv_stress_ -
-                                               elastic_pred_state_quantities.curr_equiv_stress_);
+        double optimal_interp_fact = 0.0;
+        const double equiv_stress_plast_pred_min_elast_pred =
+            (plastic_pred_state_quantities.curr_equiv_stress_ -
+                elastic_pred_state_quantities.curr_equiv_stress_);
+        const double equiv_stress_curr_min_elast_pred =
+            (current_state_quantities.curr_equiv_stress_ -
+                elastic_pred_state_quantities.curr_equiv_stress_);
+        if (std::abs(equiv_stress_plast_pred_min_elast_pred) > 1.0e-8)
+        {
+          optimal_interp_fact =
+              equiv_stress_curr_min_elast_pred / equiv_stress_plast_pred_min_elast_pred;
+        }
         lnl_guess_interpolation_.set_optimal_interp_point(gp,
             LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = optimal_interp_fact,
                 .xi_lambda_2_ = optimal_interp_fact,
@@ -3775,8 +3568,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi_next_timest
 
 
     // --> update the material stretch and the rotation of
-    // the inverse inelastic defgrad for the Local Newton Guess Interpolation (last_ values are
-    // updated, but we use the current_ values since they were not updated yet)
+    // the inverse inelastic defgrad for the Local Newton Guess Interpolation (last_ values
+    // are updated, but we use the current_ values since they were not updated yet)
     current_plastic_defgrad.invert(time_step_quantities_.current_plastic_defgrad_inverse_[gp]);
 
     // compute current elastic deformation gradient
@@ -3792,18 +3585,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi_next_timest
         current_elastic_defgrad_rotation, current_elastic_defgrad_material_stretch,
         current_elastic_stretch_eigenval, current_elastic_spectral_pairs);
 
-    // save "last" stretch and rotation components
-    time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp].invert(
-        current_elastic_defgrad_material_stretch);
-    time_step_quantities_.last_inverse_elastic_stretch_eigenval_[gp] = {
-        1.0 / current_elastic_spectral_pairs[0].first,
-        1.0 / current_elastic_spectral_pairs[1].first,
-        1.0 / current_elastic_spectral_pairs[2].first};
-    time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp] =
-        Core::LinAlg::matrix_3x3_spatial_stretch(current_plastic_defgrad);
-    time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp].multiply_nn(1.0,
-        time_step_quantities_.current_plastic_defgrad_inverse_[gp],
-        time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp], 0.0);
+    // save "last" stretch components
+    time_step_quantities_.last_elastic_stretch_eigenval_[gp] = {
+        current_elastic_spectral_pairs[0].first, current_elastic_spectral_pairs[1].first,
+        current_elastic_spectral_pairs[2].first};
   }
 
   // call update method of the LNGI
@@ -3829,14 +3614,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
       time_step_quantities_.last_plastic_defgrad_inverse_[0]);  // value irrelevant at this point
   time_step_quantities_.last_substep_plastic_defgrad_inverse_.resize(
       numgp, time_step_quantities_.last_substep_plastic_defgrad_inverse_[0]);
-  time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_.resize(
-      numgp, time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[0]);
-  time_step_quantities_.last_inverse_elastic_stretch_eigenval_.resize(
-      numgp, time_step_quantities_.last_inverse_elastic_stretch_eigenval_[0]);
-  time_step_quantities_.last_plastic_defgrad_spatial_stretch_.resize(
-      numgp, time_step_quantities_.last_plastic_defgrad_spatial_stretch_[0]);
-  time_step_quantities_.last_plastic_defgrad_inverse_rot_.resize(
-      numgp, time_step_quantities_.last_plastic_defgrad_inverse_rot_[0]);
+  time_step_quantities_.last_elastic_stretch_eigenval_.resize(
+      numgp, time_step_quantities_.last_elastic_stretch_eigenval_[0]);
 
   // default values of the plastic strain for ALL Gauss Points
   time_step_quantities_.last_plastic_strain_.resize(
@@ -3907,10 +3686,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pack_inelastic(
     // pack last_ values inside time_step_quantities_
     add_to_pack(data, time_step_quantities_.last_rightCG_);
     add_to_pack(data, time_step_quantities_.last_plastic_defgrad_inverse_);
-    add_to_pack(data, time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_);
-    add_to_pack(data, time_step_quantities_.last_inverse_elastic_stretch_eigenval_);
-    add_to_pack(data, time_step_quantities_.last_plastic_defgrad_spatial_stretch_);
-    add_to_pack(data, time_step_quantities_.last_plastic_defgrad_inverse_rot_);
+    add_to_pack(data, time_step_quantities_.last_elastic_stretch_eigenval_);
     add_to_pack(data, time_step_quantities_.last_plastic_strain_);
     add_to_pack(data, time_step_quantities_.last_substep_plastic_defgrad_inverse_);
     add_to_pack(data, time_step_quantities_.last_substep_plastic_strain_);
@@ -3941,10 +3717,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::unpack_inelastic(
     // unpack last_ values inside time_step_quantities_
     extract_from_pack(buffer, time_step_quantities_.last_rightCG_);
     extract_from_pack(buffer, time_step_quantities_.last_plastic_defgrad_inverse_);
-    extract_from_pack(buffer, time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_);
-    extract_from_pack(buffer, time_step_quantities_.last_inverse_elastic_stretch_eigenval_);
-    extract_from_pack(buffer, time_step_quantities_.last_plastic_defgrad_spatial_stretch_);
-    extract_from_pack(buffer, time_step_quantities_.last_plastic_defgrad_inverse_rot_);
+    extract_from_pack(buffer, time_step_quantities_.last_elastic_stretch_eigenval_);
     extract_from_pack(buffer, time_step_quantities_.last_plastic_strain_);
     extract_from_pack(buffer, time_step_quantities_.last_substep_plastic_defgrad_inverse_);
     extract_from_pack(buffer, time_step_quantities_.last_substep_plastic_strain_);
@@ -4451,6 +4224,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
 
       // error management
+      temp10x1.update(1.0, sol, 0.0);
       err_action = manage_evaluation_error(err_status, sol, curr_CM);
       if (err_action == ErrorAction::return_solution_with_errors)
       {
@@ -4486,6 +4260,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       }
       else if (err_action == ErrorAction::next_iteration)
       {
+        // recompute dx after conducting adjustments to solution vector
+        dx.update(1.0, sol, -1.0, temp10x1, 0.0);
+
         // proceed with next iteration after performing adjustments due
         // to errors
         continue;
@@ -5048,7 +4825,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
   {
     ++lngi_step_counter;
 
-
     // check whether interpolation is still possible
     if (!lnl_guess_interpolation_.is_interpolation_possible(gp_, lngi_step_counter))
     {
@@ -5065,11 +4841,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
             LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 0.0,
                 .xi_lambda_2_ = 0.0,
                 .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}}))
-    {  // if the interpolation factors are near 0, then we explicitly use the elastic predictor
-       // based on the previous timestep; otherwise we will get mismatches due to the interpolation
-       // of the elastic predictor which, even though they are within machine precision, may lead to
-       // strange effects (such as in stress relaxation: stress of the elastic predictor is >= yield
-       // stress, but after interpolation stress < yield stress, which halts the LNGI completely)
+    {  // if the interpolation factors are near 0, then we explicitly use the elastic
+       // predictor based on the previous timestep; otherwise we will get mismatches due to
+       // the interpolation of the elastic predictor which, even though they are within
+       // machine precision, may lead to strange effects (such as in stress relaxation:
+       // stress of the elastic predictor is >= yield stress, but after interpolation stress
+       // < yield stress, which halts the LNGI completely)
       iFin_adapt_pred = time_step_quantities_.last_plastic_defgrad_inverse_[gp_];
     }
     else
@@ -5078,7 +4855,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
           gp_, FM, lnl_guess_interpolation_.get_curr_interp_point(gp_), inv_FM);
     }
 
-    // compute equivalent stress related to the interpolated inverse plastic deformation gradient
+    // compute equivalent stress related to the interpolated inverse plastic deformation
+    // gradient
     StateQuantities state_quantities_stress = evaluate_state_quantities(CM, iFin_adapt_pred, 0.0,
         err_status, time_step_tracker_.dt_, StateQuantityEvalType::EquivStressOnly);
 
@@ -5095,8 +4873,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
         time_step_quantities_.last_plastic_strain_[gp_], time_step_tracker_.dt_, err_status);
     if (err_status == ErrorType::no_errors)
     {
-      // evaluate state quantities and their derivatives with interpolated plastic defgrad and
-      // integrated plastic strain as initial guess
+      // evaluate state quantities and their derivatives with interpolated plastic defgrad
+      // and integrated plastic strain as initial guess
       is_valid_local_newton_initial_guess(FM, inv_FM, CM, iFin_adapt_pred,
           plastic_strain_adapt_pred, err_status, state_quantities_, state_quantity_derivatives_);
     }
@@ -5146,9 +4924,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
       // adapt interpolation interval
       lnl_guess_interpolation_.adapt_interpolation_intervals(gp_, err_status);
 
-      // if the adapted interval is now [0, 0], i.e., the elastic predictor with integrated plastic
-      // strain is "under the yield surface": try evaluating the standard elastic predictor as a
-      // last resort
+      // if the adapted interval is now [0, 0], i.e., the elastic predictor with integrated
+      // plastic strain is "under the yield surface": try evaluating the standard elastic
+      // predictor as a last resort
       if (is_equal_interp_points(lnl_guess_interpolation_.get_upper_bound_interp_point(gp_),
               LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 0.0,
                   .xi_lambda_2_ = 0.0,
@@ -5542,6 +5320,16 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
   double residual = 1.0e10;
   double jacobian = 1.0e10;
 
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::string(50, '.') << std::endl;
+    std::cout << "Integrating plastic strain starting from equiv_stress: " << equiv_stress
+              << ", last_plastic_strain: " << last_plastic_strain << "\n";
+  }
+#endif
+
+
   // Newton-Raphson loop
   while (true)
   {
@@ -5556,20 +5344,62 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
       return -1;
     }
 
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "iter: " << iter << " / " << max_iter << "\n";
+      std::cout << "equiv_stress: " << equiv_stress << ", plastic_strain: " << plastic_strain
+                << std::endl;
+    }
+#endif
 
     // compute plastic strain rate from the viscoplasticity law
     plastic_strain_rate = viscoplastic_law_->evaluate_plastic_strain_rate(
         equiv_stress, plastic_strain, dt, parameter()->max_plastic_strain_incr(), err_status);
 
     // return directly when encountering error
-    if (err_status != ErrorType::no_errors) return -1;
+    if (err_status != ErrorType::no_errors)
+    {
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << "plastic strain rate could not be evaluated...-> we return with error status "
+                  << EnumTools::enum_name(err_status) << std::endl;
+      }
+
+#endif
+
+
+      return -1;
+    }
 
     // compute residual
     residual = plastic_strain - last_plastic_strain - dt * plastic_strain_rate;
 
+
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "residual: " << residual << "\n";
+    }
+
+#endif
+
+
     // return solution
     if (std::abs(residual) < tol)
     {
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << std::string(50, '.') << "\n";
+      }
+
+#endif
+
       return plastic_strain;
     }
 
@@ -5580,13 +5410,37 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
     deriv_plastic_strain_rate = temp2x1(1);
 
     // throw error
-    if (err_status != ErrorType::no_errors) return -1;
+    if (err_status != ErrorType::no_errors)
+    {
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << "Plastic strain rate DERIVS could not be evaluated...->about to return"
+                  << std::endl;
+        std::cout << std::string(50, '.') << "\n";
+      }
+
+#endif
+      return -1;
+    }
 
     // compute jacobian
     jacobian = 1.0 - dt * deriv_plastic_strain_rate;
 
     // update solution
     plastic_strain -= residual / jacobian;
+
+
+#ifdef DEBUG_INTEGRATE_PLASTIC_STRAIN
+
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << "jacobian: " << jacobian << std::endl;
+      std::cout << "plastic_strain: " << plastic_strain << std::endl;
+    }
+
+#endif
   }
 }
 
@@ -5601,6 +5455,14 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
   {
     return ErrorAction::continue_iteration;
   }
+
+
+#ifdef DEBUG_LNL
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << "manage_evaluation_error: " << EnumTools::enum_name(err_status) << "\n";
+  }
+#endif
 
   // general local time integration analysis: add error
   if (parameter()->analyze_timint() && general_local_timint_analysis_utils.increment_vars_)
@@ -5671,8 +5533,8 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     inv_defgrad.invert(defgrad);
 
 
-    // compute inverse inelastic deformation gradients associated with the current lower bound and
-    // with the interpolation point to be evaluated next
+    // compute inverse inelastic deformation gradients associated with the current lower
+    // bound and with the interpolation point to be evaluated next
     Core::LinAlg::Matrix<3, 3> next_iFin = lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(
         gp_, defgrad, next_interp_point, inv_defgrad);
     Core::LinAlg::Matrix<3, 3> lbound_iFin =
@@ -5680,9 +5542,9 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
             gp_, defgrad, interp_point_lbound, inv_defgrad);
 
 
-    // compute equivalent stresses associated with the lower bound and with the interpolation point
-    // to be evaluated next
-    // interpolate inverse plastic deformation gradient
+    // compute equivalent stresses associated with the lower bound and with the
+    // interpolation point to be evaluated next interpolate inverse plastic deformation
+    // gradient
     ErrorType next_equiv_stress_eval_err_status = ErrorType::no_errors;
     StateQuantities state_quantities_next =
         evaluate_state_quantities(curr_CM, next_iFin, 0.0, next_equiv_stress_eval_err_status,
@@ -5693,14 +5555,14 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
             time_step_tracker_.dt_, StateQuantityEvalType::EquivStressOnly);
 
 
-    // decide whether this is a candidate for an initial guess based on the evaluability of the
-    // equivalent stresses
+    // decide whether this is a candidate for an initial guess based on the evaluability of
+    // the equivalent stresses
     if (next_equiv_stress_eval_err_status == ErrorType::no_errors &&
         lbound_equiv_stress_eval_err_status == ErrorType::no_errors)
     {
-      // both evaluable -> compute relative deviation between the stresses to decide whether the
-      // next point should be evaluated next as a candidate for an initial guess (relative deviation
-      // must be higher than a specified value)
+      // both evaluable -> compute relative deviation between the stresses to decide whether
+      // the next point should be evaluated next as a candidate for an initial guess
+      // (relative deviation must be higher than a specified value)
       const double rel_deviation = std::abs(state_quantities_next.curr_equiv_stress_ -
                                             state_quantities_lbound.curr_equiv_stress_) /
                                    state_quantities_lbound.curr_equiv_stress_;
@@ -5710,20 +5572,22 @@ ErrorAction Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation
     else if (next_equiv_stress_eval_err_status == ErrorType::no_errors &&
              lbound_equiv_stress_eval_err_status != ErrorType::no_errors)
     {
-      // next point is evaluable, but the lower bound is not -> candidate for an initial guess
+      // next point is evaluable, but the lower bound is not -> candidate for an initial
+      // guess
       is_init_guess = true;
     }
     else if (next_equiv_stress_eval_err_status != ErrorType::no_errors &&
              lbound_equiv_stress_eval_err_status != ErrorType::no_errors)
     {
-      // neither the next point nor the lower bound are evaluable -> not a candidate for an initial
-      // guess
+      // neither the next point nor the lower bound are evaluable -> not a candidate for an
+      // initial guess
       is_init_guess = false;
     }
     else
     {
       FOUR_C_THROW(
-          "This does not make sense! The equivalent stress of the lower interpolation bound is "
+          "This does not make sense! The equivalent stress of the lower interpolation "
+          "bound is "
           "evaluable but the point to be evaluated next is not!");
     }
 
@@ -5956,15 +5820,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantitie
   Core::LinAlg::Matrix<3, 3> last_elastic_defgrad{Core::LinAlg::Initialization::zero};
   last_elastic_defgrad.multiply_nn(1.0, time_step_quantities_.last_defgrad_[gp],
       time_step_quantities_.last_plastic_defgrad_inverse_[gp], 0.0);
-  Core::LinAlg::Matrix<3, 3> last_elastic_defgrad_material_stretch_ =
-      Core::LinAlg::matrix_3x3_material_stretch(last_elastic_defgrad);
-  time_step_quantities_.last_elastic_defgrad_material_stretch_inverse_[gp].invert(
-      last_elastic_defgrad_material_stretch_);
-  time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp] =
-      Core::LinAlg::matrix_3x3_spatial_stretch(last_plastic_defgrad);
-  time_step_quantities_.last_plastic_defgrad_inverse_rot_[gp].multiply_nn(1.0,
-      time_step_quantities_.last_plastic_defgrad_inverse_[gp],
-      time_step_quantities_.last_plastic_defgrad_spatial_stretch_[gp], 0.0);
+
+  // perform its polar-spectral decomposition
+  Core::LinAlg::Matrix<3, 3> last_elastic_defgrad_rotation{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> last_elastic_defgrad_material_stretch{
+      Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> last_elastic_stretch_eigenval{Core::LinAlg::Initialization::zero};
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> last_elastic_spectral_pairs;
+  Core::LinAlg::matrix_3x3_polar_decomposition(last_elastic_defgrad, last_elastic_defgrad_rotation,
+      last_elastic_defgrad_material_stretch, last_elastic_stretch_eigenval,
+      last_elastic_spectral_pairs);
+
+  // save "last" stretch components
+  time_step_quantities_.last_elastic_stretch_eigenval_[gp] = {last_elastic_spectral_pairs[0].first,
+      last_elastic_spectral_pairs[1].first, last_elastic_spectral_pairs[2].first};
 }
 
 /*--------------------------------------------------------------------*

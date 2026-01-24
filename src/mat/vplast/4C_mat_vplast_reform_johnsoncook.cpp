@@ -210,7 +210,7 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
   // computation of derivatives
 
   // then we check the yield condition
-  if (evaluate_stress_ratio(equiv_stress, used_equiv_plastic_strain) >= 1.0)
+  if (evaluate_stress_ratio(equiv_stress, equiv_plastic_strain) >= 1.0)
   {
     // compute first the logarithms of our derivatives (try to avoid overflow!)
     double log_deriv_sigma = const_pars_.log_p_e +

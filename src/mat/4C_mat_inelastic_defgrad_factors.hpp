@@ -334,15 +334,25 @@ namespace Mat
       [[nodiscard]] MatBehavior mat_behavior() const { return mat_behavior_; };
       //! get boolean: should Local Newton Guess Interpolation be used?
       [[nodiscard]] bool use_lngi() const { return use_lngi_; };
-      //! get type of plastic predictor stretch assignment
-      [[nodiscard]] PlasticPredictorStretchAssignType lngi_plastic_pred_stretch_assign_type() const
+      //! get type of eigenvalue assignment for the elastic stretch within the plastic predictor
+      [[nodiscard]] LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType
+      lngi_plastic_pred_elastic_stretch_eigenval_type() const
       {
-        return lngi_plastic_pred_stretch_assign_type_;
+        return lngi_plastic_pred_elastic_stretch_eigenval_type_;
       };
-      //! get type of plastic predictor rotation assignment
-      [[nodiscard]] PlasticPredictorRotAssignType lngi_plastic_pred_rot_assign_type() const
+      //! get type of eigenvector rotation assignment for the elastic stretch within the plastic
+      //! predictor
+      [[nodiscard]] LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvectRotType
+      lngi_plastic_pred_elastic_stretch_eigenvect_rot_type() const
       {
-        return lngi_plastic_pred_rot_assign_type_;
+        return lngi_plastic_pred_elastic_stretch_eigenvect_rot_type_;
+      };
+      //! get type of rotation assignment within the plastic
+      //! predictor
+      [[nodiscard]] LocalNewtonGuessInterpolation::PlasticPredictorRotationType
+      lngi_plastic_pred_rot_type() const
+      {
+        return lngi_plastic_pred_rot_type_;
       };
       //! get boolean: check consistency of the matrices and their
       //! components determined and analyzed during Local Newton Guess Interpolation? (true: yes,
@@ -359,7 +369,8 @@ namespace Mat
         return lngi_precondition_matrices_num_tol_;
       };
       //! get starting point type for the Local Newton Guess Interpolation
-      [[nodiscard]] LocalNewtonGuessInterpolationStartingPointType lngi_starting_point_type() const
+      [[nodiscard]] LocalNewtonGuessInterpolation::LocalNewtonGuessInterpolationStartingPointType
+      lngi_starting_point_type() const
       {
         return lngi_starting_point_type_;
       };
@@ -528,14 +539,24 @@ namespace Mat
       //! boolean: use Local Newton Guess Interpolation?
       const bool use_lngi_;
 
-      //! Local Newton Guess Interpolation: type of plastic predictor stretch assignment
-      const PlasticPredictorStretchAssignType lngi_plastic_pred_stretch_assign_type_;
+      //! Local Newton Guess Interpolation: type of elastic stretch eigenvalue assignment within
+      //! plastic predictor
+      const LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType
+          lngi_plastic_pred_elastic_stretch_eigenval_type_;
 
-      //! Local Newton Guess Interpolation: type of plastic predictor rotation assignment
-      const PlasticPredictorRotAssignType lngi_plastic_pred_rot_assign_type_;
+      //! Local Newton Guess Interpolation: type of eigenvector rotation assignment for the elastic
+      //! stretch within the plastic predictor
+      const LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvectRotType
+          lngi_plastic_pred_elastic_stretch_eigenvect_rot_type_;
 
-      //! Local Newton Guess Interpolation: type of starting point
-      const LocalNewtonGuessInterpolationStartingPointType lngi_starting_point_type_;
+      //! Local Newton Guess Interpolation: type of eigenvector rotation assignment for the elastic
+      //! stretch within the plastic predictor
+      const LocalNewtonGuessInterpolation::PlasticPredictorRotationType lngi_plastic_pred_rot_type_;
+
+      //! Local Newton Guess Interpolation: starting point type
+      //! for the Local Newton Guess Interpolation
+      const LocalNewtonGuessInterpolation::LocalNewtonGuessInterpolationStartingPointType
+          lngi_starting_point_type_;
 
       //! Local Newton Guess Interpolation: value for the starting
       // point of the Local Newton Guess Interpolation to be used for the
