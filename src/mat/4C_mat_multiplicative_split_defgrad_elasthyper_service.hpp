@@ -12,6 +12,11 @@
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
+#include "4C_linalg_four_tensor.hpp"
+#include "4C_linalg_symmetric_tensor.hpp"
+#include "4C_linalg_tensor.hpp"
+#include "4C_linalg_tensor_generators.hpp"
+#include "4C_linalg_tensor_matrix_conversion.hpp"
 #include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_service.hpp"
 
@@ -123,6 +128,46 @@ namespace Mat
     Core::LinAlg::FourTensorOperations::add_holzapfel_product(cmat, iCv, delta(6));
     Core::LinAlg::FourTensorOperations::add_holzapfel_product(cmat, iCinv, delta(7));
   }
+
+  inline void elast_hyper_evaluate_elastic_stress_and_stiffness(
+      const Core::LinAlg::Matrix<3, 3>& Ce, const Core::LinAlg::Matrix<3, 1>& gamma,
+      const Core::LinAlg::Matrix<8, 1>& delta, Core::LinAlg::Matrix<6, 1>& SeV,
+      Core::LinAlg::Matrix<6, 6>& cmateV)
+  {
+    SeV.clear();
+    cmateV.clear();
+
+    // compute terms relevant for the computation
+    Core::LinAlg::SymmetricTensor<double, 3, 3> id =
+        Core::LinAlg::TensorGenerators::identity<double, 3, 3>;
+    Core::LinAlg::Matrix<6, 1> idV = Core::LinAlg::make_stress_like_voigt_view(id);
+    Core::LinAlg::Matrix<6, 1> CeV{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::matrix_to_vector(Ce, CeV);
+    Core::LinAlg::Matrix<3, 3> iCe{Core::LinAlg::Initialization::zero};
+    iCe.invert(Ce);
+    Core::LinAlg::Matrix<6, 1> iCeV{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::matrix_to_vector(iCe, iCeV);
+
+    // contribution to elastic 2nd Piola-Kirchhoff stress tensor
+    SeV.update(gamma(0), idV, 1.0);
+    SeV.update(gamma(1), CeV, 1.0);
+    SeV.update(gamma(2), iCeV, 1.0);
+
+    // Contribution to the linearization
+    cmateV.multiply_nt(delta(0), idV, idV, 1.);
+    cmateV.multiply_nt(delta(1), idV, CeV, 1.);
+    cmateV.multiply_nt(delta(1), CeV, idV, 1.);
+    cmateV.multiply_nt(delta(2), idV, iCeV, 1.);
+    cmateV.multiply_nt(delta(2), iCeV, idV, 1.);
+    cmateV.multiply_nt(delta(3), CeV, CeV, 1.);
+    cmateV.multiply_nt(delta(4), CeV, iCeV, 1.);
+    cmateV.multiply_nt(delta(4), iCeV, CeV, 1.);
+    cmateV.multiply_nt(delta(5), iCeV, iCeV, 1.);
+    Core::LinAlg::FourTensorOperations::add_holzapfel_product(cmateV, iCeV, delta(6));
+    Core::LinAlg::FourTensorOperations::add_holzapfel_product(cmateV, idV, delta(7));
+  }
+
+
 
 }  // namespace Mat
 FOUR_C_NAMESPACE_CLOSE

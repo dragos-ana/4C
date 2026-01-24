@@ -24,6 +24,7 @@
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_service.hpp"
+#include "4C_scatra_ele_action.hpp"
 #include "4C_ssi_input.hpp"
 #include "4C_structure_new_enum_lists.hpp"
 #include "4C_utils_enum.hpp"
@@ -260,22 +261,9 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
       evaluate_thermal_quantities(delta_temperature, kinematic_quantities.iFinM, gp, eleGID);
 
   // compute thermal stress factors
-  StressFactors stress_factors_thermal;
-  Mat::calculate_gamma_delta(stress_factors_thermal.gamma, stress_factors_thermal.delta,
+  StressFactors thermal_stress_factors;
+  Mat::calculate_gamma_delta(thermal_stress_factors.gamma, thermal_stress_factors.delta,
       thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
-
-  // DEBUG
-  thermal_quantities.CTV.print(std::cout);
-  thermal_quantities.iCTV.print(std::cout);
-  thermal_quantities.iFinCTiFinTV.print(std::cout);
-  thermal_quantities.iFiniCTiFinTV.print(std::cout);
-  thermal_quantities.dCTdTV.print(std::cout);
-  thermal_quantities.prinv.print(std::cout);
-  stress_factors_thermal.gamma.print(std::cout);
-  stress_factors_thermal.delta.print(std::cout);
-  stress_factors.gamma.print(std::cout);
-  stress_factors.delta.print(std::cout);
-  FOUR_C_THROW("Stop");
 
   // derivative of 2nd Piola Kirchhoff stresses w.r.t. the inverse inelastic deformation
   // gradient
@@ -291,6 +279,23 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   // cmat = 2 dS/dC = 2 \frac{\partial S}{\partial C} + 2 \frac{\partial S}{\partial F_{in}^{-1}}
   // : \frac{\partial F_{in}^{-1}}{\partial C} = cmatiso + cmatadd
   evaluate_stress_cmat_iso(kinematic_quantities, stress_factors, stress_view, cmatiso);
+
+  // evaluate thermal stress and derivative wrt temperature
+  Core::LinAlg::Matrix<6, 1> thermal_stress{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<6, 1> thermal_stress_deriv{Core::LinAlg::Initialization::zero};
+  evaluate_thermal_stress_and_deriv(kinematic_quantities, thermal_quantities,
+      thermal_stress_factors, thermal_stress, thermal_stress_deriv);
+
+
+  // DEBUG
+  stress_view.print(std::cout);
+  cmatiso.print(std::cout);
+  thermal_stress.print(std::cout);
+  thermal_stress_deriv.print(std::cout);
+  FOUR_C_THROW("Stop");
+
+
+
   // separate update coming from the transversely isotropic components
   if (!(potsumel_transviso_.empty()))
   {
@@ -602,6 +607,65 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_stress_cmat_iso(
   Core::LinAlg::FourTensorOperations::add_holzapfel_product(cmatiso, iCinV, delta(7));
   cmatiso.scale(detFin);
 }
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_thermal_stress_and_deriv(
+    const KinematicQuantities& kinemat_quant, const ThermalQuantities& thermal_quant,
+    const StressFactors& thermal_stress_fact, Core::LinAlg::Matrix<6, 1>& thermal_stress,
+    Core::LinAlg::Matrix<6, 1>& thermal_stress_deriv) const
+{
+  // extract variables from thermal_quant
+  const Core::LinAlg::Matrix<6, 1>& iCinV = kinemat_quant.iCinV;
+  const Core::LinAlg::Matrix<3, 3>& iFinM = kinemat_quant.iFinM;
+  Core::LinAlg::Matrix<3, 3> CT{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::Stresses::vector_to_matrix(thermal_quant.CTV, CT);
+  const Core::LinAlg::Matrix<6, 1>& iFinCTiFinTV = thermal_quant.iFinCTiFinTV;
+  const Core::LinAlg::Matrix<6, 1>& iFiniCTiFinTV = thermal_quant.iFiniCTiFinTV;
+  const Core::LinAlg::Matrix<6, 1>& dCTdTV = thermal_quant.dCTdTV;
+  const Core::LinAlg::Matrix<3, 1>& thermal_gamma = thermal_stress_fact.gamma;
+  const Core::LinAlg::Matrix<8, 1>& thermal_delta = thermal_stress_fact.delta;
+  const double detFin = kinemat_quant.detFin;
+
+  // clear variables
+  thermal_stress.clear();
+  thermal_stress_deriv.clear();
+
+  // 2nd Piola Kirchhoff stresses
+  thermal_stress.update(thermal_gamma(0), iCinV, 1.0);
+  thermal_stress.update(thermal_gamma(1), iFinCTiFinTV, 1.0);
+  thermal_stress.update(thermal_gamma(2), iFiniCTiFinTV, 1.0);
+  thermal_stress.scale(detFin);
+
+
+  // evaluate purely hyperelastic stiffness with the thermal right CG tensor as input
+  Core::LinAlg::Matrix<6, 1> hyperelast_stress{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<6, 6> hyperelast_stiffness{Core::LinAlg::Initialization::zero};
+  elast_hyper_evaluate_elastic_stress_and_stiffness(
+      CT, thermal_gamma, thermal_delta, hyperelast_stress, hyperelast_stiffness);
+
+
+  // compute derivative \f$ \frac{\partial \mathbf{S}_{\theta}}{\partial T} \f$
+  Core::LinAlg::Matrix<6, 1> pStheta_pT_stress{Core::LinAlg::Initialization::zero};
+  pStheta_pT_stress.multiply_nn(1.0, hyperelast_stiffness, dCTdTV, 0.0);
+  Core::LinAlg::Matrix<3, 3> pStheta_pT{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::Stresses::vector_to_matrix(pStheta_pT_stress, pStheta_pT);
+
+  // compute product \f$ \mathbf{F}_{\text{in}}^{-1}  \frac{\partial \mathbf{S}_{\theta}}{\partial
+  // T} \mathbf{F}_{\text{in}}^{-T} \f$
+  Core::LinAlg::Matrix<3, 3> iFin_pStheta_pT{Core::LinAlg::Initialization::zero};
+  iFin_pStheta_pT.multiply_nn(1.0, iFinM, pStheta_pT, 0.0);
+  Core::LinAlg::Matrix<3, 3> iFin_pStheta_pT_iFinT{Core::LinAlg::Initialization::zero};
+  iFin_pStheta_pT_iFinT.multiply_nt(1.0, iFin_pStheta_pT, iFinM, 0.0);
+  Core::LinAlg::Matrix<6, 1> iFin_pStheta_pT_iFinT_V{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::Stresses::matrix_to_vector(iFin_pStheta_pT_iFinT, iFin_pStheta_pT_iFinT_V);
+
+  // thermal derivative
+  thermal_stress_deriv.update(-1.0, iFin_pStheta_pT_iFinT_V, 0.0);
+  thermal_stress_deriv.scale(detFin);
+}
+
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -1326,7 +1390,8 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_thermal_quantities(
   quantities.iCTV = Core::LinAlg::make_stress_like_voigt_view(inv_thermal_right_cg_tensor);
   Core::LinAlg::Voigt::Stresses::matrix_to_vector(iFinCTiFinT, quantities.iFinCTiFinTV);
   Core::LinAlg::Voigt::Stresses::matrix_to_vector(iFiniCTiFinT, quantities.iFiniCTiFinTV);
-  quantities.dCTdTV = Core::LinAlg::make_stress_like_voigt_view(thermal_right_cg_temp_deriv_tensor);
+  quantities.dCTdTV = Core::LinAlg::make_strain_like_voigt_matrix(
+      thermal_right_cg_temp_deriv_tensor);  // must be in strain-form for contraction afterwards!
 
   // compute principal invariants of the thermal stretch
   Core::LinAlg::Voigt::Strains::invariants_principal(quantities.prinv, quantities.CTV);

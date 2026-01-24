@@ -262,7 +262,7 @@ namespace Mat
       /// as 6x1 vector
       Core::LinAlg::Matrix<6, 1> iFiniCTiFinTV{Core::LinAlg::Initialization::zero};
       /// derivative of thermal right Cauchy-Green deformation tensor wrt temperature \f$ \mathrm{d}
-      /// \mathbf{C}_T / \mathrm{d} T \f$ stored as 6x1 vector
+      /// \mathbf{C}_T / \mathrm{d} T \f$ stored as 6x1 vector (strain-form!)
       Core::LinAlg::Matrix<6, 1> dCTdTV{Core::LinAlg::Initialization::zero};
 
       /// principal invariants of the thermal right Cauchy-Green tensor
@@ -470,6 +470,13 @@ namespace Mat
     void evaluate_stress_cmat_iso(const KinematicQuantities& kinemat_quant,
         const StressFactors& stress_fact, Core::LinAlg::Matrix<6, 1>& stress,
         Core::LinAlg::Matrix<6, 6>& cmatiso) const;
+
+
+    void evaluate_thermal_stress_and_deriv(const KinematicQuantities& kinemat_quant,
+        const ThermalQuantities& thermal_quant, const StressFactors& thermal_stress_fact,
+        Core::LinAlg::Matrix<6, 1>& thermal_stress,
+        Core::LinAlg::Matrix<6, 1>& thermal_stress_deriv) const;
+
 
     /*!
      * @brief Evaluates some kinematic quantities that are used in stress and elasticity tensor
