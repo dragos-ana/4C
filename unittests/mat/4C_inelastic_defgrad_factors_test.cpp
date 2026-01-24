@@ -312,19 +312,24 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_INTERVAL_SCAN_PARAM", 0.5);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_MAX_NUM_REINTERP", 10);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-5);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_ROT_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-              trial_elastic_rotation);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-              PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvalType::eliminate);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvectRotType::elastic_predictor);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorRotationType::elastic_predictor);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_PRECONDITION_MATRICES", true);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-3);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT", 0.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT_TYPE",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
               LocalNewtonGuessInterpolationStartingPointType::user_set);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_CONV_CHECK",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
@@ -386,19 +391,24 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_INTERVAL_SCAN_PARAM", 0.5);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_MAX_NUM_REINTERP", 10);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-5);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_ROT_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-              trial_elastic_rotation);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-              PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvalType::eliminate);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvectRotType::elastic_predictor);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PLASTIC_PRED_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorRotationType::elastic_predictor);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_PRECONDITION_MATRICES", true);
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-3);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT", 0.0);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LNGI_STARTING_POINT_TYPE",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
               LocalNewtonGuessInterpolationStartingPointType::user_set);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("LOCAL_NEWTON_CONV_CHECK",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
@@ -1293,18 +1303,22 @@ namespace
       inelastic_defgrad_debug_vplast_data.add("LNGI_INTERVAL_SCAN_PARAM", 5.0e-01);
       inelastic_defgrad_debug_vplast_data.add("LNGI_MAX_NUM_REINTERP", 30);
       inelastic_defgrad_debug_vplast_data.add("LNGI_MIN_INTERP_INTERVAL", 1.0e-05);
-      inelastic_defgrad_debug_vplast_data.add("LNGI_PLASTIC_PRED_ROT_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticPredictorRotAssignType::
-              trial_elastic_rotation);
-      inelastic_defgrad_debug_vplast_data.add("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-              PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvalType::eliminate);
+      inelastic_defgrad_debug_vplast_data.add(
+          "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorElasticStretchEigenvectRotType::elastic_predictor);
+      inelastic_defgrad_debug_vplast_data.add("LNGI_PLASTIC_PRED_ROT_TYPE",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+              PlasticPredictorRotationType::elastic_predictor);
       inelastic_defgrad_debug_vplast_data.add("LNGI_PRECONDITION_MATRICES", true);
       inelastic_defgrad_debug_vplast_data.add("LNGI_PRECONDITION_MATRICES_NUM_TOL", 1.0e-13);
       inelastic_defgrad_debug_vplast_data.add("LNGI_REINTERP_MIN_REL_DEV", 1.0e-03);
       inelastic_defgrad_debug_vplast_data.add("LNGI_STARTING_POINT", 0.0e+00);
       inelastic_defgrad_debug_vplast_data.add("LNGI_STARTING_POINT_TYPE",
-          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
               LocalNewtonGuessInterpolationStartingPointType::user_set);
       inelastic_defgrad_debug_vplast_data.add("LOCAL_NEWTON_CONV_CHECK",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
