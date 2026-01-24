@@ -2769,22 +2769,39 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description = "boolean: use Local Newton Guess Interpolation algorithm?",
                     .default_value = true}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    PlasticPredictorStretchAssignType>("LNGI_PLASTIC_PRED_STRETCH_ASSIGN",
-                {.description = "type of plastic predictor stretch assignment (Local Newton Guess "
+                    LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType>(
+                "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+                {.description = "type of elastic stretch eigenvalues within the plastic predictor "
+                                "(Local Newton Guess "
                                 "Interpolation)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        PlasticPredictorStretchAssignType::rotate_previous_elastic_stretch}),
+                        LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvalType::
+                            eliminate}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    PlasticPredictorRotAssignType>("LNGI_PLASTIC_PRED_ROT_ASSIGN",
-                {.description = "type of plastic predictor rotation assignment (Local Newton Guess "
+                    LocalNewtonGuessInterpolation::PlasticPredictorElasticStretchEigenvectRotType>(
+                "LNGI_PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_ROT_TYPE",
+                {.description = "type of eigenvector rotation assignment for the elastic stretch "
+                                "within the plastic predictor (Local Newton Guess "
                                 "Interpolation)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        PlasticPredictorRotAssignType::trial_elastic_rotation}),
+                        LocalNewtonGuessInterpolation::
+                            PlasticPredictorElasticStretchEigenvectRotType::elastic_predictor}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    LocalNewtonGuessInterpolationStartingPointType>("LNGI_STARTING_POINT_TYPE",
+                    LocalNewtonGuessInterpolation::PlasticPredictorRotationType>(
+                "LNGI_PLASTIC_PRED_ROT_TYPE",
+                {.description = "type of rotation assignment within the plastic predictor (Local "
+                                "Newton Guess "
+                                "Interpolation)",
+                    .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                        LocalNewtonGuessInterpolation::PlasticPredictorRotationType::
+                            elastic_predictor}),
+            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    LocalNewtonGuessInterpolation::LocalNewtonGuessInterpolationStartingPointType>(
+                "LNGI_STARTING_POINT_TYPE",
                 {.description = "Starting point type for the Local Newton Guess Interpolation",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        LocalNewtonGuessInterpolationStartingPointType::user_set}),
+                        LocalNewtonGuessInterpolation::
+                            LocalNewtonGuessInterpolationStartingPointType::user_set}),
             parameter<double>("LNGI_STARTING_POINT",
                 {.description = "Value for the starting point of the Local Newton Guess "
                                 "Interpolation to be used for the user_set starting point type.",
