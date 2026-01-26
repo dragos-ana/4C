@@ -92,9 +92,6 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
     log_temperature_ratio_ = std::log(temperature_ratio_);
   }
 
-  // DEBUG
-  std::cout << "Do we get here?" << std::endl;
-
   // set temperature ratio derivative
   temperature_ratio_deriv_ =
       -M * (std::pow(T, M - 1.0)) / (std::pow(T_melt, M) - std::pow(T_ref, M));

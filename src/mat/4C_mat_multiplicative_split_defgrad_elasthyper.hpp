@@ -471,11 +471,15 @@ namespace Mat
         const StressFactors& stress_fact, Core::LinAlg::Matrix<6, 1>& stress,
         Core::LinAlg::Matrix<6, 6>& cmatiso) const;
 
+    /// S_T
+    Core::LinAlg::Matrix<6, 1> evaluate_thermal_stress(const KinematicQuantities& kinemat_quant,
+        const ThermalQuantities& thermal_quant, const StressFactors& thermal_stress_fact) const;
 
-    void evaluate_thermal_stress_and_deriv(const KinematicQuantities& kinemat_quant,
-        const ThermalQuantities& thermal_quant, const StressFactors& thermal_stress_fact,
-        Core::LinAlg::Matrix<6, 1>& thermal_stress,
-        Core::LinAlg::Matrix<6, 1>& thermal_stress_deriv) const;
+
+    /// \frac{\partial S_T}{\partial T}
+    Core::LinAlg::Matrix<6, 1> evaluate_thermal_stress_deriv(
+        const KinematicQuantities& kinemat_quant, const ThermalQuantities& thermal_quant,
+        const StressFactors& thermal_stress_fact) const;
 
 
     /*!
