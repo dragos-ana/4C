@@ -22,7 +22,6 @@
 
 FOUR_C_NAMESPACE_OPEN
 
-
 using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
 
 /*--------------------------------------------------------------------*
@@ -72,11 +71,6 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pre_evaluate(
   const double T_melt = parameter()->melt_temperature();
   const double M = parameter()->temperature_sens();
 
-
-  // DEBUG
-  std::cout << "T: " << T << std::endl;
-  std::cout << "T_ref: " << T_ref << std::endl;
-  std::cout << "T_melt: " << T_melt << std::endl;
 
   // set temperature ratio
   temperature_ratio_ = 1.0;

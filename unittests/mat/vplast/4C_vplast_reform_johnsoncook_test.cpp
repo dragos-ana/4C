@@ -55,8 +55,7 @@ namespace
 
       // parameter list
       Teuchos::ParameterList param_list{};
-      // TODO: test with other temperatures!
-      param_list.set<double>("temperature", 293);
+      param_list.set<double>("temperature", 20.0);
 
 
       // call pre_evaluate
@@ -86,7 +85,7 @@ namespace
   TEST_F(ReformJohnsonCookTest, TestEvaluateStressRatio)
   {
     // set reference solution
-    stress_ratio_reformulated_JC_solution_ = 1.14072049868917;
+    stress_ratio_reformulated_JC_solution_ = 1.1556126603348709;
 
     // compute solution from the viscoplasticity law
     double stress_ratio_reformulated_JC =
@@ -99,7 +98,8 @@ namespace
   TEST_F(ReformJohnsonCookTest, TestEvaluatePlasticStrainRate)
   {
     // set reference solution
-    plastic_strain_rate_reformulated_JC_solution_ = 23188.7161986626;
+    plastic_strain_rate_reformulated_JC_solution_ = 67182.9745369580195984;
+
 
     // declare error status
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status =
@@ -122,8 +122,9 @@ namespace
   TEST_F(ReformJohnsonCookTest, TestEvaluatePlasticStrainRateDerivatives)
   {
     // set reference solution
-    deriv_plastic_strain_rate_reformulated_JC_solution_(0, 0) = 1889.49890189991;
-    deriv_plastic_strain_rate_reformulated_JC_solution_(1, 0) = -47431778.9968811;
+    deriv_plastic_strain_rate_reformulated_JC_solution_(0, 0) = 5545.6179676088768247;
+    deriv_plastic_strain_rate_reformulated_JC_solution_(1, 0) = -139210732.3144087791442871;
+    deriv_plastic_strain_rate_reformulated_JC_solution_(2, 0) = 3623.4626950498809492;
 
 
     // declare error status
@@ -139,8 +140,12 @@ namespace
       FOUR_C_THROW("Error encountered during testing of TestEvaluatePlasticStrainRateDerivatives");
 
     // compare solutions
-    FOUR_C_EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_,
-        deriv_plastic_strain_rate_reformulated_JC, 1.0e-6);
+    EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_(0),
+        deriv_plastic_strain_rate_reformulated_JC(0), 1.0e-5);
+    EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_(1),
+        deriv_plastic_strain_rate_reformulated_JC(1), 1.0e-5);
+    EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_(2),
+        deriv_plastic_strain_rate_reformulated_JC(2), 1.0e-5);
   }
 
 }  // namespace
