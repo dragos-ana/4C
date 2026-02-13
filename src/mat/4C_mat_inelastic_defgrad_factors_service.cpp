@@ -479,7 +479,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
   // initialize predictor decompositions for first GP (using the identity matrices as
   // dummy matrices for
   // now)
-  all_pred_decomp_specific_defgrad_.resize(1, {PredictorDefgradDecomposition(id3x3, id3x3)});
+  curr_pred_decomp_specific_defgrad_.resize(1, {PredictorDefgradDecomposition(id3x3, id3x3)});
+  last_pred_decomp_specific_defgrad_.resize(1, {PredictorDefgradDecomposition(id3x3, id3x3)});
 
   // initialize component interpolators for first GP (using zero-values)
   all_component_interp_lambda_1_.resize(1, {ComponentInterpolator<1>{.current_xi_ = {0.0},
@@ -506,7 +507,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     const unsigned int num_gp)
 {
   // setup predictor decompositions with the right number of Gauss points
-  all_pred_decomp_specific_defgrad_.resize(num_gp, all_pred_decomp_specific_defgrad_[0]);
+  curr_pred_decomp_specific_defgrad_.resize(num_gp, curr_pred_decomp_specific_defgrad_[0]);
+  last_pred_decomp_specific_defgrad_.resize(num_gp, last_pred_decomp_specific_defgrad_[0]);
 
   // setup component interpolators with the right number of Gauss points
   all_component_interp_lambda_1_.resize(num_gp, all_component_interp_lambda_1_[0]);
@@ -558,6 +560,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
           all_component_interp_rel_eigenvect_rot_[gp].current_xi_;
     }
   }
+
+  last_pred_decomp_specific_defgrad_ = curr_pred_decomp_specific_defgrad_;
 }
 
 /*--------------------------------------------------------------------*
@@ -568,6 +572,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   Core::Communication::add_to_pack(data, all_component_interp_lambda_1_);
   Core::Communication::add_to_pack(data, all_component_interp_lambda_2_);
   Core::Communication::add_to_pack(data, all_component_interp_rel_eigenvect_rot_);
+  for (auto p : last_pred_decomp_specific_defgrad_)
+  {
+    p.pack(data);
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -575,9 +583,21 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::unpack(
     Core::Communication::UnpackBuffer& buffer)
 {
+  // auxiliaries
+  Core::LinAlg::Matrix<3, 3> id3x3{Core::LinAlg::Initialization::zero};
+  for (int i = 0; i < 3; ++i) id3x3(i, i) = 1.0;
+
+
+
   Core::Communication::extract_from_pack(buffer, all_component_interp_lambda_1_);
   Core::Communication::extract_from_pack(buffer, all_component_interp_lambda_2_);
   Core::Communication::extract_from_pack(buffer, all_component_interp_rel_eigenvect_rot_);
+  last_pred_decomp_specific_defgrad_.resize(
+      all_component_interp_lambda_1_.size(), {PredictorDefgradDecomposition(id3x3, id3x3)});
+  for (auto p : last_pred_decomp_specific_defgrad_)
+  {
+    p.unpack(buffer);
+  }
 
   // set current <- last for component interpolators
   for (size_t gp = 0; gp < all_component_interp_lambda_1_.size(); ++gp)
@@ -591,14 +611,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     }
   }
 
-  // auxiliaries
-  Core::LinAlg::Matrix<3, 3> id3x3{Core::LinAlg::Initialization::zero};
-  for (int i = 0; i < 3; ++i) id3x3(i, i) = 1.0;
-
   // initialize predictor decompositions for first GP (using the identity matrices as
   // dummy matrices for
   // now)
-  all_pred_decomp_specific_defgrad_.resize(
+  curr_pred_decomp_specific_defgrad_.resize(
       all_component_interp_lambda_1_.size(), {PredictorDefgradDecomposition(id3x3, id3x3)});
 }
 
@@ -621,13 +637,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
     elastic_defgrad_plast_pred.multiply_nn(1.0, defgrad, inv_plastic_defgrad_plast_pred, 0.0);
 
     // perform decompositions of the elastic deformation gradients
-    all_pred_decomp_specific_defgrad_[gp] =
+    curr_pred_decomp_specific_defgrad_[gp] =
         PredictorDefgradDecomposition(elastic_defgrad_elast_pred, elastic_defgrad_plast_pred);
   }
   else if (defgrad_type_ == DefgradType::inv_plastic_defgrad)
   {
     // perform decompositions of the inverse plastic deformation gradients
-    all_pred_decomp_specific_defgrad_[gp] = PredictorDefgradDecomposition(
+    curr_pred_decomp_specific_defgrad_[gp] = PredictorDefgradDecomposition(
         inv_plastic_defgrad_elast_pred, inv_plastic_defgrad_plast_pred);
   }
   else
@@ -654,7 +670,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
     for (unsigned int i = 0; i < 3; ++i)
     {
       rel_eigenvect_rot_vect(i) = interp_point.xi_rel_eigenvect_rot_[i] *
-                                  all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i);
+                                  curr_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i);
     }
   }
 
@@ -668,7 +684,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   // within the elastic predictor
   Core::LinAlg::Matrix<3, 3> eigenvect_rot_matrix{Core::LinAlg::Initialization::zero};
   eigenvect_rot_matrix.multiply_nn(
-      1.0, all_pred_decomp_specific_defgrad_[gp].Qmat_elast_pred_, rel_eigenvect_rot_matrix, 0.0);
+      1.0, curr_pred_decomp_specific_defgrad_[gp].Qmat_elast_pred_, rel_eigenvect_rot_matrix, 0.0);
 
   // calculate eigenvalue matrix assuming plastic incompressibility (det
   // = 1) --> set only first two eigenvalues, the third one is set based on the
@@ -682,11 +698,11 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   const double w_lambda_1_plast_pred = interp_point.xi_lambda_1_;
 
   eigenvalue_matrix(0, 0) = std::exp(
-      w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[0] +
-      w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[0]);
+      w_lambda_1_elast_pred * curr_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[0] +
+      w_lambda_1_plast_pred * curr_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[0]);
   eigenvalue_matrix(1, 1) = std::exp(
-      w_lambda_1_elast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[1] +
-      w_lambda_1_plast_pred * all_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[1]);
+      w_lambda_1_elast_pred * curr_pred_decomp_specific_defgrad_[gp].log_lambda_elast_pred_[1] +
+      w_lambda_1_plast_pred * curr_pred_decomp_specific_defgrad_[gp].log_lambda_plast_pred_[1]);
 
   /*
   #ifdef DEBUG_PRED_ADAPT
@@ -733,7 +749,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
     Core::LinAlg::Matrix<3, 3> QT_lambda_Q{Core::LinAlg::Initialization::zero};
     lambda_Q.multiply_nn(1.0, eigenvalue_matrix, eigenvect_rot_matrix, 0.0);
     QT_lambda_Q.multiply_tn(1.0, eigenvect_rot_matrix, lambda_Q, 0.0);
-    elastic_defgrad.multiply_nn(1.0, all_pred_decomp_specific_defgrad_[gp].Rmat_elast_pred_,
+    elastic_defgrad.multiply_nn(1.0, curr_pred_decomp_specific_defgrad_[gp].Rmat_elast_pred_,
         QT_lambda_Q, 0.0);  // both R rotation matrices can be taken, since they should be the
                             // same! This is already checked previously!
 
@@ -752,7 +768,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
     lambda_Q.multiply_nn(1.0, eigenvalue_matrix, eigenvect_rot_matrix, 0.0);
     QT_lambda_Q.multiply_tn(1.0, eigenvect_rot_matrix, lambda_Q, 0.0);
     inv_plastic_defgrad.multiply_nn(
-        1.0, all_pred_decomp_specific_defgrad_[gp].Rmat_plast_pred_, QT_lambda_Q, 0.0);
+        1.0, curr_pred_decomp_specific_defgrad_[gp].Rmat_plast_pred_, QT_lambda_Q, 0.0);
   }
   else
   {
@@ -833,10 +849,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
-    compute_optimal_interp_factors(const unsigned int gp,
-        const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
-        const Core::LinAlg::Matrix<3, 3>& defgrad)
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+    InterpolationPoint
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+        compute_optimal_interp_factors(
+            const PredictorDefgradDecomposition& predictor_defgrad_decomposition, unsigned int gp,
+            const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
+            const Core::LinAlg::Matrix<3, 3>& defgrad)
 {
   // considered solution matrix for optimal interpolation factors: different treatment based on
   // the considered deformation gradient type
@@ -860,8 +879,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   // our base during interpolation (i.e., the eigenvectors have the same ordering as in our
   // current predictor decomposition)
   PredictorDefgradDecomposition solution_defgrad_decomposition{
-      all_pred_decomp_specific_defgrad_[gp].specific_defgrad_elast_pred_, solution_defgrad,
-      all_pred_decomp_specific_defgrad_[gp].spectral_pairs_elast_pred_};
+      predictor_defgrad_decomposition.specific_defgrad_elast_pred_, solution_defgrad,
+      predictor_defgrad_decomposition.spectral_pairs_elast_pred_};
 
   // consistency check: if the elastic defgrad is interpolated, the R-rotation
   // of the solution must be the same as in the elastic predictor (and the
@@ -870,42 +889,47 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInt
   {
     const double rel_rot_norm = solution_defgrad_decomposition.Rvec_plast_pred_rel_.norm2();
     FOUR_C_ASSERT_ALWAYS(rel_rot_norm < 1.0e-8,
-        "Inconsistency when determining the optimal interpolation factors. The relative "
+        "GP {}: Inconsistency when determining the optimal interpolation factors. The relative "
         "R-rotation "
         "is not 0, but [{}, {}, {}]",
-        solution_defgrad_decomposition.Rvec_plast_pred_rel_(0),
+        gp, solution_defgrad_decomposition.Rvec_plast_pred_rel_(0),
         solution_defgrad_decomposition.Rvec_plast_pred_rel_(1),
         solution_defgrad_decomposition.Rvec_plast_pred_rel_(2));
   }
 
 
   // determine the optimal interpolation factors
-  all_component_interp_lambda_1_[gp].optimal_xi_ = {determine_optimal_interpolation_factors(
+  const double optimal_xi_lambda_1 = determine_optimal_interpolation_factors(
       InputVerifyOptimalInterpolationFactors{.gp_ = gp,
           .reference_val_ = solution_defgrad_decomposition.lambda_plast_pred_[0],
-          .elast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0],
-          .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0]},
-      "lambda 1")};
-  all_component_interp_lambda_2_[gp].optimal_xi_ = {determine_optimal_interpolation_factors(
+          .elast_pred_val_ = curr_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[0],
+          .plast_pred_val_ = curr_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[0]},
+      "lambda 1");
+  const double optimal_xi_lambda_2 = determine_optimal_interpolation_factors(
       InputVerifyOptimalInterpolationFactors{.gp_ = gp,
           .reference_val_ = solution_defgrad_decomposition.lambda_plast_pred_[1],
-          .elast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1],
-          .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1]},
-      "lambda 2")};
+          .elast_pred_val_ = curr_pred_decomp_specific_defgrad_[gp].lambda_elast_pred_[1],
+          .plast_pred_val_ = curr_pred_decomp_specific_defgrad_[gp].lambda_plast_pred_[1]},
+      "lambda 2");
 
+  std::array<double, 3> optimal_xi_rel_eigenvect_rot{0.0, 0.0, 0.0};
   if (interpolate_elastic_stretch_eigenvect_rot_)
   {
     for (unsigned int i = 0; i < 3; ++i)
     {
-      all_component_interp_rel_eigenvect_rot_[gp].optimal_xi_[i] =
-          determine_optimal_interpolation_factors(
-              InputVerifyOptimalInterpolationFactors{.gp_ = gp,
-                  .reference_val_ = solution_defgrad_decomposition.Qvec_plast_pred_rel_(i),
-                  .elast_pred_val_ = 0.0,
-                  .plast_pred_val_ = all_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i)},
-              "eigenvector rotation vector, component " + std::to_string(i));
+      optimal_xi_rel_eigenvect_rot[i] = determine_optimal_interpolation_factors(
+          InputVerifyOptimalInterpolationFactors{.gp_ = gp,
+              .reference_val_ = solution_defgrad_decomposition.Qvec_plast_pred_rel_(i),
+              .elast_pred_val_ = 0.0,
+              .plast_pred_val_ = curr_pred_decomp_specific_defgrad_[gp].Qvec_plast_pred_rel_(i)},
+          "eigenvector rotation vector, component " + std::to_string(i));
     }
   }
+
+
+  return InterpolationPoint{.xi_lambda_1_ = optimal_xi_lambda_1,
+      .xi_lambda_2_ = optimal_xi_lambda_2,
+      .xi_rel_eigenvect_rot_ = optimal_xi_rel_eigenvect_rot};
 }
 
 
@@ -948,7 +972,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Eval. line searches (LNL)", 1, 16);
   csv_writer_->register_data_vector("Eval. iterations (line search)", 1, 16);
   csv_writer_->register_data_vector("Eval. time (RMA)", 1, 16);
-  csv_writer_->register_data_vector("Eval. time (LNGI next timestep)", 1, 16);
+  csv_writer_->register_data_vector("Eval. time (LNGI preparation)", 1, 16);
   csv_writer_->register_data_vector("Total steps (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total iterations (LNL)", 1, 16);
   csv_writer_->register_data_vector("Total reinterpolations (LNGI)", 1, 16);
@@ -958,7 +982,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   csv_writer_->register_data_vector("Total iterations (line search)", 1, 16);
   csv_writer_->register_data_vector("Total time (inelastic defgrad)", 1, 16);
   csv_writer_->register_data_vector("Total time (RMA)", 1, 16);
-  csv_writer_->register_data_vector("Total time (LNGI next timestep)", 1, 16);
+  csv_writer_->register_data_vector("Total time (LNGI preparation)", 1, 16);
   csv_writer_->register_data_vector(
       "Interpolation factor (lambda 1) of GP 0 of Ele 0 (last global iteration)", 1, 16);
   csv_writer_->register_data_vector(
@@ -1028,9 +1052,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   num_iters_and_steps_.eval_num_of_line_search_ = 0;
   num_iters_and_steps_.eval_num_of_line_search_iters_ = 0;
   timers_.eval_teuchos_timer_rma_.reset();
-  timers_.eval_teuchos_timer_lngi_starting_point_next_timestep_.reset();
+  timers_.eval_teuchos_timer_lngi_preparation_.reset();
   time_measurements_.eval_time_rma_ = 0;
-  time_measurements_.eval_time_lngi_prepare_next_timestep_ = 0;
+  time_measurements_.eval_time_lngi_preparation_ = 0;
   eval_error_map_ = {
       {ErrorType::negative_plastic_strain, 0},
       {ErrorType::overflow_error, 0},
@@ -1083,8 +1107,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
   num_iters_and_steps_.total_num_of_alpha_neq_1_last_iter_ +=
       num_iters_and_steps_.eval_num_of_alpha_neq_1_last_iter_;
   time_measurements_.total_time_rma_ += time_measurements_.eval_time_rma_;
-  time_measurements_.total_time_lngi_prepare_next_timestep_ +=
-      time_measurements_.eval_time_lngi_prepare_next_timestep_;
+  time_measurements_.total_time_lngi_preparation_ += time_measurements_.eval_time_lngi_preparation_;
   for (const auto& [error_type, error_count] : eval_error_map_)
   {
     total_error_map_[error_type] += error_count;
@@ -1128,10 +1151,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::GeneralLocalTimIntA
       static_cast<double>(num_iters_and_steps_.total_num_of_line_search_)};
   output_data["Eval. time (RMA)"] = {static_cast<double>(time_measurements_.eval_time_rma_)};
   output_data["Total time (RMA)"] = {static_cast<double>(time_measurements_.total_time_rma_)};
-  output_data["Eval. time (LNGI next timestep)"] = {
-      static_cast<double>(time_measurements_.eval_time_lngi_prepare_next_timestep_)};
-  output_data["Total time (LNGI next timestep)"] = {
-      static_cast<double>(time_measurements_.total_time_lngi_prepare_next_timestep_)};
+  output_data["Eval. time (LNGI preparation)"] = {
+      static_cast<double>(time_measurements_.eval_time_lngi_preparation_)};
+  output_data["Total time (LNGI preparation)"] = {
+      static_cast<double>(time_measurements_.total_time_lngi_preparation_)};
   /*
   output_data["Eval. # of times: alpha neq 1 (all LNL iters)"] = {
       static_cast<double>(eval_num_of_alpha_neq_1)};
@@ -1562,5 +1585,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::CSVOutputLineSearch
     csv_writer.write_data_to_file(csv_output_tracking_data_.tnp_, mi, output_data);
   }
 }
+
 
 FOUR_C_NAMESPACE_CLOSE

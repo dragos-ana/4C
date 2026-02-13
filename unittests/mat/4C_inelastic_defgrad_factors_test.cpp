@@ -2148,7 +2148,11 @@ namespace
 
     double last_plastic_strain = 0.0000000000000000;
 
+    double last_plastic_strain_increment = 0.0000000000000000;
 
+    double last_equiv_stress = 0.0000000000000000;
+    double last_equiv_stress_elastic_pred = 0.0000000000000000;
+    double last_equiv_stress_plastic_pred = 0.0000000000000000;
 
     Core::LinAlg::Matrix<3, 3> last_defgrad{Core::LinAlg::Initialization::zero};
     last_defgrad(0, 0) = 1.0000000000000000;
@@ -2194,9 +2198,11 @@ namespace
 
     // set the values at the 0-th GP
     iso_mat->debug_set_last_quantities(0, last_plastic_defgrd_inverse, last_plastic_strain,
-        last_defgrad, last_rightCG, last_xi_lambda_1, last_xi_lambda_2, last_xi_eigenvect_rot,
-        last_max_xi_lambda_1, last_max_xi_lambda_2, last_max_xi_eigenvect_rot, optimal_xi_lambda_1,
-        optimal_xi_lambda_2, optimal_xi_eigenvect_rot);
+        last_plastic_strain_increment, last_equiv_stress, last_equiv_stress_elastic_pred,
+        last_equiv_stress_plastic_pred, last_defgrad, last_rightCG, last_xi_lambda_1,
+        last_xi_lambda_2, last_xi_eigenvect_rot, last_max_xi_lambda_1, last_max_xi_lambda_2,
+        last_max_xi_eigenvect_rot, optimal_xi_lambda_1, optimal_xi_lambda_2,
+        optimal_xi_eigenvect_rot);
 
 
     // define last_values to be set for the viscoplastic law (Anand)
