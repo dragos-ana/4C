@@ -173,6 +173,21 @@ namespace Mat
       //! (equivalent) plastic strain at the last time step (for all Gauss points)
       std::vector<double> last_plastic_strain_;
 
+      //! equivalent stress at the previous time instant (for all Gauss points)
+      std::vector<double> last_equiv_stress_;
+
+      //! equivalent stress at the previous time instant (for all Gauss points) for the elastic
+      //! predictor
+      std::vector<double> last_equiv_stress_elastic_pred_;
+
+      //! equivalent stress at the previous time instant (for all Gauss points) for the plastic
+      //! predictor
+      std::vector<double> last_equiv_stress_plastic_pred_;
+
+      //! plastic strain increment (plastic strain rate * time step) at the previous time instant
+      //! (for all Gauss points)
+      std::vector<double> last_plastic_strain_increment_;
+
       //! last (reduced) deformation gradient: used to in the Local Newton Guess
       //! Interpolation routine
       std::vector<Core::LinAlg::Matrix<3, 3>> last_defgrad_;
@@ -194,7 +209,7 @@ namespace Mat
       std::vector<double> current_plastic_strain_;
 
       //! current equivalent stress (for all Gauss points)
-      std::vector<double> current_stress_;
+      std::vector<double> current_equiv_stress_;
 
       //! inverse plastic deformation gradient at the last computed time instant (after the last
       //! converged substep)
@@ -393,6 +408,61 @@ namespace Mat
             const Core::LinAlg::Matrix<3, 3>& defgrad_plast_pred,
             std::optional<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>>
                 spectral_pairs_ref = std::nullopt);
+
+        //! pack method
+        void pack(Core::Communication::PackBuffer& data) const
+        {
+          Core::Communication::add_to_pack(data, specific_defgrad_elast_pred_);
+          Core::Communication::add_to_pack(data, specific_defgrad_plast_pred_);
+          Core::Communication::add_to_pack(data, lambda_elast_pred_);
+          Core::Communication::add_to_pack(data, lambda_plast_pred_);
+          Core::Communication::add_to_pack(data, log_lambda_elast_pred_);
+          Core::Communication::add_to_pack(data, log_lambda_plast_pred_);
+          Core::Communication::add_to_pack(data, Qmat_elast_pred_);
+          Core::Communication::add_to_pack(data, Qmat_plast_pred_);
+          Core::Communication::add_to_pack(data, Qmat_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, Qvec_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, Rmat_elast_pred_);
+          Core::Communication::add_to_pack(data, Rmat_plast_pred_);
+          Core::Communication::add_to_pack(data, Rmat_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, Rvec_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, specific_defgrad_elast_pred_);
+          Core::Communication::add_to_pack(data, specific_defgrad_plast_pred_);
+        }
+
+        //! unpack method
+        void unpack(Core::Communication::UnpackBuffer& buffer)
+        {
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, lambda_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, lambda_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, log_lambda_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, log_lambda_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, Qmat_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, Qmat_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, Qmat_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, Qvec_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, Rmat_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, Rmat_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, Rmat_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, Rvec_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_plast_pred_);
+        }
+
+        //! print method
+        void print(std::ostream& os) const
+        {
+          std::cout << "PredictorDefgradDecomposition: \n";
+          std::cout << "elastic - plastic: " << std::endl;
+          std::cout << "lambda: [" << lambda_elast_pred_[0] << ", " << lambda_elast_pred_[1] << ", "
+                    << lambda_elast_pred_[2] << "] - [" << lambda_plast_pred_[0] << ", "
+                    << lambda_plast_pred_[1] << ", " << lambda_plast_pred_[2] << "]\n";
+          std::cout << "Qvec_rel: [" << "0" << ", " << "0" << ", "
+                    << "0" << "] - [" << Qvec_plast_pred_rel_(0) << ", " << Qvec_plast_pred_rel_(1)
+                    << ", " << Qvec_plast_pred_rel_(2) << "]\n";
+        }
       };
 
       //! enum class: deformation gradient decomposed and
@@ -778,14 +848,13 @@ namespace Mat
       /*!
        * @brief Interpolate inverse plastic deformation gradient between the
        * elastic and the plastic predictor, given the
-       * current several interpolation factors
+       * current several interpolation factors.
        *
        * @note 1. Depending on the user-specified rotation assignment, it is
        * possible that the elastic deformation gradient is actually
        * interpolated, and the inverse plastic deformation gradient is simply
        * computed based on it.
-       * 2. Linear interpolation is employed for the relative eigenvector rotation, and the
-       * eigenvalues are interpolated using the logarithmic weighted average
+       * 2. The eigenvalues are interpolated using the logarithmic weighted average
        * (see Satheesh et al. 2022, 10.1002/nme.7373) with linear weighting
        * between the predictors.
        *
@@ -821,7 +890,6 @@ namespace Mat
        */
       void adapt_interpolation_parameters(const unsigned int gp);
 
-
       /**
        * @brief Compute optimal interpolation factors based on the solution of
        * the Local Newton Loop.
@@ -833,14 +901,23 @@ namespace Mat
        * serving as input for Local Newton loop
        *
        */
-      void compute_optimal_interp_factors(const unsigned int gp,
+      InterpolationPoint compute_optimal_interp_factors(
+          const PredictorDefgradDecomposition& predictor_defgrad_decomposition, unsigned int gp,
           const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_solution,
           const Core::LinAlg::Matrix<3, 3>& defgrad);
 
-      //! predictor decompositions for each GP of deformation gradient (with specified type:
-      //! elastic, inverse plastic, ...) within elastic and plastic predictors
-      //!--> MOVE TO PRIVATE AFTER REMOVING CONSISTENCY CHECKS
-      std::vector<PredictorDefgradDecomposition> all_pred_decomp_specific_defgrad_;
+      [[nodiscard]] const std::vector<PredictorDefgradDecomposition>&
+      get_curr_pred_decomp_specific_defgrad() const
+      {
+        return curr_pred_decomp_specific_defgrad_;
+      }
+
+      [[nodiscard]] const std::vector<PredictorDefgradDecomposition>&
+      get_last_pred_decomp_specific_defgrad() const
+      {
+        return last_pred_decomp_specific_defgrad_;
+      }
+
 
      private:
       //! type of elastic stretch eigenvalues within plastic predictor
@@ -854,6 +931,17 @@ namespace Mat
 
       //! decomposed deformation gradient type
       const DefgradType defgrad_type_;
+
+      //! current timestep predictor decompositions for each GP of deformation gradient (with
+      //! specified type: elastic, inverse plastic, ...) within elastic and plastic predictors
+      //!--> MOVE TO PRIVATE AFTER REMOVING CONSISTENCY CHECKS
+      std::vector<PredictorDefgradDecomposition> curr_pred_decomp_specific_defgrad_;
+
+      //! last timestep predictor decompositions for each GP of deformation gradient (with
+      //! specified type: elastic, inverse plastic, ...) within elastic and plastic predictors
+      //!--> MOVE TO PRIVATE AFTER REMOVING CONSISTENCY CHECKS
+      std::vector<PredictorDefgradDecomposition> last_pred_decomp_specific_defgrad_;
+
 
 
       /**
@@ -1109,15 +1197,15 @@ namespace Mat
         //! boolean: should the timer for return mapping be used?
         const bool use_teuchos_timer_rma_ = false;
 
-        //! timer for finding a starting point for the Local Newton Guess Interpolation for next
+        //! timer for preparing + updating the Local Newton Guess Interpolation for current / next
         //! timestep
-        Teuchos::Time eval_teuchos_timer_lngi_starting_point_next_timestep_{
+        Teuchos::Time eval_teuchos_timer_lngi_preparation_{
             "InelasticDefgradTransvIsotropElastViscoplast::Local Newton Guess Interpolation (only "
             "initial interpolation, no reinterpolation)"};
 
-        //! boolean: should the timer for preparing the next timestep for the Local Newton Guess
+        //! boolean: should the timer for preparing + updating for the Local Newton Guess
         //! Interpolation be used?
-        const bool use_teuchos_timer_lngi_prepare_next_timestep_ = false;
+        const bool use_teuchos_timer_lngi_preparation_ = false;
       };
       Timers timers_;
 
@@ -1131,13 +1219,13 @@ namespace Mat
         //! total time spent in the return mapping over all time steps
         double total_time_rma_;
 
-        //! evaluation time spent for preparing the next timestep for the Local Newton Guess
-        //! Interpolation
-        double eval_time_lngi_prepare_next_timestep_;
+        //! evaluation time spent for preparing + updating the Local Newton Guess
+        //! Interpolation for the current / next timestep
+        double eval_time_lngi_preparation_;
 
         //! total time spent for preparing the next timestep for the Local Newton Guess
         //! Interpolation (over all timesteps)
-        double total_time_lngi_prepare_next_timestep_;
+        double total_time_lngi_preparation_;
       };
       TimeMeasurements time_measurements_;
 
@@ -1677,7 +1765,7 @@ namespace Mat
 
     // #define DEBUG_MODE ;
     // #define DEBUG_PRED_ADAPT ;
-    // #define DEBUG_LNL ;
+    //  #define DEBUG_LNL ;
     //  #define DEBUG_INTEGRATE_PLASTIC_STRAIN ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
