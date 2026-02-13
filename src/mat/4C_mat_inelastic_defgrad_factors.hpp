@@ -1604,11 +1604,20 @@ namespace Mat
     void prepare_non_repeat_tasks(const Core::LinAlg::Matrix<3, 3>& defgrad);
 
     /*!
-     * Perform preparation tasks for the next timestep associated with the LNGI (Local Newton Guess
-     * Interpolation), e.g., computing optimal interpolation factors, or saving relevant stretch and
-     * rotation components. The method is called during update().
+     * Prepare LNGI -> perform all necessary preparation tasks for the evaluation of the LNGI within
+     * the current global iteration, including starting point determination, reset of bounds, ...
      */
-    void prepare_lngi_next_timestep();
+    void prepare_lngi(const Core::LinAlg::Matrix<3, 3>& defgrad);
+
+    /*!
+     * Compute and set LNGI starting points for the current time step
+     */
+    void determine_lngi_starting_points();
+
+    /*!
+     * Update data required for the next timestep LNGI at a given gp
+     */
+    void update_lngi_data(const unsigned int gp);
 
     void update() override;
 
@@ -1674,7 +1683,9 @@ namespace Mat
      */
     void debug_set_last_quantities(const int gp,
         const Core::LinAlg::Matrix<3, 3>& last_plastic_defgrad_inverse,
-        const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
+        const double last_plastic_strain, const double last_plastic_strain_increment,
+        const double last_equiv_stress, const double last_equiv_stress_elastic_pred,
+        const double last_equiv_stress_plastic_pred, const Core::LinAlg::Matrix<3, 3>& last_defgrad,
         const Core::LinAlg::Matrix<3, 3>& last_rightCG, const double last_xi_lambda_1,
         const double last_xi_lambda_2, const std::array<double, 3> last_xi_eigenvect_rot,
         const double last_max_xi_lambda_1, const double last_max_xi_lambda_2,
@@ -1735,6 +1746,11 @@ namespace Mat
 
     //! boolean to control whether the history variables should be updated during evaluation
     bool update_hist_var_ = true;
+
+    //! control variable: should the Local Newton Guess Interpolation compute its starting points
+    //! within the current time step? -> we want to do this only once for all GP for the current
+    //! starting point choices, since these computations can get expensive
+    bool compute_lngi_starting_points_ = false;
 
     //! tracker for time step settings and time instants
     TimeStepTracker time_step_tracker_;
