@@ -1604,18 +1604,30 @@ namespace Mat
     void prepare_non_repeat_tasks(const Core::LinAlg::Matrix<3, 3>& defgrad);
 
     /*!
-     * Prepare LNGI -> perform all necessary preparation tasks for the evaluation of the LNGI within
-     * the current global iteration, including starting point determination, reset of bounds, ...
+     * @brief Prepare LNGI -> perform all necessary preparation tasks for the evaluation of the LNGI
+     * within the current global iteration, including starting point determination, reset of bounds,
+     * ...
      */
     void prepare_lngi(const Core::LinAlg::Matrix<3, 3>& defgrad);
 
     /*!
-     * Compute and set LNGI starting points for the current time step
+     * @brief Compute and set LNGI starting points for the current time step
      */
     void determine_lngi_starting_points();
 
     /*!
-     * Update data required for the next timestep LNGI at a given gp
+     * @brief Determine the updated plastic predictor (on the yield surface) iteratively to replace
+     * the initially constructed plastic predictor ; effectively reruns the pre-evaluate routine of
+     * the LNGI with an updated plastic deformation gradient
+     *
+     *  @param[in] defgrad deformation gradient
+     */
+    void determine_updated_plastic_predictor_lngi(const Core::LinAlg::Matrix<3, 3>& defgrad);
+
+    /*!
+     * @brief Update data required for the next timestep LNGI at a given gp
+     *
+     * @param[in] gp Gauss point index
      */
     void update_lngi_data(const unsigned int gp);
 
@@ -1746,6 +1758,11 @@ namespace Mat
 
     //! boolean to control whether the history variables should be updated during evaluation
     bool update_hist_var_ = true;
+
+    //! boolean to control whether to use the elastic predictor directly or to use LNGI (in cases
+    //! where performing the LNGI is ineffective, e.g., if the elastic predictor already leads to a
+    //! very small plastic strain increment)
+    bool use_elastic_predictor_ = false;
 
     //! control variable: should the Local Newton Guess Interpolation compute its starting points
     //! within the current time step? -> we want to do this only once for all GP for the current
