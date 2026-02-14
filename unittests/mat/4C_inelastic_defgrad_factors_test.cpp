@@ -1986,11 +1986,6 @@ namespace
       FOUR_C_THROW("Error encountered during testing of TestEvaluateStateQuantities");
     }
 
-    // DEBUG
-    computed_state_quantities_transv_isotrop.curr_Me_dev_sym_M_.print(std::cout);
-    std::cout << computed_state_quantities_transv_isotrop.curr_equiv_stress_ << std::endl;
-
-
 
     // compare the results
     FOUR_C_EXPECT_NEAR(state_quantities_solution_transv_isotrop_.curr_CeM_,

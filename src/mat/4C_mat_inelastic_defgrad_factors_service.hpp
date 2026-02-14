@@ -494,13 +494,12 @@ namespace Mat
       //! gradient, depending on the user specification)
       struct InterpolationPoint
       {
-        const double xi_lambda_1_;  ///< interpolation factor for the first
-                                    /// <eigenvalue lambda_1
-        const double xi_lambda_2_;  ///< interpolation factor for the second
-                                    ///< eigenvalue lambda_2
-        const std::array<double, 3>
-            xi_rel_eigenvect_rot_;  ///< interpolation factor for the relative eigenvector rotation
-                                    ///< vector
+        double xi_lambda_1_;                          ///< interpolation factor for the first
+                                                      /// <eigenvalue lambda_1
+        double xi_lambda_2_;                          ///< interpolation factor for the second
+                                                      ///< eigenvalue lambda_2
+        std::array<double, 3> xi_rel_eigenvect_rot_;  ///< interpolation factor for the relative
+                                                      ///< eigenvector rotation vector
         //! print method
         void print(std::ostream& os) const
         {
