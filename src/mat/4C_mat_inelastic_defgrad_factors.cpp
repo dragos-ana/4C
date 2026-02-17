@@ -2006,7 +2006,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   // set element ID
   ele_gid_ = eleGID;
 
-
   // set current temperature
   time_step_quantities_.current_temperature_[gp] = 0.0;
   if (params.isParameter("temperature"))
@@ -2014,11 +2013,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
     time_step_quantities_.current_temperature_[gp] = params.get<double>("temperature");
   }
 
+
+  // DEBUG
+  std::cout << "Do we even get here? \n";
+  std::cout << "params: \n";
+  params.print(std::cout);
+  std::cout << "time_step_size: " << *context.time_step_size << std::endl;
+  std::cout << "total_time: " << *context.total_time << std::endl;
+
   // set time step
   FOUR_C_ASSERT(context.time_step_size, "Time step size not given in evaluation context.");
   time_step_tracker_.dt_ = *context.time_step_size;
   FOUR_C_ASSERT(context.total_time, "Total time not given in evaluation context.");
   time_step_tracker_.tnp_ = *context.total_time;
+
 
   // set minimum substep length
   time_step_tracker_.min_dt_ =
