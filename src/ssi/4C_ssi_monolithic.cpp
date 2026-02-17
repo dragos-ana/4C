@@ -25,7 +25,9 @@
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
 #include "4C_linear_solver_method_linalg.hpp"
 #include "4C_linear_solver_method_parameters.hpp"
+#include "4C_scatra_ele_action.hpp"
 #include "4C_scatra_timint_elch.hpp"
+#include "4C_scatra_timint_implicit.hpp"
 #include "4C_scatra_timint_meshtying_strategy_s2i.hpp"
 #include "4C_ssi_contact_strategy.hpp"
 #include "4C_ssi_coupling.hpp"
@@ -38,8 +40,12 @@
 #include "4C_ssi_monolithic_meshtying_strategy.hpp"
 #include "4C_ssi_problem_access.hpp"
 #include "4C_ssi_utils.hpp"
+#include "4C_utils_exceptions.hpp"
 
 #include <Teuchos_TimeMonitor.hpp>
+
+#include <iostream>
+#include <type_traits>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -1167,9 +1173,111 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
     structure_field()->set_state(structure_field()->write_access_dispnp());
   }
 
-  // distribute states to other fields
-  set_struct_solution(*structure_field()->dispnp(), structure_field()->velnp(),
-      is_s2i_kinetics_with_pseudo_contact());
+  // verify whether there are simplified growth conditions
+  bool has_simplified_growth_conditions = false;
+  std::vector<const Core::Conditions::Condition*> conds;
+  scatra_field()->discretization()->get_condition("S2IKinetics", conds);
+  for (const auto* cond : conds)
+  {
+    if (cond->parameters().get_or<bool>("MODEL_SIMPLIFIED_GROWTH", false))
+    {
+      has_simplified_growth_conditions = true;
+      break;
+    }
+  }
+
+  // node-based mapping of growth -> displacement if simplified growth conditions are used
+  if (has_simplified_growth_conditions)
+  {
+    // store displacement dofset map
+    const Core::LinAlg::Map& dispnp_map = structure_field()->dispnp()->get_map();
+    // consistency check: does the dofset map match the dof row map?
+    int k_struct = -1;
+    for (int k = 0; k < structure_field()->discretization()->num_dof_sets(); ++k)
+    {
+      if (dispnp_map.same_as(*(structure_field()->discretization()->dof_row_map(k))))
+      {
+        k_struct = k;
+        break;
+      }
+    }
+    FOUR_C_ASSERT(
+        k_struct >= 0, "[SSI] Could not determine dofset number of structural displacements!");
+
+
+    // store scatra dofset number
+    const Core::LinAlg::Vector<double>& simplgrowthnp_vec = scatra_field()->get_simplgrowthnp();
+    const Core::LinAlg::Map& simplgrowthnp_map = simplgrowthnp_vec.get_map();
+    // consistency check: does the dofset map match the dof row map?
+    int k_growth = -1;
+    for (int k = 0; k < scatra_field()->discretization()->num_dof_sets(); ++k)
+    {
+      if (simplgrowthnp_map.same_as(*scatra_field()->discretization()->dof_row_map(k)))
+      {
+        k_growth = k;
+        break;
+      }
+    }
+    FOUR_C_ASSERT(k_growth >= 0, "[SSI] Could not determine dofset number of simplified growth");
+
+    // get node row map and node gids
+    const auto& scatra_node_row_map = *scatra_field()->discretization()->node_row_map();
+    const std::span<const int> scatra_row_nodes(
+        scatra_node_row_map.my_global_elements(), scatra_node_row_map.num_my_elements());
+
+    // conversion of simplified growth into structure map
+    Core::LinAlg::Vector<double> growth_on_struct(dispnp_map);
+    growth_on_struct.put_scalar(0.0);
+
+    // loop over nodes and add transfer growth dofs to scatra
+    for (const int& node_gid : scatra_row_nodes)
+    {
+      // get scatra and structure nodes (SHOULD MATCH! -> MATCHING VOLUMES required!)
+      const Core::Nodes::Node* node_scatra = scatra_field()->discretization()->g_node(node_gid);
+      const Core::Nodes::Node* node_struct = structure_field()->discretization()->g_node(node_gid);
+
+      // loop over spatial dimensions
+      for (unsigned int ndim = 0; ndim < structure_field()->discretization()->n_dim(); ++ndim)
+      {
+        const int dof_gid_growth =
+            scatra_field()->discretization()->dof(k_growth, node_scatra, static_cast<int>(ndim));
+        const int dof_lid_growth = simplgrowthnp_map.lid(dof_gid_growth);
+
+        const int dof_gid_struct =
+            structure_field()->discretization()->dof(k_struct, node_struct, static_cast<int>(ndim));
+        const int dof_lid_struct = dispnp_map.lid(dof_gid_struct);
+
+        // update growth dofs on structural map
+        if (dof_lid_growth >= 0)
+        {
+          growth_on_struct.get_values()[dof_lid_struct] =
+              scatra_field()->get_simplgrowthnp().local_values_as_span()[dof_lid_growth];
+        }
+      }
+    }
+
+    // DEBUG
+    // std::cout << "dispnp_map: k = " << k_struct << std::endl;
+    // dispnp_map.print(std::cout);
+    // std::cout << "simplgrowthnp_map: k = " << k_growth << std::endl;
+    // simplgrowthnp_map.print(std::cout);
+    // std::cout << "scatra_node_row_map: " << std::endl;
+    // scatra_node_row_map.print(std::cout);
+    // std::cout << "simplgrowthnp: " << std::endl;
+    // simplgrowthnp_vec.print(std::cout);
+    // std::cout << "growth_on_struct: " << std::endl;
+    // growth_on_struct.print(std::cout);
+
+
+    // distribute states to other fields
+    set_struct_solution(
+        growth_on_struct, structure_field()->velnp(), is_s2i_kinetics_with_pseudo_contact());
+  }
+  else
+  {
+    set_struct_solution(*structure_field()->dispnp(), structure_field()->velnp(),
+        is_s2i_kinetics_with_pseudo_contact());
+  }
   set_scatra_solution(scatra_field()->phinp());
   if (is_scatra_manifold()) set_scatra_manifold_solution(*scatra_manifold()->phinp());
 }
@@ -1394,8 +1502,8 @@ void SSI::SsiMono::calc_initial_time_derivative()
   // In a second step, we need to modify the assembled system of equations, since we want to solve
   // M phidt^0 = f^n - K\phi^n - C(u_n)\phi^n
   // In particular, we need to replace the global system matrix by a global mass matrix,
-  // and we need to remove all transient contributions associated with time discretization from the
-  // global residual vector.
+  // and we need to remove all transient contributions associated with time discretization from
+  // the global residual vector.
 
   // Evaluate mass matrix and modify residual
   scatra_field()->evaluate_initial_time_derivative(massmatrix_scatra, rhs_scatra);

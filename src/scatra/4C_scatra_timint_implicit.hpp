@@ -15,7 +15,9 @@
 #include "4C_inpar_fluid.hpp"
 #include "4C_io_discretization_visualization_writer_mesh.hpp"
 #include "4C_io_runtime_csv_writer.hpp"
+#include "4C_linalg_multi_vector.hpp"
 #include "4C_linalg_serialdensevector.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_scatra_input.hpp"
 #include "4C_utils_result_test.hpp"
 
@@ -946,6 +948,27 @@ namespace ScaTra
       return *visualization_writer_;
     }
 
+    //! simplified growth at time \f$ t_n \f$
+    [[nodiscard]] const Core::LinAlg::Vector<double>& get_simplgrowthn() const
+    {
+      return *simplgrowthn_;
+    };
+
+    //! simplified growth at time \f$ t_{n+1} \f$ - read-only access
+    [[nodiscard]] const Core::LinAlg::Vector<double>& get_simplgrowthnp() const
+    {
+      return *simplgrowthnp_;
+    };
+
+
+    //! simplified growth at time \f$ t_{n+1} \f$ - modifiable access
+    [[nodiscard]] Core::LinAlg::Vector<double>& get_simplgrowthnp() { return *simplgrowthnp_; };
+
+
+    //! compute outward pointing unit normal vectors for given conditions
+    [[nodiscard]] std::shared_ptr<Core::LinAlg::MultiVector<double>> compute_normal_vectors(
+        const std::vector<std::string>& condnames) const;
+
    protected:
     //! create vectors for Krylov projection if necessary
     void prepare_krylov_projection();
@@ -1000,6 +1023,9 @@ namespace ScaTra
     //! initialize meshtying strategy (including standard case without meshtying)
     virtual void create_meshtying_strategy();
 
+    //! initialize simplified growth dofset for scatra-scatra interface Butler-Volmer kinetics
+    void init_simplified_growth_dofset();
+
     /*--- calculate and update -----------------------------------------------*/
 
     //! apply Dirichlet boundary conditions to linear system of equations
@@ -1012,10 +1038,6 @@ namespace ScaTra
         std::shared_ptr<Core::LinAlg::Vector<double>>
             phidt  //!< first time derivative (may be = null)
     );
-
-    //! compute outward pointing unit normal vectors for given conditions
-    [[nodiscard]] std::shared_ptr<Core::LinAlg::MultiVector<double>> compute_normal_vectors(
-        const std::vector<std::string>& condnames) const;
 
     //! evaluate Neumann inflow boundary condition
     void compute_neumann_inflow(std::shared_ptr<Core::LinAlg::SparseOperator> matrix,  //!< ?
@@ -1296,6 +1318,9 @@ namespace ScaTra
     //! flag for external force
     bool has_external_force_;
 
+    //! flag for simplified growth conditions (scatra-scatra interface Butler-Volmer kinetics)
+    bool has_simplified_growth_conditions_;
+
     /*--- query and output ---------------------------------------------------*/
 
     //! flag for calculating flux vector field inside domain
@@ -1433,6 +1458,12 @@ namespace ScaTra
 
     //! relative errors of scalar fields in L2 and H1 norms
     std::shared_ptr<std::vector<double>> relerrors_;
+
+    //! simplified growth at time n
+    std::shared_ptr<Core::LinAlg::Vector<double>> simplgrowthn_;
+    //! simplified growth at time n+1
+    std::shared_ptr<Core::LinAlg::Vector<double>> simplgrowthnp_;
+
 
     /*========================================================================*/
     //! @name velocity, pressure, and related

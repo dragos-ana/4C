@@ -208,6 +208,17 @@ void S2I::set_valid_conditions(std::vector<Core::Conditions::ConditionDefinition
             parameter<double>("ALPHA_A"),
             parameter<double>("ALPHA_C"),
             parameter<bool>("IS_PSEUDO_CONTACT"),
+            parameter<bool>("MODEL_SIMPLIFIED_GROWTH",
+                {.description =
+                        "Model simplified local growth based on the current density at the "
+                        "interface; the "
+                        "Butler-Volmer current density remains unaffected by this simplified "
+                        "local growth!",
+                    .default_value = false}),
+            parameter<double>(
+                "MOLAR_MASS", {.description = "Molar mass of the material", .default_value = 1.0}),
+            parameter<double>(
+                "DENSITY", {.description = "Density of the material", .default_value = 1.0}),
         });
         kinetic_model_choices.emplace_back(std::move(butler_volmer));
       }

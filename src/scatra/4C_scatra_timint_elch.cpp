@@ -26,6 +26,7 @@
 #include "4C_scatra_ele_parameter_elch_diffcond.hpp"
 #include "4C_scatra_resulttest_elch.hpp"
 #include "4C_scatra_timint_elch_service.hpp"
+#include "4C_scatra_timint_implicit.hpp"
 #include "4C_scatra_timint_meshtying_strategy_fluid_elch.hpp"
 #include "4C_scatra_timint_meshtying_strategy_s2i_elch.hpp"
 #include "4C_scatra_timint_meshtying_strategy_std_elch.hpp"
@@ -35,6 +36,8 @@
 
 #include <Teuchos_TimeMonitor.hpp>
 
+#include <iostream>
+#include <ostream>
 #include <unordered_set>
 
 FOUR_C_NAMESPACE_OPEN
@@ -610,7 +613,15 @@ void ScaTra::ScaTraTimIntElch::prepare_time_loop()
   if (step_ == 0)
   {
     // calculate initial electric potential field
-    if (elchparams_->get<bool>("INITPOTCALC")) calc_initial_potential_field();
+    if (elchparams_->get<bool>("INITPOTCALC"))
+    {
+      calc_initial_potential_field();
+      if (has_simplified_growth_conditions_)
+      {
+        simplgrowthn_->put_scalar(0.0);
+        simplgrowthnp_->put_scalar(0.0);
+      }
+    }
 
     // evaluate SOC, c-rate and cell voltage for output
     evaluate_electrode_info_interior();

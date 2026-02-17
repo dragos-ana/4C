@@ -30,7 +30,7 @@ void SSI::SSICouplingMatchingVolume::init(const int ndim,
 
   set_is_setup(false);
 
-  int scatra_dofset_counter = ssi_base->scatra_field()->get_max_dof_set_number();
+  int scatra_dofset_counter = std::max(0, ssi_base->scatra_field()->get_max_dof_set_number());
   int structure_dofset_counter = 0;
 
   auto scatra_integrator = ssi_base->scatra_field();

@@ -41,6 +41,7 @@ namespace Discret
       void set_density_molar_mass(Teuchos::ParameterList& parameters);
       void set_energy_substance_ratio(Teuchos::ParameterList& parameters);
       void set_is_pseudo_contact(Teuchos::ParameterList& parameters);
+      void set_has_simplified_growth_conditions(Teuchos::ParameterList& parameters);
       void set_num_electrons(Teuchos::ParameterList& parameters);
       void set_num_scal(Teuchos::ParameterList& parameters);
       void set_on_off(Teuchos::ParameterList& parameters);
@@ -63,6 +64,10 @@ namespace Discret
       double convtolimplicit_bv() const { return convtolimplicit_bv_; }
       double density() const { return density_; }
       bool is_pseudo_contact() const { return is_pseudo_contact_; }
+      [[nodiscard]] bool has_simplified_growth_conditions() const
+      {
+        return has_simplified_growth_conditions_;
+      }
       int itemaximplicit_bv() const { return itemaxmimplicit_bv_; }
       int kinetic_model() const { return kineticmodel_; }
       double molar_heat_capacity() const { return molar_heat_capacity_; }
@@ -107,6 +112,9 @@ namespace Discret
       /// indicating if pseudo contact is considered at the s2i interface, i.e. no flux if interface
       /// is under tensile stresses
       bool is_pseudo_contact_;
+
+      // are simplified growth conditions present?
+      bool has_simplified_growth_conditions_;
 
       /// maximum number of iterations of local Newton-Raphson iteration for modified Butler-Volmer
       /// equation

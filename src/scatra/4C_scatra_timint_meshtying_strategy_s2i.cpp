@@ -7,11 +7,13 @@
 
 #include "4C_scatra_timint_meshtying_strategy_s2i.hpp"
 
+#include "4C_comm_mpi_utils.hpp"
 #include "4C_comm_utils_gid_vector.hpp"
 #include "4C_coupling_adapter.hpp"
 #include "4C_coupling_adapter_converter.hpp"
 #include "4C_coupling_adapter_mortar.hpp"
 #include "4C_coupling_volmortar_shape.hpp"
+#include "4C_fem_condition.hpp"
 #include "4C_fem_condition_utils.hpp"
 #include "4C_fem_discretization_utils.hpp"
 #include "4C_fem_dofset_predefineddofnumber.hpp"
@@ -36,11 +38,16 @@
 #include "4C_scatra_ele_action.hpp"
 #include "4C_scatra_ele_boundary_calc.hpp"
 #include "4C_scatra_ele_parameter_boundary.hpp"
+#include "4C_scatra_ele_parameter_elch.hpp"
 #include "4C_scatra_ele_parameter_timint.hpp"
 #include "4C_scatra_timint_implicit.hpp"
 #include "4C_scatra_timint_meshtying_strategy_s2i_elch.hpp"
 #include "4C_utils_enum.hpp"
+#include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.hpp"
+
+#include <array>
+#include <iostream>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -328,6 +335,115 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
             scatratimint_->discretization()->evaluate_condition(condparams, islavematrix_,
                 imastermatrix_, islaveresidual_, nullptr, nullptr, "S2IKinetics",
                 condition->parameters().get<int>("ConditionID"));
+
+            // if we have simplified growth conditions: integrate ODE for d_Li
+            if (condition->parameters().get_or<bool>("MODEL_SIMPLIFIED_GROWTH", false))
+            {
+              if (condition->parameters().get<S2I::KineticModels>("KINETIC_MODEL") !=
+                  static_cast<int>(S2I::kinetics_butlervolmerreduced))
+                FOUR_C_THROW(
+                    "Wrong kinetic model. Only the reduced Butler-Volmer as KINETIC_MODEL is "
+                    "valid.");
+
+              // get parameters
+              const double dt = scatratimint_->dt();
+              const double kr = condition->parameters().get<double>("K_R");
+              const double alphaa = condition->parameters().get<double>("ALPHA_A");
+              const double alphac = condition->parameters().get<double>("ALPHA_C");
+              const double frt = dynamic_cast<ScaTra::ScaTraTimIntElch*>(scatratimint_)->frt();
+              const double faraday =
+                  Discret::Elements::ScaTraEleParameterElch::instance("scatra")->faraday();
+              const double mmass = condition->parameters().get<double>("MOLAR_MASS");
+              const double rho = condition->parameters().get<double>("DENSITY");
+
+              // get simplified growth vectors
+              auto& growthn_vec = scatratimint_->get_simplgrowthn();
+              auto growthn_span = growthn_vec.local_values_as_span();
+              auto& growthnp_vec = scatratimint_->get_simplgrowthnp();
+              auto growthnp_span = growthnp_vec.local_values_as_span();
+
+              // define integration factor: - M_Li / rho_Li / F
+              const double integration_factor = -mmass / (rho * faraday);
+
+              // compute normal vectors of nodes within S2I Kinetics conditions
+              std::vector<std::string> condnames = {"S2IKinetics"};
+              auto nvector = scatratimint_->compute_normal_vectors(condnames);
+
+              if (condnames.empty())
+                FOUR_C_THROW("Could not determine condition name for normal vector computation.");
+
+              // extract nodal cloud from current condition
+              const std::vector<int>* nodegids = condition->get_nodes();
+
+              // loop over all nodes of the current condition
+              for (int nodegid : *nodegids)
+              {
+                if (scatratimint_->discretization()->have_global_node(nodegid))
+                {
+                  const Core::Nodes::Node* const node =
+                      scatratimint_->discretization()->g_node(nodegid);
+
+                  // get node dimension
+                  const int nsd = node->n_dim();
+
+                  if (!node) FOUR_C_THROW("Couldn't retrieve node with gid = {}", nodegid);
+
+                  // computations at the node: integration of plating equation
+                  if (node->owner() ==
+                      Core::Communication::my_mpi_rank(scatratimint_->discretization()->get_comm()))
+                  {
+                    const int doflid_scatra = scatratimint_->discretization()->dof_row_map()->lid(
+                        scatratimint_->discretization()->dof(0, node,
+                            0));  // TODO: or maybe set 0 instead of nds_scatra? But this is not
+                                  // really set, and Rui also did this with a 0
+
+                    if (doflid_scatra < 0)
+                      FOUR_C_THROW(
+                          "Couldn't extract local ID of scalar transport degree of freedom!");
+
+                    const int doflid_growth = scatratimint_->discretization()
+                                                  ->dof_row_map(scatratimint_->nds_growth())
+                                                  ->lid(scatratimint_->discretization()->dof(
+                                                      scatratimint_->nds_growth(), node, 0));
+                    if (doflid_growth < 0)
+                      FOUR_C_THROW(
+                          "Couldn't extract local ID of scatra-scatra interface layer thickness!");
+
+                    // extract potentials on both sides of the interface
+                    // TODO: does this always evaluate gen alpha terms (alpha_f) for integration? It
+                    // should actually not be so; but also done by Rui...
+                    const double slavepot =
+                        scatratimint_->phiafnp()->local_values_as_span()[doflid_scatra + 1];
+                    const double masterpot =
+                        imasterphi_on_slave_side_np_->local_values_as_span()[doflid_scatra + 1];
+
+                    // compute Butler-Volmer current density
+                    const double i0 = kr * faraday;
+                    const double eta = slavepot - masterpot;  // lithium anode for simplified growth
+                                                              // -> potential = 0 by definition
+                    const double iBV =
+                        i0 * (std::exp(alphaa * frt * eta) - std::exp(-alphac * frt * eta));
+
+                    // compute scalar growth increment
+                    const double delta_growth = integration_factor * iBV * dt;
+
+                    // propagate scalar growth into the normal direction
+                    const int node_lid = node->lid();
+                    for (int dim = 0; dim < nsd; ++dim)
+                    {
+                      // get normal vector component for this node
+                      const auto& normal_comp = nvector->get_vector(dim);
+                      const double ncomp = normal_comp.local_values_as_span()[node_lid];
+
+
+                      // compute simplified growth item at time $t_{n+1}$
+                      growthnp_span[doflid_growth + dim] =
+                          growthn_span[doflid_growth + dim] + delta_growth * ncomp;
+                    }
+                  }
+                }
+              }
+            }
           }
           else
           {
@@ -337,6 +453,7 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
           }
         }
       }
+
 
       // finalize interface matrices
       islavematrix_->complete();
@@ -356,8 +473,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
 
           if (not slaveonly_)
           {
-            // transform linearizations of slave fluxes w.r.t. master dofs and assemble into global
-            // system matrix
+            // transform linearizations of slave fluxes w.r.t. master dofs and assemble into
+            // global system matrix
             (*islavetomastercoltransform_)(imastermatrix_->row_map(), imastermatrix_->col_map(),
                 *imastermatrix_, 1., Coupling::Adapter::CouplingSourceConverter(*icoup_),
                 *systemmatrix, true, true);
@@ -410,9 +527,9 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
               constexpr double value(-1.);
               systemmatrix->insert_global_values(slavedofgid, 1, &value, &masterdofgid);
 
-              // insert zero into intersection of slave-side row and master-side column in temporary
-              // matrix this prevents the system matrix from changing its graph when calling this
-              // function again during the next Newton iteration
+              // insert zero into intersection of slave-side row and master-side column in
+              // temporary matrix this prevents the system matrix from changing its graph when
+              // calling this function again during the next Newton iteration
               constexpr double zero(0.);
               systemmatrixrowsslave.insert_global_values(slavedofgid, 1, &zero, &masterdofgid);
             }
@@ -492,7 +609,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
           else
           {
             FOUR_C_THROW(
-                "Scatra-scatra interface coupling with evaluation of interface linearizations and "
+                "Scatra-scatra interface coupling with evaluation of interface linearizations "
+                "and "
                 "residuals on slave side only is not yet available for block system matrices!");
           }
 
@@ -502,7 +620,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
         default:
         {
           FOUR_C_THROW(
-              "Type of global system matrix for scatra-scatra interface coupling not recognized!");
+              "Type of global system matrix for scatra-scatra interface coupling not "
+              "recognized!");
         }
       }
 
@@ -895,8 +1014,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
             Coupling::Adapter::MatrixRowTransform()(*islavematrix_, -1.,
                 Coupling::Adapter::CouplingSourceConverter(*icoup_), *systemmatrix, true);
 
-            // derive linearizations of master fluxes w.r.t. master dofs and assemble into global
-            // system matrix
+            // derive linearizations of master fluxes w.r.t. master dofs and assemble into
+            // global system matrix
             Coupling::Adapter::MatrixRowColTransform()(*imastermatrix_, -1.,
                 Coupling::Adapter::CouplingSourceConverter(*icoup_),
                 Coupling::Adapter::CouplingSourceConverter(*icoup_), *systemmatrix, true, true);
@@ -956,13 +1075,15 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
           }
         }
 
-        // As before, we only need to consider residual contributions from the master-side fluxes.
+        // As before, we only need to consider residual contributions from the master-side
+        // fluxes.
 
         // transform master residuals and assemble into global residual vector
         interfacemaps_->add_vector(
             *icoup_->source_to_target(*islaveresidual_), 2, *scatratimint_->residual(), -1.);
 
-        // compute additional linearizations and residuals in case of monolithic evaluation approach
+        // compute additional linearizations and residuals in case of monolithic evaluation
+        // approach
         if (intlayergrowth_evaluation_ == S2I::growth_evaluation_monolithic)
         {
           // extract map associated with scalar transport degrees of freedom
@@ -974,8 +1095,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
               *scatratimint_->discretization()->dof_row_map(2);
 
           // extract ID of boundary condition for scatra-scatra interface layer growth
-          // the corresponding boundary condition for scatra-scatra interface coupling is expected
-          // to have the same ID
+          // the corresponding boundary condition for scatra-scatra interface coupling is
+          // expected to have the same ID
           std::vector<const Core::Conditions::Condition*> growth_conditions;
           scatratimint_->discretization()->get_condition("S2IKineticsGrowth", growth_conditions);
           const int condid = growth_conditions.front()->parameters().get<int>("ConditionID");
@@ -983,15 +1104,15 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
           // set global state vectors according to time-integration scheme
           scatratimint_->add_time_integration_specific_vectors();
 
-          // compute additional linearizations and residuals depending on type of scalar transport
-          // system matrix
+          // compute additional linearizations and residuals depending on type of scalar
+          // transport system matrix
           switch (matrixtype_)
           {
             case Core::LinAlg::MatrixType::sparse:
             {
               // assemble off-diagonal scatra-growth block of global system matrix, containing
-              // derivatives of discrete scatra residuals w.r.t. discrete scatra-scatra interface
-              // layer thicknesses
+              // derivatives of discrete scatra residuals w.r.t. discrete scatra-scatra
+              // interface layer thicknesses
               {
                 // check matrix
                 const std::shared_ptr<Core::LinAlg::SparseMatrix> scatragrowthblock =
@@ -1024,7 +1145,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 {
                   if (kinetics_slave_cond_id == condid)
                   {
-                    // collect condition specific data and store to scatra boundary parameter class
+                    // collect condition specific data and store to scatra boundary parameter
+                    // class
                     set_condition_specific_scatra_parameters(*kinetics_slave_cond);
 
                     scatratimint_->discretization()->evaluate_condition(
@@ -1035,22 +1157,22 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 // finalize auxiliary matrix block
                 islavematrix->complete(dofrowmap_growth, dofrowmap_scatra);
 
-                // assemble linearizations of slave fluxes associated with scatra-scatra interface
-                // coupling w.r.t. scatra-scatra interface layer thicknesses into global matrix
-                // block
+                // assemble linearizations of slave fluxes associated with scatra-scatra
+                // interface coupling w.r.t. scatra-scatra interface layer thicknesses into
+                // global matrix block
                 Core::LinAlg::matrix_add(*islavematrix, false, 1., *scatragrowthblock, 0.);
 
-                // derive linearizations of master fluxes associated with scatra-scatra interface
-                // coupling w.r.t. scatra-scatra interface layer thicknesses and assemble into
-                // global matrix block
+                // derive linearizations of master fluxes associated with scatra-scatra
+                // interface coupling w.r.t. scatra-scatra interface layer thicknesses and
+                // assemble into global matrix block
                 Coupling::Adapter::MatrixRowTransform()(*islavematrix, -1.,
                     Coupling::Adapter::CouplingSourceConverter(*icoup_), *scatragrowthblock, false);
 
                 // zero out auxiliary matrix block for subsequent evaluation
                 islavematrix->zero();
 
-                // evaluate off-diagonal linearizations arising from scatra-scatra interface layer
-                // growth
+                // evaluate off-diagonal linearizations arising from scatra-scatra interface
+                // layer growth
                 std::vector<const Core::Conditions::Condition*> conds;
                 scatratimint_->discretization()->get_condition("S2IKineticsGrowth", conds);
                 FOUR_C_ASSERT_ALWAYS(conds.size() == 1,
@@ -1066,9 +1188,9 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 // finalize auxiliary matrix block
                 islavematrix->complete(dofrowmap_growth, dofrowmap_scatra);
 
-                // derive linearizations of master fluxes associated with scatra-scatra interface
-                // layer growth w.r.t. scatra-scatra interface layer thicknesses and assemble into
-                // global matrix block
+                // derive linearizations of master fluxes associated with scatra-scatra
+                // interface layer growth w.r.t. scatra-scatra interface layer thicknesses and
+                // assemble into global matrix block
                 Coupling::Adapter::MatrixRowTransform()(*islavematrix, -1.,
                     Coupling::Adapter::CouplingSourceConverter(*icoup_), *scatragrowthblock, true);
 
@@ -1092,9 +1214,9 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 // initialize matrix block
                 growthscatrablock->zero();
 
-                // initialize auxiliary matrix blocks for linearizations of scatra-scatra interface
-                // layer growth residuals w.r.t. slave-side and master-side scalar transport degrees
-                // of freedom
+                // initialize auxiliary matrix blocks for linearizations of scatra-scatra
+                // interface layer growth residuals w.r.t. slave-side and master-side scalar
+                // transport degrees of freedom
                 std::shared_ptr<Core::LinAlg::SparseMatrix> islavematrix =
                     std::make_shared<Core::LinAlg::SparseMatrix>(dofrowmap_growth, 81);
                 std::shared_ptr<Core::LinAlg::SparseMatrix> imastermatrix =
@@ -1119,13 +1241,14 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 islavematrix->complete(dofrowmap_scatra, dofrowmap_growth);
                 imastermatrix->complete(dofrowmap_scatra, dofrowmap_growth);
 
-                // assemble linearizations of scatra-scatra interface layer growth residuals w.r.t.
-                // slave-side scalar transport degrees of freedom into global matrix block
+                // assemble linearizations of scatra-scatra interface layer growth residuals
+                // w.r.t. slave-side scalar transport degrees of freedom into global matrix
+                // block
                 Core::LinAlg::matrix_add(*islavematrix, false, 1., *growthscatrablock, 0.);
 
-                // derive linearizations of scatra-scatra interface layer growth residuals w.r.t.
-                // master-side scalar transport degrees of freedom and assemble into global matrix
-                // block
+                // derive linearizations of scatra-scatra interface layer growth residuals
+                // w.r.t. master-side scalar transport degrees of freedom and assemble into
+                // global matrix block
                 Coupling::Adapter::MatrixColTransform()(imastermatrix->row_map(),
                     imastermatrix->col_map(), *imastermatrix, 1.,
                     Coupling::Adapter::CouplingSourceConverter(*icoup_), *growthscatrablock, true,
@@ -1142,8 +1265,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
             case Core::LinAlg::MatrixType::block_condition_dof:
             {
               // assemble off-diagonal scatra-growth block of global system matrix, containing
-              // derivatives of discrete scatra residuals w.r.t. discrete scatra-scatra interface
-              // layer thicknesses
+              // derivatives of discrete scatra residuals w.r.t. discrete scatra-scatra
+              // interface layer thicknesses
               {
                 // initialize auxiliary matrix block for linearizations of slave fluxes w.r.t.
                 // scatra-scatra interface layer thicknesses
@@ -1171,18 +1294,18 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 // finalize auxiliary matrix block
                 blockslavematrix->complete();
 
-                // assemble linearizations of slave fluxes associated with scatra-scatra interface
-                // coupling w.r.t. scatra-scatra interface layer thicknesses into global matrix
-                // block
+                // assemble linearizations of slave fluxes associated with scatra-scatra
+                // interface coupling w.r.t. scatra-scatra interface layer thicknesses into
+                // global matrix block
                 scatragrowthblock_->add(*blockslavematrix, false, 1., 0.);
 
-                // initialize auxiliary system matrix for linearizations of master fluxes associated
-                // with scatra-scatra interface coupling w.r.t. scatra-scatra interface layer
-                // thicknesses
+                // initialize auxiliary system matrix for linearizations of master fluxes
+                // associated with scatra-scatra interface coupling w.r.t. scatra-scatra
+                // interface layer thicknesses
                 Core::LinAlg::SparseMatrix mastermatrix(*icoup_->target_dof_map(), 27, false, true);
 
-                // derive linearizations of master fluxes associated with scatra-scatra interface
-                // coupling w.r.t. scatra-scatra interface layer thicknesses
+                // derive linearizations of master fluxes associated with scatra-scatra
+                // interface coupling w.r.t. scatra-scatra interface layer thicknesses
                 for (int iblock = 0; iblock < blockmaps_slave_->num_maps(); ++iblock)
                   Coupling::Adapter::MatrixRowTransform()(blockslavematrix->matrix(iblock, 0), -1.,
                       Coupling::Adapter::CouplingSourceConverter(*icoup_), mastermatrix, true);
@@ -1191,13 +1314,13 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 blockslavematrix->zero();
                 mastermatrix.zero();
 
-                // evaluate off-diagonal linearizations arising from scatra-scatra interface layer
-                // growth
+                // evaluate off-diagonal linearizations arising from scatra-scatra interface
+                // layer growth
                 scatratimint_->discretization()->evaluate_condition(
                     condparams, strategy, "S2IKineticsGrowth", condid);
 
-                // derive linearizations of master fluxes associated with scatra-scatra interface
-                // layer growth w.r.t. scatra-scatra interface layer thicknesses
+                // derive linearizations of master fluxes associated with scatra-scatra
+                // interface layer growth w.r.t. scatra-scatra interface layer thicknesses
                 for (int iblock = 0; iblock < blockmaps_slave_->num_maps(); ++iblock)
                   Coupling::Adapter::MatrixRowTransform()(blockslavematrix->matrix(iblock, 0), -1.,
                       Coupling::Adapter::CouplingSourceConverter(*icoup_), mastermatrix, true);
@@ -1224,9 +1347,9 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
               // derivatives of discrete scatra-scatra interface layer growth residuals w.r.t.
               // discrete scatra degrees of freedom
               {
-                // initialize auxiliary matrix blocks for linearizations of scatra-scatra interface
-                // layer growth residuals w.r.t. slave-side and master-side scalar transport degrees
-                // of freedom
+                // initialize auxiliary matrix blocks for linearizations of scatra-scatra
+                // interface layer growth residuals w.r.t. slave-side and master-side scalar
+                // transport degrees of freedom
                 const std::shared_ptr<Core::LinAlg::BlockSparseMatrixBase> blockslavematrix =
                     std::make_shared<
                         Core::LinAlg::BlockSparseMatrix<Core::LinAlg::DefaultBlockMatrixStrategy>>(
@@ -1253,15 +1376,16 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 blockslavematrix->complete();
                 imastermatrix->complete(dofrowmap_scatra, dofrowmap_growth);
 
-                // assemble linearizations of scatra-scatra interface layer growth residuals w.r.t.
-                // slave-side scalar transport degrees of freedom into global matrix block
+                // assemble linearizations of scatra-scatra interface layer growth residuals
+                // w.r.t. slave-side scalar transport degrees of freedom into global matrix
+                // block
                 growthscatrablock_->add(*blockslavematrix, false, 1., 0.);
 
                 // initialize temporary matrix
                 Core::LinAlg::SparseMatrix kgm(dofrowmap_growth, 27, false, true);
 
-                // derive linearizations of scatra-scatra interface layer growth residuals w.r.t.
-                // master-side scalar transport degrees of freedom
+                // derive linearizations of scatra-scatra interface layer growth residuals
+                // w.r.t. master-side scalar transport degrees of freedom
                 Coupling::Adapter::MatrixColTransform()(imastermatrix->row_map(),
                     imastermatrix->col_map(), *imastermatrix, 1.,
                     Coupling::Adapter::CouplingSourceConverter(*icoup_), kgm);
@@ -1291,10 +1415,10 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
             }
           }  // type of scalar transport system matrix
 
-          // assemble residual vector associated with scatra-scatra interface layer thicknesses and
-          // main-diagonal growth-growth block of global system matrix, containing derivatives of
-          // discrete scatra-scatra interface layer growth residuals w.r.t. discrete scatra-scatra
-          // interface layer thicknesses
+          // assemble residual vector associated with scatra-scatra interface layer thicknesses
+          // and main-diagonal growth-growth block of global system matrix, containing
+          // derivatives of discrete scatra-scatra interface layer growth residuals w.r.t.
+          // discrete scatra-scatra interface layer thicknesses
           {
             // initialize matrix block and corresponding residual vector
             growthgrowthblock_->zero();
@@ -1311,7 +1435,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
             Core::Utils::add_enum_class_to_parameter_list<ScaTra::BoundaryAction>(
                 "action", ScaTra::BoundaryAction::calc_s2icoupling_growthgrowth, condparams);
 
-            // set history vector associated with discrete scatra-scatra interface layer thicknesses
+            // set history vector associated with discrete scatra-scatra interface layer
+            // thicknesses
             scatratimint_->discretization()->set_state(2, "growthhist", *growthhist_);
 
             // evaluate main-diagonal linearizations and corresponding residuals
@@ -1329,7 +1454,8 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
       default:
       {
         FOUR_C_THROW(
-            "Evaluation of scatra-scatra interface layer growth only implemented for conforming "
+            "Evaluation of scatra-scatra interface layer growth only implemented for "
+            "conforming "
             "interface discretizations!");
       }
     }
@@ -1919,7 +2045,8 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
           else
           {
             FOUR_C_THROW(
-                "Cannot have multiple slave-side scatra-scatra interface kinetics conditions with "
+                "Cannot have multiple slave-side scatra-scatra interface kinetics conditions "
+                "with "
                 "the same ID {}!",
                 s2ikinetics_cond_id);
           }
@@ -1935,7 +2062,8 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
                 timeintscheme != ScaTra::timeint_one_step_theta)
             {
               FOUR_C_THROW(
-                  "Solution of capacitive interface contributions, i.e. additional transient terms "
+                  "Solution of capacitive interface contributions, i.e. additional transient "
+                  "terms "
                   "is only implemented for OST and BDF2 time integration schemes.");
             }
           }
@@ -1957,7 +2085,8 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
           else
           {
             FOUR_C_THROW(
-                "Cannot have multiple master-side scatra-scatra interface kinetics conditions with "
+                "Cannot have multiple master-side scatra-scatra interface kinetics conditions "
+                "with "
                 "the same ID {}!",
                 s2ikinetics_cond_id);
           }
@@ -1979,10 +2108,12 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
     // nodes
     case S2I::coupling_matching_nodes:
     {
-      // overwrite IDs of master-side scatra-scatra interface coupling conditions with the value -1
-      // to prevent them from being evaluated when calling evaluate_condition on the discretization
+      // overwrite IDs of master-side scatra-scatra interface coupling conditions with the value
+      // -1 to prevent them from being evaluated when calling evaluate_condition on the
+      // discretization
       // TODO: this is somewhat unclean, because changing the conditions, makes calling
-      // setup_meshtying() twice invalid (which should not be necessary, but conceptually possible)
+      // setup_meshtying() twice invalid (which should not be necessary, but conceptually
+      // possible)
       for (const auto& master_condition : master_conditions_ | std::views::values)
       {
         const_cast<Core::Conditions::Condition*>(master_condition)
@@ -2097,9 +2228,9 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
       interfacemaps_->check_for_valid_map_extractor();
 
       // initialize interface vector
-      // Although the interface vector only contains the transformed master interface dofs, we still
-      // initialize it with the full dof_row_map of the discretization to make it work for parallel
-      // computations.
+      // Although the interface vector only contains the transformed master interface dofs, we
+      // still initialize it with the full dof_row_map of the discretization to make it work for
+      // parallel computations.
       islavephidtnp_ = std::make_shared<Core::LinAlg::Vector<double>>(
           *(scatratimint_->discretization()->dof_row_map()), true);
       imasterphidt_on_slave_side_np_ = std::make_shared<Core::LinAlg::Vector<double>>(
@@ -2605,8 +2736,8 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
                 localnumlmdof[mypid] = interfacemaps_->map(2)->num_my_elements();
               globalnumlmdof = Core::Communication::sum_all(localnumlmdof, comm);
 
-              // for each processor, determine offset of minimum Lagrange multiplier dof GID w.r.t.
-              // maximum standard dof GID
+              // for each processor, determine offset of minimum Lagrange multiplier dof GID
+              // w.r.t. maximum standard dof GID
               int offset(0);
               for (int ipreviousproc = 0; ipreviousproc < mypid; ++ipreviousproc)
                 offset += globalnumlmdof[ipreviousproc];
@@ -2707,7 +2838,8 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
     default:
     {
       FOUR_C_THROW(
-          "{} is not a valid 'ScaTra::MatrixType'. Set a valid 'ScaTra::MatrixType' in your input "
+          "{} is not a valid 'ScaTra::MatrixType'. Set a valid 'ScaTra::MatrixType' in your "
+          "input "
           "file!",
           static_cast<int>(matrixtype_));
     }
@@ -2764,10 +2896,10 @@ void ScaTra::MeshtyingStrategyS2I::setup_meshtying()
 
               scatragrowthblock_ = std::make_shared<Core::LinAlg::SparseMatrix>(*dofrowmap_scatra,
                   81);  // We actually don't really need the entire scalar transport dofrowmap
-                        // here, but only a submap associated with all (slave-side and master-side)
-                        // interfacial degrees of freedom. However, this will later cause an error
-                        // in debug mode when assigning the scatra-growth matrix block to the
-                        // global system matrix in the Solve() routine.
+                        // here, but only a submap associated with all (slave-side and
+                        // master-side) interfacial degrees of freedom. However, this will later
+                        // cause an error in debug mode when assigning the scatra-growth matrix
+                        // block to the global system matrix in the Solve() routine.
               growthscatrablock_ =
                   std::make_shared<Core::LinAlg::SparseMatrix>(*dofrowmap_growth, 81);
 
@@ -2933,8 +3065,8 @@ void ScaTra::MeshtyingStrategyS2I::set_element_general_parameters(
   // parameter list
   parameters.set<double>("intlayergrowth_convtol", intlayergrowth_convtol_);
 
-  // add maximum number of local Newton-Raphson iterations for scatra-scatra interface layer growth
-  // to parameter list
+  // add maximum number of local Newton-Raphson iterations for scatra-scatra interface layer
+  // growth to parameter list
   parameters.set<unsigned>("intlayergrowth_itemax", intlayergrowth_itemax_);
 }
 
@@ -3031,6 +3163,8 @@ void ScaTra::MeshtyingStrategyS2I::write_s2_i_kinetics_specific_scatra_parameter
               "ALPHA_C", s2ikinetics_cond.parameters().get<double>("ALPHA_C"));
           s2icouplingparameters.set<bool>(
               "IS_PSEUDO_CONTACT", s2ikinetics_cond.parameters().get<bool>("IS_PSEUDO_CONTACT"));
+          s2icouplingparameters.set<bool>("MODEL_SIMPLIFIED_GROWTH",
+              s2ikinetics_cond.parameters().get_or<bool>("MODEL_SIMPLIFIED_GROWTH", false));
 
           if (kineticmodel == S2I::kinetics_butlervolmerreducedcapacitance)
             s2icouplingparameters.set<double>(
@@ -3185,7 +3319,8 @@ void ScaTra::MeshtyingStrategyS2I::read_restart(
 
     if (intlayergrowth_evaluation_ == S2I::growth_evaluation_monolithic)
     {
-      // read state vector of time derivatives of discrete scatra-scatra interface layer thicknesses
+      // read state vector of time derivatives of discrete scatra-scatra interface layer
+      // thicknesses
       reader->read_vector(growthdtn_, "growthdtn");
 
       // copy restart state
@@ -3212,8 +3347,8 @@ void ScaTra::MeshtyingStrategyS2I::collect_output_data() const
   if (intlayergrowth_evaluation_ == S2I::growth_evaluation_monolithic or
       intlayergrowth_evaluation_ == S2I::growth_evaluation_semi_implicit)
   {
-    // extract relevant state vector of discrete scatra-scatra interface layer thicknesses based on
-    // map of scatra-scatra interface layer thickness variables
+    // extract relevant state vector of discrete scatra-scatra interface layer thicknesses based
+    // on map of scatra-scatra interface layer thickness variables
     const Core::LinAlg::Vector<double>& growth =
         intlayergrowth_evaluation_ == S2I::growth_evaluation_monolithic ? *growthnp_ : *growthn_;
 
@@ -3439,7 +3574,8 @@ void ScaTra::MeshtyingStrategyS2I::init_meshtying()
     if (conditions.size() != 1)
     {
       FOUR_C_THROW(
-          "Can't have more than one boundary condition for scatra-scatra interface layer growth at "
+          "Can't have more than one boundary condition for scatra-scatra interface layer growth "
+          "at "
           "the moment!");
     }
     if (intlayergrowth_evaluation_ == S2I::growth_evaluation_none)
@@ -3479,11 +3615,26 @@ void ScaTra::MeshtyingStrategyS2I::init_meshtying()
             "S2IKineticsGrowth", Core::Conditions::LookFor::locally_owned_and_ghosted);
     const std::span<const int> my_col_nodes(
         col_map.my_global_elements(), col_map.num_my_elements());
-    for (const int& inode : my_col_nodes)
+    size_t local_size = numdofpernode->get_local_values().size();
+    for (const int& node_gid : my_col_nodes)
     {
-      if (conditioned_node_ids.contains(inode))
-        // add one degree of freedom for scatra-scatra interface layer thickness to current node
-        numdofpernode->get_local_values()[inode] = 1;
+      if (conditioned_node_ids.contains(node_gid))
+      {
+        auto node_lid = col_map.lid(node_gid);
+        if (node_lid >= 0)
+        {
+          // add one degree of freedom for scatra-scatra interface layer thickness to current node
+          numdofpernode->get_local_values()[node_lid] = 1;
+        }
+
+
+        FOUR_C_ASSERT_ALWAYS(
+            static_cast<size_t>(node_lid) < numdofpernode->get_local_values().size(),
+            "Rank {}: invalid index {} for local size {}",
+            Core::Communication::my_mpi_rank(
+                Global::Problem::instance()->get_dis("scatra")->get_comm()),
+            node_lid, local_size);
+      }
     }
 
     int number_dofsets = scatratimint_->get_max_dof_set_number();
@@ -3493,8 +3644,8 @@ void ScaTra::MeshtyingStrategyS2I::init_meshtying()
     if (scatratimint_->discretization()->add_dof_set(dofset) != ++number_dofsets)
       FOUR_C_THROW("Scalar transport discretization exhibits invalid number of dofsets!");
     scatratimint_->set_number_of_dof_set_growth(number_dofsets);
-    // initialize linear solver for monolithic scatra-scatra interface coupling involving interface
-    // layer growth
+    // initialize linear solver for monolithic scatra-scatra interface coupling involving
+    // interface layer growth
     if (intlayergrowth_evaluation_ == S2I::growth_evaluation_monolithic)
     {
       const int extendedsolver = Global::Problem::instance()
@@ -3504,6 +3655,7 @@ void ScaTra::MeshtyingStrategyS2I::init_meshtying()
       FOUR_C_ASSERT_ALWAYS(extendedsolver >= 1,
           "Invalid ID of linear solver for monolithic scatra-scatra interface coupling involving "
           "interface layer growth!");
+
       extendedsolver_ = std::make_shared<Core::LinAlg::Solver>(
           Global::Problem::instance()->solver_params(extendedsolver),
           scatratimint_->discretization()->get_comm(),
@@ -3517,7 +3669,8 @@ void ScaTra::MeshtyingStrategyS2I::init_meshtying()
   else if (intlayergrowth_evaluation_ != S2I::growth_evaluation_none)
   {
     FOUR_C_THROW(
-        "Cannot evaluate scatra-scatra interface coupling involving interface layer growth without "
+        "Cannot evaluate scatra-scatra interface coupling involving interface layer growth "
+        "without "
         "specifying a corresponding boundary condition!");
   }
 
@@ -3533,7 +3686,8 @@ void ScaTra::MeshtyingStrategyS2I::init_meshtying()
     if (!scatratimint_->discretization()->has_condition("S2IKineticsGrowth"))
     {
       FOUR_C_THROW(
-          "Adaptive time stepping for scatra-scatra interface layer growth requires corresponding "
+          "Adaptive time stepping for scatra-scatra interface layer growth requires "
+          "corresponding "
           "boundary condition!");
     }
     if (intlayergrowth_timestep_ >= scatratimint_->dt())
@@ -3600,8 +3754,8 @@ void ScaTra::MeshtyingStrategyS2I::equip_extended_solver_with_null_space_info() 
     std::stringstream iblockstr;
     iblockstr << scatratimint_->dof_block_maps()->num_maps() + 1;
 
-    // equip smoother for extra matrix block with null space associated with all degrees of freedom
-    // for scatra-scatra interface layer growth
+    // equip smoother for extra matrix block with null space associated with all degrees of
+    // freedom for scatra-scatra interface layer growth
     Teuchos::ParameterList& mllist = extendedsolver_->params().sublist("Inverse" + iblockstr.str());
     mllist.set("PDE equations", 1);
 
@@ -3954,8 +4108,8 @@ void ScaTra::MeshtyingStrategyS2I::fd_check(
     // entries + residual_original / epsilon ?= residual_perturbed / epsilon
 
     // Note that we still need to evaluate the first comparison as well. For small entries in the
-    // system matrix, the second comparison might yield good agreement in spite of the entries being
-    // wrong!
+    // system matrix, the second comparison might yield good agreement in spite of the entries
+    // being wrong!
     for (int rowlid = 0; rowlid < extendedmaps_->full_map()->num_my_elements(); ++rowlid)
     {
       // get global index of current matrix row
@@ -3979,7 +4133,8 @@ void ScaTra::MeshtyingStrategyS2I::fd_check(
         }
       }
 
-      // finite difference suggestion (first divide by epsilon and then add for better conditioning)
+      // finite difference suggestion (first divide by epsilon and then add for better
+      // conditioning)
       const double fdval = -extendedresidual.local_values_as_span()[rowlid] / fdcheckeps +
                            rhs_original.local_values_as_span()[rowlid] / fdcheckeps;
 
