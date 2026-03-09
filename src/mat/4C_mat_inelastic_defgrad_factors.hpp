@@ -1588,20 +1588,20 @@ namespace Mat
         int gp, int eleGID) override;
 
     /*!
-     * Perform all non-repeatable pre-evaluation tasks for the current timestep, i.e., all
-     * tasks which shall not be repeated in case of the redundant
+     * Perform all preparation tasks for the return mapping in the current timestep. In contrast to
+     * the pre_evaluate method, these tasks shall not be repeated in case of the redundant
      * evaluate call, see Issue #121 at
      * https://github.com/4C-multiphysics/4C/issues/121. This means that
-     * the current, public pre-evaluate method performs only the safe
+     * the current, public pre-evaluate method performs only the safely
      * repeatable pre-evaluation tasks.
-     * This also means that we call this pre_evaluate method within
-     * evaluate_inverse_inelastic_defgrad, and only if we are not in the
+     * This also means that we prepare and perform the return mapping within
+     * evaluate_inverse_inelastic_defgrad only if we are not in the
      * redundant call (see quick-fix PR #131 at
      * https://github.com/4C-multiphysics/4C/pull/131).
      *
      * @param[in] defgrad Deformation gradient \f$ \boldsymbol{F} \f$
      */
-    void prepare_non_repeat_tasks(const Core::LinAlg::Matrix<3, 3>& defgrad);
+    void prepare_return_mapping(const Core::LinAlg::Matrix<3, 3>& defgrad);
 
     /*!
      * @brief Prepare LNGI -> perform all necessary preparation tasks for the evaluation of the LNGI

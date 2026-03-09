@@ -2000,6 +2000,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
 
     general_local_timint_analysis_utils.sim_timestep_ = time_step_tracker_.dt_;
     general_local_timint_analysis_utils.sim_time_ = time_step_tracker_.tnp_;
+    // reset current time step if required
+    if (!general_local_timint_analysis_utils.reset_called_)
+    {
+      general_local_timint_analysis_utils.reset();
+      general_local_timint_analysis_utils.reset_called_ = true;
+    }
   }
 
   // set last substep values (last converged state) as the last time step values -->
@@ -2013,7 +2019,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks(
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_return_mapping(
     const Core::LinAlg::Matrix<3, 3>& defgrad)
 {
   // set current evaluation gp for the viscoplastic law
@@ -2023,33 +2029,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
   // Interpolation routine
   if (parameter()->use_lngi())
   {
-    //// perform LNGI preparation tasks
-    // if (parameter()->analyze_timint())
-    //{
-    //   int num_of_required_repetitions = 0;
-    //   // benchmark run time
-    //   general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_preparation_ +=
-    //       benchmark_function(
-    //           "LNGI: Prepare timestep",
-    //           general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_preparation_,
-    //           parameter()->analyze_timint_timer_rel_tol(),
-    //           general_local_timint_analysis_utils.increment_vars_, num_of_required_repetitions,
-    //           [this](const Core::LinAlg::Matrix<3, 3>& defgrad) { prepare_lngi(defgrad); },
-    //           defgrad);
-    // }
-    // else
-    //{
     prepare_lngi(defgrad);
-    //}
   }
-  // general local time integration analysis:
-  if (parameter()->analyze_timint() &&
-      !general_local_timint_analysis_utils.is_reset_current_timestep_)
-  {
-    general_local_timint_analysis_utils.reset();
-    general_local_timint_analysis_utils.is_reset_current_timestep_ = true;
-  }
-
   // set LNL iteration to 0
   lnl_data_.iter_ = 0;
 
@@ -2951,7 +2932,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplast::re
   // perform non-repeatable pre-evaluation tasks (non-repeatable: not
   // called in the redundant evaluate call, which is already handled -> direct return
   // without calling this function)
-  prepare_non_repeat_tasks(FredM);
+  prepare_return_mapping(FredM);
 
   // set predictor: assume purely elastic behavior in this time step
   Core::LinAlg::Matrix<3, 3> iFinM_pred(Core::LinAlg::Initialization::zero);
@@ -3119,7 +3100,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       int num_of_required_repetitions = 0;
       // benchmark run time
       general_local_timint_analysis_utils.time_measurements_.eval_time_lngi_preparation_ +=
-          benchmark_function("LNGI: Update GP data for next time step",
+          benchmark_function("LNGI: Call Update of LNGI Framework",
               general_local_timint_analysis_utils.timers_.eval_teuchos_timer_lngi_preparation_,
               parameter()->analyze_timint_timer_rel_tol(),
               general_local_timint_analysis_utils.increment_vars_, num_of_required_repetitions,
@@ -3182,7 +3163,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       general_local_timint_analysis_utils.write_to_csv();
 
       // timint_analysis: reset control flow variables
-      general_local_timint_analysis_utils.is_reset_current_timestep_ = false;
+      general_local_timint_analysis_utils.reset_called_ = false;
       general_local_timint_analysis_utils.num_update_calls_ = 0;
     }
     else
