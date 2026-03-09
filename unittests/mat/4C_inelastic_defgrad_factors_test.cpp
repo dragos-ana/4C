@@ -607,11 +607,11 @@ namespace
       transv_isotrop_vplast_refJC_->pre_evaluate(
           param_list_transv_isotrop_vplast_refJC, context, 0, 0);
 
-      transv_isotrop_vplast_refJC_->prepare_non_repeat_tasks(FM_);
+      transv_isotrop_vplast_refJC_->prepare_return_mapping(FM_);
       isotrop_vplast_refJC_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, context, 0, 0);
-      isotrop_vplast_refJC_->prepare_non_repeat_tasks(FM_);
+      isotrop_vplast_refJC_->prepare_return_mapping(FM_);
       isotrop_vplast_Anand_->pre_evaluate(param_list_transv_isotrop_vplast_refJC, context, 0, 0);
-      isotrop_vplast_Anand_->prepare_non_repeat_tasks(FM_);
+      isotrop_vplast_Anand_->prepare_return_mapping(FM_);
     }
 
     void set_up_state_quantities_solution()
@@ -1485,7 +1485,7 @@ namespace
 
 
       debug_vplast_->pre_evaluate(param_list_debug_vplast, context, 0, 0);
-      debug_vplast_->prepare_non_repeat_tasks(FM_);
+      debug_vplast_->prepare_return_mapping(FM_);
     }
 
     // deformation gradient
@@ -2251,7 +2251,7 @@ namespace
         .ref_coords = nullptr};
 
     iso_mat->pre_evaluate(param_list, context, 0, 0);
-    iso_mat->prepare_non_repeat_tasks(FM_);
+    iso_mat->prepare_return_mapping(FM_);
 
     // set boolean for updating history variables
     iso_mat->debug_set_update_hist_var(true);

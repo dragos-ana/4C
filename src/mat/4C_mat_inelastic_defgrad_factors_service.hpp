@@ -1266,7 +1266,7 @@ namespace Mat
       int sim_timestep_ = 0;
 
       //! reset called for current time step?
-      bool is_reset_current_timestep_ = false;
+      bool reset_called_ = false;
 
       //! how often was the update method called? (maximum:
       //! num_of_global_elements, if only one processor
@@ -1764,7 +1764,7 @@ namespace Mat
 
     // #define DEBUG_MODE ;
     // #define DEBUG_PRED_ADAPT ;
-    //  #define DEBUG_LNL ;
+    // #define DEBUG_LNL ;
     //  #define DEBUG_INTEGRATE_PLASTIC_STRAIN ;
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
