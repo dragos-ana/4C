@@ -198,6 +198,7 @@ void SSI::ScatraStructureOffDiagCoupling::evaluate_off_diag_block_structure_scat
 
   // set time
   eleparams.set<double>("total time", structure_->time());
+  eleparams.set<double>("delta time", structure_->dt());
   // set numscatradofspernode
   eleparams.set<int>("numscatradofspernode", scatra_field()->num_dof_per_node());
 

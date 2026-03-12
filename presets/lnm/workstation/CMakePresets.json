@@ -12,7 +12,7 @@
         "FOUR_C_DOXYGEN_LOCAL_MATHJAX_BASEPATH": "/lnm/programs64/mathjax-2.7.9",
         "FOUR_C_QHULL_ROOT": "/lnm/lib/packages/qhull/2012-1",
         "FOUR_C_TRILINOS_ROOT": "/lnm/lib/packages/trilinos/16-1-0_v2/release-shared",
-        "FOUR_C_BUILD_SHARED_LIBS": "ON",
+        "FOUR_C_BUILD_SHARED_LIBS": "OFF",
         "CMAKE_BUILD_TYPE": "RELEASE",
         "CMAKE_CXX_COMPILER": "/lnm/spack_packages/linux-ubuntu20.04-ivybridge/gcc-13.2.0/bin/g++",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
