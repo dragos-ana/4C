@@ -2923,29 +2923,30 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
 
 
   // plastic flow direction in Voigt strain notation
-  Core::LinAlg::Matrix<6, 1> NpV(Core::LinAlg::Initialization::zero);
-  Core::LinAlg::Voigt::Strains::matrix_to_vector(NpM, NpV);
+  Core::LinAlg::Matrix<6, 1> NpVstrain(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Voigt::Strains::matrix_to_vector(NpM, NpVstrain);
 
   // compute derivatives of the equivalent stress
 
   // \f$ \frac{\partial \overline{\sigma} }{\partial
   // \boldsymbol{F}^{\text{in}^{-1}}_{}} \f$ (Voigt stress-form)
   state_quantity_derivatives.curr_dequiv_stress_diFin_.multiply_tn(
-      1.0, NpV, state_quantity_derivatives.curr_dMe_dev_sym_diFin_, 0.0);
+      1.0, NpVstrain, state_quantity_derivatives.curr_dMe_dev_sym_diFin_, 0.0);
   // \f$ \frac{\partial \overline{\sigma} }{\partial
   // \boldsymbol{C}^{}} \f$ (Voigt stress-form)
   state_quantity_derivatives.curr_dequiv_stress_dC_.multiply_tn(
-      1.0, NpV, state_quantity_derivatives.curr_dMe_dev_sym_dC_, 0.0);
+      1.0, NpVstrain, state_quantity_derivatives.curr_dMe_dev_sym_dC_, 0.0);
   // \f$ \frac{\partial \overline{\sigma} }{\partial
   // T} \f$
   Core::LinAlg::Matrix<1, 1> temp1x1{Core::LinAlg::Initialization::zero};
-  temp1x1.multiply_tn(1.0, NpV, state_quantity_derivatives.curr_dMe_dev_sym_dT_, 0.0);
+  temp1x1.multiply_tn(1.0, NpVstrain, state_quantity_derivatives.curr_dMe_dev_sym_dT_, 0.0);
   state_quantity_derivatives.curr_dequiv_stress_dT_ = temp1x1(0);
 
 
 
   // recompute flow direction in stress form
-  Core::LinAlg::Voigt::Stresses::matrix_to_vector(NpM, NpV);
+  Core::LinAlg::Matrix<6, 1> NpVstress(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Voigt::Stresses::matrix_to_vector(NpM, NpVstress);
 
   // we use the Hill 1949 yield condition, adapted for transversely isotropic materials ->
   // get yield condition parameters A, B, and F
@@ -2960,7 +2961,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   Core::LinAlg::Matrix<6, 6> dNpdMe_sym_dev(Core::LinAlg::Initialization::zero);
   if (parameter()->mat_behavior() == MatBehavior::transv_isotrop)
   {
-    dNpdMe_sym_dev.multiply_nt(-1.0 / equiv_stress, NpV, NpV, 0.0);
+    dNpdMe_sym_dev.multiply_nt(-1.0 / equiv_stress, NpVstress, NpVstress, 0.0);
     dNpdMe_sym_dev.update(-1.0 / 2.0 * 1.0 / equiv_stress * 4.0 / 3.0 * (F - A - 2.0 * B),
         const_mat_tensors_.id_dyad_mm_, 1.0);
     dNpdMe_sym_dev.update(
@@ -2976,7 +2977,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   }
   else
   {
-    dNpdMe_sym_dev.multiply_nt(-1.0 / equiv_stress, NpV, NpV, 0.0);
+    dNpdMe_sym_dev.multiply_nt(-1.0 / equiv_stress, NpVstress, NpVstress, 0.0);
     dNpdMe_sym_dev.update(1.0 / equiv_stress * 3.0 / 2.0, const_non_mat_tensors.id4_6x6_, 1.0);
   }
   // convert derivative to Voigt stress-strain form
@@ -3022,24 +3023,34 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   // compute derivatives of the plastic stretching tensor...
   Core::LinAlg::Matrix<6, 6> Np_dyad_Np_V(
       Core::LinAlg::Initialization::zero);  // in stress-strain form
-  temp6x6.multiply_nt(1.0, NpV, NpV, 0.0);
-  Np_dyad_Np_V = Core::LinAlg::Voigt::modify_voigt_representation(temp6x6, 1.0, 2.0);
+  Np_dyad_Np_V.multiply_nt(1.0, NpVstress, NpVstrain, 0.0);
   temp6x6.update(state_quantity_derivatives.curr_dpsr_dequiv_stress_, Np_dyad_Np_V,
-      equiv_plastic_strain_rate, dNpdMe_sym_dev, 0.0);
+      equiv_plastic_strain_rate, dNpdMe_sym_dev,
+      0.0);  // dNpdMe_sym_dev is in stress-strain form already
 
-
+  /// Now: \f[ \texttt{temp6x6} = \frac{\partial\dot{\varepsilon}_p}{\partial\sigma_\text{eq}}
+  /// \boldsymbol{N}_p \otimes \boldsymbol{N}_p + \dot{\varepsilon}_p \frac{\partial
+  /// \boldsymbol{N}_p}{\boldsymbol{M}_{e,\text{symm, dev}}}\f]
   // ... w.r.t. invese inelastic defgrad
   state_quantity_derivatives.curr_ddpdiFin_.multiply_nn(
       1.0, temp6x6, state_quantity_derivatives.curr_dMe_dev_sym_diFin_, 0.0);
   // ... w.r.t. plastic strain
   state_quantity_derivatives.curr_ddpdepsp_.update(
-      state_quantity_derivatives.curr_dpsr_depsp_, NpV, 0.0);
+      state_quantity_derivatives.curr_dpsr_depsp_, NpVstress, 0.0);
   // ... w.r.t. right CG
   state_quantity_derivatives.curr_ddpdC_.multiply_nn(
       1.0, temp6x6, state_quantity_derivatives.curr_dMe_dev_sym_dC_, 0.0);
   // ... w.r.t. temperature
   state_quantity_derivatives.curr_ddpdT_.multiply_nn(
       1.0, temp6x6, state_quantity_derivatives.curr_dMe_dev_sym_dT_, 0.0);
+
+  // contribution due to explicit dependence of plastic strain rate on temperature
+  Core::LinAlg::Matrix<6, 1> dpsr_dT_Np;
+  dpsr_dT_Np.update(state_quantity_derivatives.curr_dpsr_dT_, NpVstress, 0.0);
+
+  /// \f$ \frac{\partial \boldsymbol{D}_p}{\partial T} += \frac{\partial
+  /// \dot{\varepsilon}_p}{\partial T} \boldsymbol{N}_p \f$
+  state_quantity_derivatives.curr_ddpdT_.update(1.0, dpsr_dT_Np, 1.0);
 
 
 
@@ -3106,7 +3117,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   dlpdT_alt_V.update((state_quantity_derivatives.curr_dpsr_dT_ +
                          state_quantity_derivatives.curr_dpsr_dequiv_stress_ *
                              state_quantity_derivatives.curr_dequiv_stress_dT_),
-      NpV, equiv_plastic_strain_rate, dNp_dT_V, 0.0);
+      NpVstress, equiv_plastic_strain_rate, dNp_dT_V, 0.0);
   Core::LinAlg::Matrix<3, 3> dlpdT_alt_M(Core::LinAlg::Initialization::zero);
   Core::LinAlg::Voigt::Stresses::vector_to_matrix(dlpdT_alt_V, dlpdT_alt_M);
 
@@ -3486,7 +3497,19 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_od_stiff_mat(
       rhs_iFin_V.update(-time_step_tracker_.dt_, state_quantity_derivatives_.curr_dlpdT_, 0.0);
 
       // calculate RHS of the equation for the plastic strain
-      rhs_epsp_V(0) = time_step_tracker_.dt_ * state_quantity_derivatives_.curr_dpsr_dT_;
+      /** \f$
+      \texttt{rhs\_epsp\_V} =
+      \frac{\partial r_{\varepsilon_{\text{p}}}}{\partial T_{n+1}}
+      = - \Delta t \cdot \left(
+        \frac{\partial v_{\text{p}}}{\partial \sigma_{\text{yield}}} \cdot \frac{\partial
+      \sigma_{\text{yield}}}{\partial T}
+        + \frac{\partial v_{\text{p}}}{\partial \sigma_\text{eq}} \cdot \frac{\partial
+      \sigma_\text{eq}}{\partial T}\right)\f$
+      */
+      rhs_epsp_V(0) =
+          time_step_tracker_.dt_ * (state_quantity_derivatives_.curr_dpsr_dT_ +
+                                       state_quantity_derivatives_.curr_dpsr_dequiv_stress_ *
+                                           state_quantity_derivatives_.curr_dequiv_stress_dT_);
     }
     else
     {
