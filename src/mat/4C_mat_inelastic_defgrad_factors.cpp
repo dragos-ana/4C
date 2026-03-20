@@ -2828,7 +2828,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
 
   // \f$ \partial S_{theta, T} / T \f$
   Core::LinAlg::Matrix<6, 1> dS_thetaT_dT_V{Core::LinAlg::Initialization::zero};
-  dS_thetaT_dT_V.multiply_nn(1.0, hyperelast_stiffness_CT, thermal_quantities.dCTdTV, 0.0);
+  dS_thetaT_dT_V.multiply_nn(0.5, hyperelast_stiffness_CT, thermal_quantities.dCTdTV, 0.0);
   Core::LinAlg::Matrix<3, 3> dS_thetaT_dT_M{Core::LinAlg::Initialization::zero};
   Core::LinAlg::Voigt::Stresses::vector_to_matrix(dS_thetaT_dT_V, dS_thetaT_dT_M);
 
@@ -2857,6 +2857,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   // \f$ \frac{\partial \boldsymbol{S}^{\text{e}}_{\text{trn}} }{\partial
   // \boldsymbol{C}^{}_{}} \f$ (Voigt stress-stress form)
   Core::LinAlg::Matrix<6, 6> dSedC(Core::LinAlg::Initialization::zero);
+  // do we need 0.5 here?
   dSedC.multiply_nn(1.0, dSedCe_stress_strain, state_quantity_derivatives.curr_dCedC_, 0.0);
   Core::LinAlg::FourTensor<3> dSedC_FourTensor(true);
   Core::LinAlg::Voigt::setup_four_tensor_from_6x6_voigt_matrix(dSedC_FourTensor, dSedC);

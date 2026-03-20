@@ -254,6 +254,16 @@ namespace Mat
     Core::LinAlg::FourTensorOperations::add_holzapfel_product(cmat, iCinv, delta(7));
   }
 
+  /**
+   * @brief Assemble the elastic stress and stiffness for hyperelastic materials
+   *
+   * @param[in] Ce elastic Right Cauchy-Green tensor \f$ \mathbf{C}_\text{e} \f$
+   * @param[in] gamma
+   * @param[in] delta
+   * @param[out] SeV
+   * @param[out] cmateV \f$ \mathbb{C}_\text{e} = 2\frac{\partial S_e}{\partial C_e}\f$ in
+   * stress-like Voigt notation
+   */
   inline void elast_hyper_evaluate_elastic_stress_and_stiffness(
       const Core::LinAlg::Matrix<3, 3>& Ce, const Core::LinAlg::Matrix<3, 1>& gamma,
       const Core::LinAlg::Matrix<8, 1>& delta, Core::LinAlg::Matrix<6, 1>& SeV,
@@ -349,7 +359,7 @@ namespace Mat
     /// compute derivative \f$ \frac{\partial \mathbf{S}_{\theta}}{\partial T} \f$
 
     Core::LinAlg::Matrix<6, 1> pStheta_pT_stress{Core::LinAlg::Initialization::zero};
-    pStheta_pT_stress.multiply_nn(1.0, hyperelast_stiffness, dCTdTV, 0.0);
+    pStheta_pT_stress.multiply_nn(0.5, hyperelast_stiffness, dCTdTV, 0.0);
     Core::LinAlg::Matrix<3, 3> pStheta_pT{Core::LinAlg::Initialization::zero};
     Core::LinAlg::Voigt::Stresses::vector_to_matrix(pStheta_pT_stress, pStheta_pT);
 
