@@ -2826,6 +2826,35 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   Mat::elast_hyper_evaluate_elastic_stress_and_stiffness(CT, thermal_stress_factors.gamma,
       thermal_stress_factors.delta, hyperelast_stress_CT, hyperelast_stiffness_CT);
 
+  // Add thermal contributions to the symmetric Mandel stress derivatives.
+  // SthetaT is constant wrt. C and iFin, but Ce is not!
+  Core::LinAlg::Matrix<3, 3> SthetaT{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::Stresses::vector_to_matrix(hyperelast_stress_CT, SthetaT);
+
+  // thermal contribtutions to the derivatives of the Mandel stress:
+  /**
+  \f$ \texttt{dMe\_sym\_dC} \;\mathrel{-}= \frac{\partial}{\partial
+  \mathbf{C}}\left(\mathbf{C}_\theta \cdot
+  \mathbf{S}_{\theta, T}\right)\f$
+  */
+  Core::LinAlg::FourTensor<3> temp_four_tensor(true);
+  Core::LinAlg::FourTensorOperations::multiply_matrix_four_tensor_by_second_index<3>(
+      temp_four_tensor, SthetaT, dCedC_FourTensor, true);
+  Core::LinAlg::Matrix<6, 6> dMe_symT_dC{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::setup_6x6_voigt_matrix_from_four_tensor(dMe_symT_dC, temp_four_tensor);
+  dMe_sym_dC.update(-1.0, dMe_symT_dC, 1.0);
+
+  /**
+  \f$ \texttt{dMe\_sym\_diFin} \;\mathrel{-}= \frac{\partial}{\partial
+  \mathbf{F}_\text{in}^{-1}}\left(\mathbf{C}_\theta \cdot \mathbf{S}_{\theta, T}\right)\f$
+  */
+  temp_four_tensor.clear();
+  Core::LinAlg::FourTensorOperations::multiply_matrix_four_tensor_by_second_index<3>(
+      temp_four_tensor, SthetaT, dCediFin_FourTensor, true);
+  Core::LinAlg::Matrix<6, 9> dMe_symT_dFin{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::setup_6x9_voigt_matrix_from_four_tensor(dMe_symT_dFin, temp_four_tensor);
+  dMe_sym_diFin.update(-1.0, dMe_symT_dFin, 1.0);
+
   // \f$ \partial S_{theta, T} / T \f$
   Core::LinAlg::Matrix<6, 1> dS_thetaT_dT_V{Core::LinAlg::Initialization::zero};
   dS_thetaT_dT_V.multiply_nn(0.5, hyperelast_stiffness_CT, thermal_quantities.dCTdTV, 0.0);
