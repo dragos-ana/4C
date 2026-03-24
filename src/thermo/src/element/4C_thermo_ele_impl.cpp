@@ -1223,10 +1223,14 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
   // ------------------------------------------------ initialise material
 
   // thermal material tangent
+
+  /// \f$ \frac{\partial \mathbf{S}}{\partial T} \f$
+
   Core::LinAlg::SymmetricTensor<double, 3, 3> ctemp_t{};
   Core::LinAlg::Matrix<6, 1> ctemp = Core::LinAlg::make_stress_like_voigt_view(ctemp_t);
   // get scalar-valued element temperature
   // build the product of the shapefunctions and element temperatures T = N . T
+  /// Discrete Temperature evaluated at Gauss point: \f$ T_{GP} = N_{GP}\cdot \mathbf{T}^{(e)}\f$
   Core::LinAlg::Matrix<1, 1> NT(Core::LinAlg::Initialization::uninitialized);
   // extract step size
   const double stepsize = params.get<double>("delta time");
@@ -1268,6 +1272,9 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
     // call material law => cmat_,heatflux_ and dercmat_
     // negative q is used for balance equation:
     // heatflux_ = k_0 . Grad T
+    ///
+    /// \f$ \texttt{heatflux\_} := +\mathbf{k_0} \cdot \nabla T\f$
+    ///
     materialize(ele, iquad);
     // heatflux_ := qintermediate = k_0 . Grad T
 
@@ -1302,6 +1309,7 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
     Core::LinAlg::Matrix<nsd_, 1> initialheatflux(Core::LinAlg::Initialization::uninitialized);
     initialheatflux.multiply(Cinv, heatflux_);
     // put the initial, material heatflux onto heatflux_
+    /// \f$ \texttt{heatflux\_} := -\mathbf{Q} \f$
     heatflux_.update(initialheatflux);
     // from here on heatflux_ == -Q
 
@@ -1332,6 +1340,10 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
 
       Core::LinAlg::Matrix<nen_, 1> Ndctemp_dTCratevct(Core::LinAlg::Initialization::uninitialized);
       Ndctemp_dTCratevct.update(dctemp_dTCdot, funct_);
+      /// \f[ \texttt{Ndctemp\_dTCrateNT} := \mathbf{N} \left(\frac{1}{2}
+      /// \frac{\mathrm{d}}{\mathrm{dT}} \left(\frac{\partial \mathbf{S}}{\partial T}\right) :
+      /// \dot{C}\right) T_{GP} \f]
+      ///
       Ndctemp_dTCrateNT.multiply(Ndctemp_dTCratevct, NT);  // (8x1)(1x1)
 
       // ------------------------------------ special terms due to material law
@@ -1341,8 +1353,14 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
       {
         // k_TT += - N_T^T . dC_T/dT : C' . N_T . T . N_T
         // with dC_T/dT = d(m . I)/dT = d (m(T) . I)/dT
-        //
-        // k_TT += - N_T^T . dC_T/dT : C' . N_T . T . N_T
+        /*!
+         * \f[ \texttt{econd} = \mathbf{K}_{TT} \mathrel{+}=
+         * - w_{GP} \mathbf{N} \left(\frac{1}{2} \frac{\mathrm{d}}{\mathrm{dT}} \left(\frac{\partial
+         * \mathbf{S}}{\partial T}\right) :
+         * \dot{C}\right) T_{GP} N^\top\f]
+         * What about \f$ \frac{1}{2} \frac{\partial\mathbf{S}}{\partial T}:\dot{\mathbf{C}}\f$ ? ->
+         * Comes only later (line 1494)
+         */
         econd->multiply_nt(-fac_, Ndctemp_dTCrateNT, funct_, 1.0);
       }  // (econd != nullptr)
     }
@@ -1385,6 +1403,11 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
 
     // --------------------------------------------- terms for r_T / k_TT
     // scalar product: ctempcdot = C_T : 1/2 C'
+    /*!
+     *
+     * \f[ \texttt{ctempCdot} := \frac{\partial \mathbf{S}}{\partial T} : \frac{1}{2}
+     * \dot{\mathbf{C}} \f]
+     */
     double ctempCdot = 0.0;
     for (int i = 0; i < 6; ++i) ctempCdot += ctemp(i, 0) * (1 / 2.0) * Cratevct(i, 0);
 
@@ -1396,6 +1419,10 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
       // fint += B_T^T . Q . detJ * w(gp)
       //      += B_T^T . (k_0) . C^{-1} . B_T . T . detJ . w(gp)
       // (8x1)   (8x3) (3x1)
+      /*!
+       * \f[ \texttt{efint} = \mathbf{f}_{\text{int}} \mathrel{+}=
+       * w_{GP} (\nabla N) \cdot \mathbf{Q} \f]
+       */
       efint->multiply_tn(fac_, derxy_, heatflux_, 1.0);
 
 
@@ -1413,8 +1440,15 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
         efint->update((-fac_ * He), funct_, 1.0);
       }
       else
+      {
+        /*!
+         * \f[ \texttt{efint} = \mathbf{f}_{\text{int}} \mathrel{+}=
+         * - w_{GP} \mathbf{N} \left(\frac{1}{2} \frac{\partial \mathbf{S}}{\partial T} :
+         * \dot{\mathbf{C}}\right) T_{GP} \f]
+         */
         efint->multiply((-fac_ * ctempCdot), funct_, NT, 1.0);
-      // efint += H_p term is added to fint within material call
+        // efint += H_p term is added to fint within material call
+      }
 
     }  // (efint != nullptr)
 
@@ -1427,11 +1461,24 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
       // with C_mat = k_0 . I
       // -q = C_mat . C^{-1} . B
       Core::LinAlg::Matrix<nsd_, nen_> aop(Core::LinAlg::Initialization::uninitialized);  // (3x8)
+      /**
+       * \f[ \texttt{aop} := \mathbf{k}_0 \cdot \nabla N \f]
+       *
+       */
       aop.multiply_nn(cmat_, derxy_);  // (nsd_xnsd_)(nsd_xnen_)
       Core::LinAlg::Matrix<nsd_, nen_> aop1(Core::LinAlg::Initialization::uninitialized);  // (3x8)
+      /**
+       * \f[ \texttt{aop1} := \mathbf{C}^{-1} \cdot \mathbf{k}_0 \cdot \nabla N \f]
+       *
+       */
       aop1.multiply_nn(Cinv, aop);  // (nsd_xnsd_)(nsd_xnen_)
 
       // k^e_TT += ( B_T^T . C^{-1} . C_mat . B_T ) . detJ . w(gp)
+      /**
+       * \f[ \texttt{econd} = \mathbf{K}_{TT} \mathrel{+}= w_{GP} (\nabla N)^\top \cdot
+       * \mathbf{C}^{-1} \cdot \mathbf{k}_0 \cdot \nabla N \f]
+       *
+       */
       econd->multiply_tn(fac_, derxy_, aop1, 1.0);  //(8x8)=(8x3)(3x8)
 
       // linearization of non-constant conductivity
@@ -1442,6 +1489,12 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
       CinvdCmatGradT.multiply_nn(Cinv, dCmatGradT);
       Core::LinAlg::Matrix<nsd_, nen_> CinvdCmatGradTN(Core::LinAlg::Initialization::uninitialized);
       CinvdCmatGradTN.multiply_nt(CinvdCmatGradT, funct_);
+      /**
+       * \f[ \texttt{econd} = \mathbf{k}_{TT} \mathrel{+}= w_{GP} (\nabla\mathbf{N})^\top \cdot
+       * \mathbf{C}^{-1}
+       * \cdot \frac{\partial \mathbf{k}_0}{\partial T} \cdot \nabla T \cdot \mathbf{N}\f]
+       *
+       */
       econd->multiply_tn(fac_, derxy_, CinvdCmatGradTN, 1.0);  //(8x8)=(8x3)(3x8)
       // linearization of thermo-mechanical effects
       if (structmat->material_type() == Core::Materials::m_plelasthyper)
@@ -1455,8 +1508,14 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
               1., econd->data(), -fac_, funct_.data(), plmat->d_hep_d_teas()->at(iquad).values());
       }
       else
+      {
+        /**
+         * \f[ \texttt{econd} = \mathbf{K}_{TT} \mathrel{+}=
+         * - w_{GP} \mathbf{N} \left(\frac{1}{2} \frac{\partial \mathbf{S}}{\partial T} :
+         * \dot{C}\right) N^\top\f]
+         */
         econd->multiply_nt((-fac_ * ctempCdot), funct_, funct_, 1.0);
-      // be aware: special terms of materials are added within material call
+      }
     }  // (econd != nullptr)
 
     // --------------------------------------- capacity matrix m_capa
@@ -1468,6 +1527,10 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
       //           (8x8)     (8x1)                 (1x8)
       // caution: funct_ implemented as (8,1)--> use transposed in code for
       // theoretic part
+      /**
+       * \f[ \texttt{ecapa} = \mathbf{M} \mathrel{+}= w_{GP} c_V\mathbf{N} \otimes \mathbf{N} \f]
+       *
+       */
       ecapa->multiply_nt((fac_ * capacoeff_), funct_, funct_, 1.0);
     }  // (ecapa != nullptr)
     if (ecapalin != nullptr)
@@ -1486,6 +1549,11 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
       difftemp.update(1.0, etempn_, -1.0, etemp_);
       Netemp.multiply_tn(funct_, difftemp);
       NNetemp.multiply_nn(funct_, Netemp);
+      /**
+       * \f[ \texttt{ecapalin} = \mathbf{M}_{\text{lin}} \mathrel{+}=
+       * w_{GP} \frac{\partial c_V}{\partial T} (T_{n+1} - T_n) \mathbf{N} \otimes \mathbf{N} \f]
+       *
+       */
       ecapalin->multiply_nt((fac_ * dercapa_), NNetemp, funct_, 1.0);
     }
 
