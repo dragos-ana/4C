@@ -137,10 +137,10 @@ namespace Mat
        *
        * \f[
        * \dot{\varepsilon}_p =
-       * \hat{P}\hat{E}
-       * \exp\left[
+       * \hat{P}\left[
+       * \exp\left(
        * \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
-       * \right]
+       * \right) - 1 \right]
        * \f]
        *
        * where the temperature-dependent yield stress is
@@ -161,7 +161,7 @@ namespace Mat
        * \f[
        * \frac{\partial \dot{\varepsilon}_p}{\partial \sigma_{eq}}
        * =
-       * \frac{\hat{P}\hat{E}^2}{\sigma_y}
+       * \frac{\hat{P}\hat{E}}{\sigma_y}
        * \exp\!\left[
        * \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
        * \right]
@@ -172,7 +172,7 @@ namespace Mat
        * \f[
        * \frac{\partial \dot{\varepsilon}_p}{\partial \varepsilon_p}
        * =
-       * -\hat{P}\hat{E}^2
+       * -\hat{P}\hat{E}
        * \frac{\sigma_{eq}}{\sigma_y^2}
        * \frac{\partial \sigma_y}{\partial \varepsilon_p}
        * \exp\!\left[
@@ -193,7 +193,7 @@ namespace Mat
        * \f[
        * \frac{\partial \dot{\varepsilon}_p}{\partial T}
        * =
-       * -\hat{P}\hat{E}^2
+       * -\hat{P}\hat{E}
        * \frac{\sigma_{eq}}{\sigma_y^2}
        * \frac{\partial \sigma_y}{\partial T}
        * \exp\!\left[

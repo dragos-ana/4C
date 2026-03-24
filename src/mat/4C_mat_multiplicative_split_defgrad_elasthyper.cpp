@@ -1134,6 +1134,9 @@ void Mat::MultiplicativeSplitDefgradElastHyper::stress_temperature_modulus_and_d
 {
   stm = thermal_coupling_quantities_.partialS_partialT[gp];
 
+  // just to see if the everything works with the dissipation
+  stm.fill(0.0);
+
   // we need to calculate these linearizations still (atm they're empty)
   // Obtain dF_in/dT and dF_in/dC by accumulating them from the factors.
   stm_dT = thermal_coupling_quantities_.d_dT_partialS_partialT[gp];

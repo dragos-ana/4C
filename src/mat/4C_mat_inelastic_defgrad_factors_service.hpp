@@ -208,6 +208,31 @@ namespace Mat
       std::vector<Core::LinAlg::Matrix<3, 3>> last_substep_plastic_defgrad_inverse_;
       //! plastic strain at the last computed time instant (after the last converged substep)
       std::vector<double> last_substep_plastic_strain_;
+
+
+      //! \f$ \frac{\mathrm{d} \boldsymbol{F}_{\text{p}}^{-1}}{\mathrm{d} T} \f$ at the current time
+      //! instant (for all Gauss points)
+
+      std::vector<Core::LinAlg::Matrix<9, 1>> current_diFinjdTV_;
+
+      //! \f$ \frac{\mathrm{d} \boldsymbol{F}_{\text{p}}^{-1}}{\mathrm{d} \boldsymbol{C}} \f$ at the
+      //! current time instant (for all Gauss points)
+
+      std::vector<Core::LinAlg::Matrix<9, 6>> current_diFinjdCV_;
+
+      //! Taylor-Quinney heat term \f$ R_{TQ}\f$ at the current time instant (for all Gauss points)
+      std::vector<double> current_R_TQ;
+
+      //! \f$\frac{\mathrm{d}R_{TQ}}{\mathrm{d} \boldsymbol{C}}\f$ Linearization of taylor quinney
+      //! heat w.r.t. the right Cauchy-Green deformation tensor at the current time instant (for all
+      //! Gauss points)
+
+      std::vector<Core::LinAlg::Matrix<6, 1>> current_dR_TQ_dCV_;
+
+      //! \f$\frac{\mathrm{d}R_{TQ}}{\mathrm{d} T}\f$ Linearization of taylor quinney heating w.r.t.
+      //! the temperature at the current time instant (for all Gauss points)
+
+      std::vector<double> current_dR_TQ_dT_;
     };
 
 
@@ -1702,6 +1727,12 @@ namespace Mat
 
     // display / log evaluation warnings
 #define DISPLAY_WARNINGS ;
+
+    // #define DEBUG_dLp_dT_CALCULATION
+    // #define DEBUG_dR_TQ_dT_CALCULATION
+    // #define DEBUG_USE_PERTURB_BASED_FOR_dR_TQ_dT
+    // #define DEBUG_dR_TQ_dC_CALCULATION
+
 
     // #define DEBUG_MODE ;
     // #define DEBUG_PRED_ADAPT ;

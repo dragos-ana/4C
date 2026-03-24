@@ -323,6 +323,8 @@ namespace Mat
 
       //! get ID of the viscoplasticity law
       [[nodiscard]] int viscoplastic_law_id() const { return viscoplastic_law_id_; };
+      //! get Taylor-Quinney factor \f$ \xi_{TQ}\f$
+      [[nodiscard]] double taylor_quinney_factor() const { return taylor_quinney_factor_; };
       //! get global ID of the fiber reader material
       [[nodiscard]] int fiber_reader_gid() const { return fiber_reader_gid_; };
       //! get yield condition parameter \f[ A \f]
@@ -509,6 +511,9 @@ namespace Mat
      private:
       //! ID of the viscoplasticity law
       const int viscoplastic_law_id_;
+
+      //! Taylor-Quinney factor \f$ \xi_{TQ}\f$
+      const double taylor_quinney_factor_;
 
       //! global ID of the material used for fiber reading (transversely isotropic)
       const int fiber_reader_gid_;
@@ -1605,6 +1610,38 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
         const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdT) override;
 
+    // void reinit_temperature(double temperature, unsigned gp) override
+    // {
+    //   time_step_quantities_.current_temperature_[gp] = temperature;
+    // };
+
+    [[nodiscard]] double mech_diss(const int gp) const override
+    {
+      if (time_step_quantities_.current_R_TQ.size() == 0)
+      {
+        return 0.0;
+      }
+      return time_step_quantities_.current_R_TQ[gp];
+    }
+
+    [[nodiscard]] double mech_diss_k_tt(const int gp) const override
+    {
+      if (time_step_quantities_.current_dR_TQ_dT_.size() == 0)
+      {
+        return 0.0;
+      }
+      return time_step_quantities_.current_dR_TQ_dT_[gp];
+    }
+
+    [[nodiscard]] Core::LinAlg::Matrix<6, 1> mech_diss_k_td(const int gp) const override
+    {
+      if (time_step_quantities_.current_dR_TQ_dCV_.size() == 0)
+      {
+        return Core::LinAlg::Matrix<6, 1>();
+      }
+      return time_step_quantities_.current_dR_TQ_dCV_[gp];
+    }
+
     Mat::PAR::InelasticSource get_inelastic_source() override
     {
       return PAR::InelasticSource::temperature;
@@ -1931,6 +1968,17 @@ namespace Mat
         const Core::LinAlg::Matrix<10, 1>& x, ErrorType& err_status);
 
 
+    /**
+     * @brief Structure to hold the result of the return mapping procedure, i.e., the inverse
+     * plastic deformation gradient and the plastic strain.
+     *
+     */
+    struct ReturnMappingResult
+    {
+      Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad;
+      double& plastic_strain;
+    };
+
     /*!
      * @brief Performs return mapping at each GP. It first evaluates whether the elastic predictor
      * is suitable as a solution, and performs the local time integration (Local Newton Loop)
@@ -1941,8 +1989,11 @@ namespace Mat
      * computed inelastic defgrad factors
      * @return inverse inelastic deformation gradient \boldsymbol{F}_{\text{in}}^{-1}
      */
-    Core::LinAlg::Matrix<3, 3> return_mapping(const Core::LinAlg::Matrix<3, 3>& FredM);
+    void return_mapping(const Core::LinAlg::Matrix<3, 3>& FredM, ReturnMappingResult result);
 
+    void evaluate_history_variables(const Core::LinAlg::Matrix<3, 3>* defgrad,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const double& temperature,
+        Core::LinAlg::Matrix<3, 3>& iFinM, double& plastic_strain);
 
     /*!
      * @brief Compute the plastic strain \f$
@@ -2087,6 +2138,14 @@ namespace Mat
         Core::LinAlg::Matrix<6, 6>& cmatadd, const Core::LinAlg::Matrix<3, 3>& iFin_other,
         const Core::LinAlg::Matrix<6, 9>& dSdiFinj);
 
+    void evaluate_taylor_quinney_lin_wrt_cauchygreen_perturb_based(
+        const Core::LinAlg::Matrix<3, 3>& FredM, const double& R_TQ,
+        Core::LinAlg::Matrix<6, 1>& dR_TQ_dC_FD, const Core::LinAlg::Matrix<3, 3>& iFin_other);
+
+    double evaluate_taylor_quinney_lin_wrt_temperature_perturb_based(
+        const Core::LinAlg::Matrix<3, 3>& FredM, const Core::LinAlg::Matrix<3, 3>& iFin_other,
+        const double perturbation_factor);
+
     /*!
      * @brief Get an extensive error message to be displayed when the
      * simulation terminates. This is used for debugging the time
@@ -2098,7 +2157,7 @@ namespace Mat
      * @param[in] base_error_string base error message to be extended
      * with further information
      */
-    std::string debug_get_error_info(const std::string& base_error_string);
+    std::string debug_get_error_info(const std::string& base_error_string) const;
 
 
     // benchmarking procedure: runs a specific function in a loop until the
@@ -2106,7 +2165,7 @@ namespace Mat
     template <typename Func, typename... Args>
     double benchmark_function(std::string func_descr, Teuchos::Time& func_timer,
         const double relative_tol, bool& increment_timint_analysis_vars, int& num_of_required_iters,
-        Func&& func, Args&&... args)
+        Func&& func, Args&&... args) const
     {
       // average computation time (current iteration)
       double avg_time = 0.0;

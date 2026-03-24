@@ -2744,6 +2744,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
             parameter<int>(
                 "FIBER_READER_ID", {.description = "MAT ID of the used fiber direction reader for "
                                                    "transversely isotropic behavior"}),
+            parameter<double>("TAYLOR_QUINNEY_FACTOR",
+                {.description = "Taylor-Quinney factor xi_{TQ} modeling the internal dissipation",
+                    .default_value = 0.0,
+                    .validator =
+                        Core::IO::InputSpecBuilders::Validators::positive_or_zero<double>()}),
             parameter<double>(
                 "YIELD_COND_A", {.description = "transversely isotropic version of the Hill(1948) "
                                                 "yield condition: parameter A, "
