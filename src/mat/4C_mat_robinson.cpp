@@ -12,6 +12,7 @@
 #include "4C_linalg_fixedsizematrix_solver.hpp"
 #include "4C_linalg_serialdensematrix.hpp"
 #include "4C_linalg_serialdensevector.hpp"
+#include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_matrix_conversion.hpp"
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
 #include "4C_mat_par_bundle.hpp"
@@ -527,10 +528,12 @@ void Mat::Robinson::reinit(const Core::LinAlg::Tensor<double, 3, 3>* defgrd,
  *----------------------------------------------------------------------*/
 void Mat::Robinson::stress_temperature_modulus_and_deriv(
     Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
-    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp)
+    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+    Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, const int gp)
 {
   stm = {};
   stm_dT = {};
+  stm_dC = {};
 }
 
 /*----------------------------------------------------------------------*

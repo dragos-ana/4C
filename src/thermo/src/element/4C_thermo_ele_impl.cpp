@@ -16,10 +16,13 @@
 #include "4C_fem_nurbs_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_inpar_structure.hpp"
+#include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_fixedsizematrix_solver.hpp"
 #include "4C_linalg_symmetric_tensor.hpp"
+#include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_linalg_tensor_matrix_conversion.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
 #include "4C_mat_plasticelasthyper.hpp"
 #include "4C_mat_thermoplastichyperelast.hpp"
 #include "4C_mat_thermoplasticlinelast.hpp"
@@ -31,9 +34,11 @@
 #include "4C_utils_enum.hpp"
 #include "4C_utils_function.hpp"
 
+#include <Teuchos_ParameterList.hpp>
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
 #include <algorithm>
+#include <memory>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -977,7 +982,8 @@ void Discret::Elements::TemperImpl<distype>::linear_disp_contribution(
       Core::LinAlg::SymmetricTensor<double, 3, 3> dctemp_dT_t{};
       Core::LinAlg::Matrix<6, 1> dctemp_dT = Core::LinAlg::make_stress_like_voigt_view(dctemp_dT_t);
       thermoSolid->reinit(nullptr, Core::LinAlg::TensorGenerators::full<3, 3>(0.0), NT(0), iquad);
-      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT_t, iquad);
+      Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3> dctemp_dC;
+      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT_t, dctemp_dC, iquad);
 
       Core::LinAlg::Matrix<nen_, 6> Ndctemp_dT(
           Core::LinAlg::Initialization::uninitialized);  // (8x1)(1x6)
@@ -1058,15 +1064,6 @@ void Discret::Elements::TemperImpl<distype>::linear_coupled_tang(
   // get node coordinates
   Core::Geo::fill_initial_position_array<distype, nsd_, Core::LinAlg::Matrix<nsd_, nen_>>(
       ele, xyze_);
-
-  // now get current element displacements and velocities
-  Core::LinAlg::Matrix<nen_ * nsd_, 1> edisp(Core::LinAlg::Initialization::uninitialized);
-  Core::LinAlg::Matrix<nen_ * nsd_, 1> evel(Core::LinAlg::Initialization::uninitialized);
-  for (int i = 0; i < nen_ * nsd_; i++)
-  {
-    edisp(i, 0) = disp[i + 0];
-    evel(i, 0) = vel[i + 0];
-  }
 
   // ------------------------------------------------ initialise material
 
@@ -1165,8 +1162,9 @@ void Discret::Elements::TemperImpl<distype>::linear_coupled_tang(
     if (thermoSolid != nullptr)
     {
       Core::LinAlg::SymmetricTensor<double, 3, 3> dctemp_dT;
+      Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3> dctemp_dC;
       thermoSolid->reinit(nullptr, Core::LinAlg::TensorGenerators::full<3, 3>(0.0), NT(0), iquad);
-      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT, iquad);
+      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT, dctemp_dC, iquad);
     }
     else if (structmat->material_type() == Core::Materials::m_thermopllinelast)
     {
@@ -1313,9 +1311,21 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_thermo_disp_contribution(
     {
       Core::LinAlg::SymmetricTensor<double, 3, 3> dctemp_dT_t{};
       Core::LinAlg::Matrix<6, 1> dctemp_dT = Core::LinAlg::make_stress_like_voigt_view(dctemp_dT_t);
+      Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3> dctemp_dC;
+      /// set temperature in the solid material to current temperature at the Gauss point
       thermoSolid->reinit(nullptr, Core::LinAlg::TensorGenerators::full<3, 3>(0.0), NT(0), iquad);
-      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT_t, iquad);
+      ///
+      /// obtain = \f$\texttt{ctemp\_t} = \frac{\partial \mathbf{S}}{\partial T} \f$ and
+
+      /// \f$\texttt{dctemp\_dT\_t} = \frac{\mathrm{d}}{\mathrm{dT}} \left(\frac{\partial
+      /// \mathbf{S}}{\partial T}\right) \f$
+      ///
+      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT_t, dctemp_dC, iquad);
       // scalar product: dctemp_dTCdot = dC_T/dT : 1/2 C'
+
+      /// \f$ \texttt{dctemp\_dTCdot} := \frac{\partial \mathbf{S}}{\partial T} : \frac{1}{2}
+      /// \dot{\mathbf{C}} \f$
+
       double dctemp_dTCdot = 0.0;
       for (int i = 0; i < 6; ++i)
         dctemp_dTCdot += dctemp_dT(i, 0) * (1 / 2.0) * Cratevct(i, 0);  // (6x1)(6x1)
@@ -1517,6 +1527,7 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_coupled_tang(
     }
     case Thermo::DynamicType::OneStepTheta:
     {
+      // I think this assumes that C_T is independent of d, which is not the case generally!
       // k^e_Td += + theta . N_T^T . (-C_T) . 1/2 dC'/dd . N_T . T . detJ . w(gp) -
       //           - theta . ( B_T^T . C_mat . dC^{-1}/dd . B_T . T . detJ . w(gp) )
       //           - theta . N^T_T . N_T . T . 1/Dt . dthplheat_kTd/dd
@@ -1714,8 +1725,14 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_coupled_tang(
     if (thermoSolid != nullptr)
     {
       Core::LinAlg::SymmetricTensor<double, 3, 3> dctemp_dT;
+
+      /// \f$ \frac{\mathrm{d}}{\mathrm{d\mathbf{C}}} \left(\frac{\partial \mathbf{S}}{\partial
+      /// T}\right) \f$
+      /// is not used so far!
+
+      Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3> dctemp_dC;
       thermoSolid->reinit(nullptr, Core::LinAlg::TensorGenerators::full<3, 3>(0.0), NT(0), iquad);
-      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT, iquad);
+      thermoSolid->stress_temperature_modulus_and_deriv(ctemp_t, dctemp_dT, dctemp_dC, iquad);
     }
     if (structmat->material_type() == Core::Materials::m_thermoplhyperelast)
     {

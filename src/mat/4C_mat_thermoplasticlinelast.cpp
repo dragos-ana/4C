@@ -827,10 +827,12 @@ void Mat::ThermoPlasticLinElast::reinit(const Core::LinAlg::Tensor<double, 3, 3>
  *----------------------------------------------------------------------*/
 void Mat::ThermoPlasticLinElast::stress_temperature_modulus_and_deriv(
     Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
-    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp)
+    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+    Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, int gp)
 {
   setup_cthermo(stm);
   stm_dT = Core::LinAlg::TensorGenerators::full<3, 3>(0.0);
+  stm_dC.fill(0.0);
 }
 
 /*----------------------------------------------------------------------*

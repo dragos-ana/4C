@@ -207,7 +207,8 @@ namespace Mat
         const Teuchos::ParameterList& params, int gp, int eleGID) override;
 
     void stress_temperature_modulus_and_deriv(Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
-        Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp) override;
+        Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+        Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, int gp) override;
 
     //! general thermal tangent of material law depending on stress-temperature modulus
     static void fill_cthermo(Core::LinAlg::SymmetricTensor<double, 3, 3>& ctemp, double m);

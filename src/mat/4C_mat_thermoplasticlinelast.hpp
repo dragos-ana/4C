@@ -249,7 +249,8 @@ namespace Mat
         unsigned gp) override;
 
     void stress_temperature_modulus_and_deriv(Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
-        Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp) override;
+        Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+        Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, int gp) override;
 
     Core::LinAlg::SymmetricTensor<double, 3, 3> evaluate_d_stress_d_scalar(
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,

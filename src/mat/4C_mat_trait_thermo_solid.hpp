@@ -8,9 +8,12 @@
 #include "4C_config.hpp"
 
 #include "4C_linalg_symmetric_tensor.hpp"
+#include "4C_linalg_tensor.hpp"
 #include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_trait_solid.hpp"
 #include "4C_mat_trait_thermo.hpp"
+
+#include <Teuchos_ParameterList.hpp>
 
 #ifndef FOUR_C_MAT_TRAIT_THERMO_SOLID_HPP
 #define FOUR_C_MAT_TRAIT_THERMO_SOLID_HPP
@@ -21,7 +24,7 @@ namespace Mat
 {
   namespace Trait
   {
-    class ThermoSolid : public Thermo, public Solid, public MonolithicSolidScalarMaterial
+    class ThermoSolid : public Thermo, public MonolithicSolidScalarMaterial
     {
      public:
       /*!
@@ -40,13 +43,24 @@ namespace Mat
 
       /*!
        * Return stress-temperature modulus and thermal derivative for coupled thermomechanics
+        \f$\texttt{stm} = \frac{\partial \mathbf{S}}{\partial T}\f$
+
+        \f$ \texttt{stm\_dT} = \frac{\mathrm{d}}{\mathrm{d} T}\left(\frac{\partial
+       \mathbf{S}}{\partial T}\right)\f$
+
+
+        \f$\texttt{stm\_dC} = \frac{\mathrm{d}}{\mathrm{d} \mathbf{C}}
+       \left(\frac{\partial \mathbf{S}}{\partial T}\right)\f$
+       -> this term is currently not used in the thermo element.
        *
        * @param stm tensor to be filled with stress-temperature moduli
-       * @param stm_deriv tensor to be filled with derivatives
+       * @param stm_dT tensor to be filled with linearization wrt temperature
+       * @param stm_dC tensor to be filled with linearization wrt. Cauchy-Green tensor
        */
       virtual void stress_temperature_modulus_and_deriv(
           Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
-          Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp) = 0;
+          Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+          Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, const int gp) = 0;
     };
   }  // namespace Trait
 }  // namespace Mat

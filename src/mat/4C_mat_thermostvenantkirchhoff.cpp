@@ -307,10 +307,12 @@ Mat::ThermoStVenantKirchhoff::evaluate_d_stress_d_scalar(
 
 void Mat::ThermoStVenantKirchhoff::stress_temperature_modulus_and_deriv(
     Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
-    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp)
+    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+    Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, int gp)
 {
   setup_cthermo(stm);
   get_cthermo_at_tempnp_t(stm_dT);
+  stm_dC.fill(0.0);
 }
 
 /*----------------------------------------------------------------------*
