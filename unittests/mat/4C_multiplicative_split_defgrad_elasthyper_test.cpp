@@ -127,6 +127,7 @@ namespace
       multiplicativeSplitDefgradData.add("THERMAL_EXPANSION_FAC", 0.1);
       multiplicativeSplitDefgradData.add(
           "THERMAL_EXPANSION_MAT_TYPE", Mat::ThermalExpansionMaterialType::isotropic);
+      multiplicativeSplitDefgradData.add("TAYLOR_QUINNEY_FACTOR", 0.0);
 
       // get pointer to parameter class
       parameters_multiplicative_split_defgrad_ =
@@ -548,11 +549,12 @@ namespace
     stress_fact.gamma = gamma_ref_;
     stress_fact.delta = delta_ref_;
 
-    Mat::ThermalQuantities thermal_quant;
+    Mat::ThermalQuantities thermal_quantities;
     Mat::StressFactors thermal_stress_factors;
+    Core::LinAlg::Voigt::identity_matrix(thermal_quantities.CTV);  // no thermal contribution
 
     Core::LinAlg::Matrix<6, 9> dSdiFin = multiplicative_split_defgrad_->evaluated_sdi_fin(
-        kinemat_quant, stress_fact, thermal_quant, thermal_stress_factors);
+        kinemat_quant, stress_fact, thermal_quantities, thermal_stress_factors);
 
     FOUR_C_EXPECT_NEAR(dSdiFin, dSdiFin_ref_, 1.0e-10);
   }

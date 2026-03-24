@@ -370,6 +370,7 @@ namespace
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("YIELD_COND_A", 1.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("YIELD_COND_B", 2.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("YIELD_COND_F", 2.5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("TAYLOR_QUINNEY_FACTOR", 0.0);
 
       // get pointer to parameter class
       params_transv_isotrop_vplast_refJC_ =
@@ -448,6 +449,7 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add("YIELD_COND_A", 1.0);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("YIELD_COND_B", 2.0);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("YIELD_COND_F", 2.5);
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("TAYLOR_QUINNEY_FACTOR", 0.0);
 
 
 
@@ -1371,6 +1373,7 @@ namespace
       inelastic_defgrad_isotrop_thermo_vplast_data.add("YIELD_COND_A", 0.0e+00);
       inelastic_defgrad_isotrop_thermo_vplast_data.add("YIELD_COND_B", 0.0e+00);
       inelastic_defgrad_isotrop_thermo_vplast_data.add("YIELD_COND_F", 0.0e+00);
+      inelastic_defgrad_isotrop_thermo_vplast_data.add("TAYLOR_QUINNEY_FACTOR", 0.0);
 
 
       // get pointer to parameter class
@@ -1558,6 +1561,7 @@ namespace
       inelastic_defgrad_debug_vplast_data.add("YIELD_COND_A", 0.0e+00);
       inelastic_defgrad_debug_vplast_data.add("YIELD_COND_B", 0.0e+00);
       inelastic_defgrad_debug_vplast_data.add("YIELD_COND_F", 0.0e+00);
+      inelastic_defgrad_debug_vplast_data.add("TAYLOR_QUINNEY_FACTOR", 0.0);
 
 
       // get pointer to parameter class
@@ -2341,15 +2345,15 @@ namespace
     M_theta_dev_ref_(2, 1) = 0.0000000000000000;
     M_theta_dev_ref_(2, 2) = -184.2691332680624328;
     Core::LinAlg::Matrix<3, 3> dM_theta_dev_dT_ref_{Core::LinAlg::Initialization::zero};
-    dM_theta_dev_dT_ref_(0, 0) = -90.5551169203070572;
+    dM_theta_dev_dT_ref_(0, 0) = -45.2775584601535286;
     dM_theta_dev_dT_ref_(0, 1) = 0.0000000000000000;
     dM_theta_dev_dT_ref_(0, 2) = 0.0000000000000000;
     dM_theta_dev_dT_ref_(1, 0) = 0.0000000000000000;
-    dM_theta_dev_dT_ref_(1, 1) = 45.2775584601534931;
+    dM_theta_dev_dT_ref_(1, 1) = 22.6387792300767465;
     dM_theta_dev_dT_ref_(1, 2) = 0.0000000000000000;
     dM_theta_dev_dT_ref_(2, 0) = 0.0000000000000000;
     dM_theta_dev_dT_ref_(2, 1) = 0.0000000000000000;
-    dM_theta_dev_dT_ref_(2, 2) = 45.2775584601535002;
+    dM_theta_dev_dT_ref_(2, 2) = 22.6387792300767501;
 
 
 
@@ -2563,6 +2567,7 @@ namespace
     multiplicativeSplitDefgradData.add("THERMAL_EXPANSION_FAC", 0.1);
     multiplicativeSplitDefgradData.add(
         "THERMAL_EXPANSION_MAT_TYPE", Mat::ThermalExpansionMaterialType::isotropic);
+    multiplicativeSplitDefgradData.add("TAYLOR_QUINNEY_FACTOR", 0.0);
 
 
 
@@ -2664,6 +2669,7 @@ namespace
         kin_quantities.dPIe, kin_quantities.ddPIIe);
 
     Mat::ThermalQuantities thermal_quantities{};
+    Core::LinAlg::Voigt::identity_matrix(thermal_quantities.CTV);  // no thermal contribution
     Mat::StressFactors thermal_stress_factors{};
     Core::LinAlg::Matrix<6, 9> dSdiFinj = multiplicative_split_defgrad->evaluated_sdi_fin(
         kin_quantities, stress_factors, thermal_quantities, thermal_stress_factors);
