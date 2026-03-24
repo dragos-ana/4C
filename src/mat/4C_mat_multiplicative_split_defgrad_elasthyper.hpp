@@ -12,12 +12,19 @@
 
 #include "4C_comm_parobjectfactory.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
+#include "4C_linalg_symmetric_tensor.hpp"
+#include "4C_linalg_tensor.hpp"
+#include "4C_linalg_tensor_generators.hpp"
 #include "4C_mat_anisotropy.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_so3_material.hpp"
+#include "4C_mat_thermomechanical.hpp"
 #include "4C_material_parameter_base.hpp"
+#include "4C_utils_exceptions.hpp"
+
+#include <vector>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -186,8 +193,7 @@ namespace Mat
     that are needed to set up the system to be solved are evaluated in the derived classes
     of the interface class 'InelasticDefgradFactors'.
 */
-  class MultiplicativeSplitDefgradElastHyper : public So3Material,
-                                               public MonolithicSolidScalarMaterial
+  class MultiplicativeSplitDefgradElastHyper : public So3Material, public Trait::ThermoSolid
   {
    public:
     /// construct empty material object
@@ -235,6 +241,128 @@ namespace Mat
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, int gp, int eleGID) override;
+
+    void reinit(const Core::LinAlg::Tensor<double, 3, 3>* defgrd,
+        const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain, double temperature,
+        unsigned gp) override { /* do nothing */ };
+
+    void stress_temperature_modulus_and_deriv(Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
+        Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+        Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, const int gp) override;
+
+    /**
+     * @brief Return mechanical dissipation at GP \f$R_{TQ}\f$
+     *
+     * @param gp
+     * @return double
+     */
+    [[nodiscard]] double mech_diss(const int gp) const;
+
+    /**
+     * @brief Return linearization of mechanical dissipation at GP w.r.t. temperature
+     * \f$\frac{\mathrm{d} R_{TQ}}{\mathrm{d} T}\f$
+     *
+     * @param gp
+     * @return double
+     */
+    [[nodiscard]] double mech_diss_k_tt(const int gp) const;
+
+    /**
+     * @brief Return Linearization of mechanical dissipation at GP w.r.t. Green-Lagrange strain.
+     *
+     * @param gp
+     * @return Core::LinAlg::Matrix<6, 1>
+     */
+    [[nodiscard]] Core::LinAlg::Matrix<6, 1> mech_diss_k_td(const int gp) const;
+
+
+    // ******** ALL FUNCTIONS IN THIS BLOCK SHOULD NOT BE HERE **************
+    // They are only required due to some dead inheritance in the ThermoSolid Trait
+
+    //! Main material call to determine heat flux and constitutive tensor in 3D
+    void evaluate(
+        const Core::LinAlg::Matrix<3, 1>& gradtemp,  ///< temperature gradient (strain tensor)
+        Core::LinAlg::Matrix<3, 3>& cmat,            ///< constitutive matrix
+        Core::LinAlg::Matrix<3, 1>& heatflux,        ///< heatflux
+        const int eleGID) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    //! Main material call to determine heat flux and constitutive tensor in 2D
+    void evaluate(
+        const Core::LinAlg::Matrix<2, 1>& gradtemp,  ///< temperature gradient (strain tensor)
+        Core::LinAlg::Matrix<2, 2>& cmat,            ///< constitutive matrix
+        Core::LinAlg::Matrix<2, 1>& heatflux,        ///< heatflux
+        const int eleGID) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    //********** All of the following new functions are only an d
+    // artifact, we should not need them. Indeed the ThermoSolid Trait
+    // should be changed and not require to implement these methods anymore! */
+
+    //! Main material call to determine heat flux and constitutive tensor in 1D
+    void evaluate(
+        const Core::LinAlg::Matrix<1, 1>& gradtemp,  ///< temperature gradient (strain tensor)
+        Core::LinAlg::Matrix<1, 1>& cmat,            ///< constitutive matrix
+        Core::LinAlg::Matrix<1, 1>& heatflux,        ///< heatflux
+        const int eleGID) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+
+    //! @brief get conductivity
+    std::vector<double> conductivity(int eleGID = 0) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    //! @name Derivatives of conductivity tensor
+    //! @{
+
+    //! @brief Derivative of conductivity tensor wrt to temperature
+    void conductivity_deriv_t(Core::LinAlg::Matrix<3, 3>& dCondDT) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    void conductivity_deriv_t(Core::LinAlg::Matrix<2, 2>& dCondDT) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    void conductivity_deriv_t(Core::LinAlg::Matrix<1, 1>& dCondDT) const override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    //! @}
+
+    //! @brief get volumetric heat capacity
+    //!
+    //! @pre the state must be set by Reinit() if necessary
+    double capacity() const override { FOUR_C_THROW("You should not be here"); };
+
+    //! @brief get derivative of volumetric heat capacity wrt temperature
+    //!
+    //! @pre state must be set by Reinit() if necessary.
+    double capacity_deriv_t() const override { FOUR_C_THROW("You should not be here"); };
+
+    //! Set necessary variables for Evaluation
+    void reinit(double temperature, unsigned gp) override
+    {
+      FOUR_C_THROW("You should not be here");
+    };
+
+    //! reset current state e.g. due to Newton failed
+    void reset_current_state() override { FOUR_C_THROW("You should not be here"); };
+
+    //! persist currently set state to history
+    void commit_current_state() override { FOUR_C_THROW("You should not be here"); };
+    //************************************************************************
 
     double evaluate_cauchy_n_dir_and_derivatives(const Core::LinAlg::Tensor<double, 3, 3>& defgrd,
         const Core::LinAlg::Tensor<double, 3>& n, const Core::LinAlg::Tensor<double, 3>& dir,
@@ -427,10 +555,37 @@ namespace Mat
     /// map to elastic materials/potential summands (only transversely isotropic)
     std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>> potsumel_transviso_;
 
+    /**
+     * @brief Struct holding all quantities that are calculated during the solid evaluation but are
+     * only used during the thermo evaluation
+     *
+     */
+    struct ThermalCouplingQuantities
+    {
+      std::vector<Core::LinAlg::Tensor<double, 3, 3>> defgrad;
+      std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> partialS_partialT;
+      std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> d_dT_partialS_partialT;
+      std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>> d_dC_partialS_partialT;
+
+      // Resize the vectors to the number of gauss points and set default values for defgrad
+      void setup(int numgp)
+      {
+        defgrad.resize(
+            numgp, Core::LinAlg::get_full(Core::LinAlg::TensorGenerators::identity<double, 3, 3>));
+        partialS_partialT.resize(numgp);
+        d_dT_partialS_partialT.resize(numgp);
+        d_dC_partialS_partialT.resize(numgp);
+      }
+    };
+
+    // Struct holding all quantities that are calculated during the solid evaluation but are only
+    // used during the thermo evaluation
+    ThermalCouplingQuantities thermal_coupling_quantities_;
+
     Mat::KinematicQuantities evaluate_kinematic_quantities(
         const Mat::MultiplicativeSplitDefgradElastHyper& splitdefgrd,
         Mat::InelasticFactorsHandler& inelastic_factors_handler,
-        const Core::LinAlg::Matrix<3, 3>& defgrad, const int gp, const int eleGID);
+        const Core::LinAlg::Matrix<3, 3>& defgrad, const int gp, const int eleGID) const;
   };
 
 }  // namespace Mat

@@ -2349,7 +2349,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_non_repeat_tasks
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::calculate_gamma_delta(
     const Core::LinAlg::Matrix<3, 3>& CeM, Core::LinAlg::Matrix<3, 1>& gamma,
-    Core::LinAlg::Matrix<8, 1>& delta)
+    Core::LinAlg::Matrix<8, 1>& delta) const
 {
   // compute principal values
   Core::LinAlg::Matrix<3, 1> prinv(Core::LinAlg::Initialization::zero);
@@ -2380,7 +2380,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::calculate_gamma_delta(
 StateQuantities Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<3, 3>& iFinM,
     const double plastic_strain, ErrorType& err_status, const double dt,
-    const StateQuantityEvalType& eval_type)
+    const StateQuantityEvalType& eval_type) const
 {
   StateQuantities state_quantities{};
 
@@ -2625,7 +2625,7 @@ StateQuantityDerivatives
 Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_derivatives(
     const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<3, 3>& iFinM,
     const double plastic_strain, ErrorType& err_status, const double dt,
-    const StateQuantityDerivEvalType& eval_type, const bool eval_state)
+    const StateQuantityDerivEvalType& eval_type, const bool eval_state) const
 {
   StateQuantityDerivatives state_quantity_derivatives{};
 
@@ -3311,7 +3311,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_od_stiff_mat(
 
 
     // if we get singular Jacobian: throw exception -> go to FD-based linearization
-    FOUR_C_ASSERT_ALWAYS(abs(jacMat.determinant()) < 1.0e-10,
+    FOUR_C_ASSERT_ALWAYS(abs(jacMat.determinant()) > 1.0e-10,
         "Singular Jacobian in off-diagonal stiffness evaluation! Jacobian determinant: {}",
         abs(jacMat.determinant()));
 

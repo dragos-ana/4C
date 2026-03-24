@@ -346,14 +346,15 @@ namespace Mat
         CT, thermal_gamma, thermal_delta, hyperelast_stress, hyperelast_stiffness);
 
 
-    // compute derivative \f$ \frac{\partial \mathbf{S}_{\theta}}{\partial T} \f$
+    /// compute derivative \f$ \frac{\partial \mathbf{S}_{\theta}}{\partial T} \f$
+
     Core::LinAlg::Matrix<6, 1> pStheta_pT_stress{Core::LinAlg::Initialization::zero};
     pStheta_pT_stress.multiply_nn(1.0, hyperelast_stiffness, dCTdTV, 0.0);
     Core::LinAlg::Matrix<3, 3> pStheta_pT{Core::LinAlg::Initialization::zero};
     Core::LinAlg::Voigt::Stresses::vector_to_matrix(pStheta_pT_stress, pStheta_pT);
 
-    // compute product \f$ \mathbf{F}_{\text{in}}^{-1}  \frac{\partial \mathbf{S}_{\theta}}{\partial
-    // T} \mathbf{F}_{\text{in}}^{-T} \f$
+    /// compute product \f$ \mathbf{F}_{\text{in}}^{-1}  \frac{\partial
+    /// \mathbf{S}_{\theta}}{\partial T} \mathbf{F}_{\text{in}}^{-T} \f$
     Core::LinAlg::Matrix<3, 3> iFin_pStheta_pT{Core::LinAlg::Initialization::zero};
     iFin_pStheta_pT.multiply_nn(1.0, iFinM, pStheta_pT, 0.0);
     Core::LinAlg::Matrix<3, 3> iFin_pStheta_pT_iFinT{Core::LinAlg::Initialization::zero};

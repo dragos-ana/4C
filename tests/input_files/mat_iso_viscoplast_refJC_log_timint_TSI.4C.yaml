@@ -12,7 +12,7 @@ TITLE:
   - "of the Lithium Anode in Solid-State Batteries"
   - "(Master's Thesis, Institute for Computational Mechanics, TU Munich, 2024)"
 PROBLEM TYPE:
-  PROBLEMTYPE: "Structure"
+  PROBLEMTYPE: "Thermo_Structure_Interaction"
 IO:
   STRUCT_STRESS: "Cauchy"
   STRUCT_STRAIN: "LOG"
@@ -32,8 +32,52 @@ STRUCTURAL DYNAMIC:
   TOLDISP: 1e-08
   NEGLECTINERTIA: true
   LINEAR_SOLVER: 1
+THERMAL DYNAMIC:
+  DYNAMICTYPE: OneStepTheta
+  RESULTSEVERY: 1
+  RESTARTEVERY: 1
+  INITIALFIELD: zero_field
+  INITFUNCNO: -1
+  TIMESTEP: 0.05
+  NUMSTEP: 200
+  MAXTIME: 5
+  TOLTEMP: 1e-10
+  NORM_TEMP: Abs
+  TOLRES: 1e-8
+  NORM_RESF: Abs
+  NORMCOMBI_RESFTEMP: And
+  MAXITER: 50
+  MINITER: 0
+  ITERNORM: L2
+  DIVERCONT: stop
+  MAXDIVCONREFINEMENTLEVEL: 10
+  NLNSOL: fullnewton
+  PREDICT: ConstTemp
+  ADAPTCONV: false
+  ADAPTCONV_BETTER: 0.1
+  LUMPCAPA: false
+  LINEAR_SOLVER: 1
+  CALCERROR: "No"
+  CALCERRORFUNCNO: -1
+TSI DYNAMIC:
+  COUPALGO: tsi_monolithic
+  MATCHINGGRID: true
+  RESTARTEVERY: 1
+  NUMSTEP: 100000000
+  MAXTIME: 0.001
+  TIMESTEP: 0.0001 # 0.05 yields a really strange error
+  ITEMAX: 10
+  ITEMIN: 0
+  RESULTSEVERY: 1
+  NORM_INC: Abs
+TSI DYNAMIC/MONOLITHIC:
+  LINEAR_SOLVER: 2
 SOLVER 1:
   SOLVER: "UMFPACK"
+SOLVER 2:
+  SOLVER: Belos
+  SOLVER_XML_FILE: "xml/linear_solver/iterative_gmres_template.xml"
+  TEKO_XML_FILE: "xml/block_preconditioner/thermo_solid.xml"
 MATERIALS:
   - MAT: 1
     MAT_MultiplicativeSplitDefgradElastHyper:
@@ -43,7 +87,7 @@ MATERIALS:
       INELDEFGRADFACIDS: [3]
       DENS: 7830
       REF_TEMPERATURE: 100
-      THERMAL_EXPANSION_FAC: 0.001
+      THERMAL_EXPANSION_FAC: 0
   - MAT: 2
     ELAST_CoupNeoHooke:
       YOUNG: 200000
@@ -77,6 +121,19 @@ MATERIALS:
   - MAT: 100
     ELAST_StructuralTensor:
       STRATEGY: "Standard"
+
+  - MAT: 10
+    MAT_Fourier:
+      CAPA: 2
+      CONDUCT:
+        constant: [1]
+
+CLONING MATERIAL MAP:
+  - SRC_FIELD: structure
+    SRC_MAT: 1
+    TAR_FIELD: thermo
+    TAR_MAT: 10
+
 FUNCT1:
   - SYMBOLIC_FUNCTION_OF_SPACE_TIME: "a"
   - VARIABLE: 0
@@ -192,6 +249,12 @@ DESIGN SURF DIRICH CONDITIONS:
     ONOFF: [0, 1, 0]
     VAL: [0, 0, 0]
     FUNCT: [null, null, null]
+DESIGN SURF THERMO DIRICH CONDITIONS:
+  - E: 1
+    NUMDOF: 1
+    ONOFF: [1]
+    VAL: [0]
+    FUNCT: [0]
 DNODE-NODE TOPOLOGY:
   - "NODE 2 DNODE 1"
   - "NODE 1 DNODE 2"
@@ -233,4 +296,4 @@ NODE COORDS:
   - "NODE 7 COORD 5.0000000000000000e-01 5.0000000000000000e-01 -5.0000000000000000e-01"
   - "NODE 8 COORD 5.0000000000000000e-01 5.0000000000000000e-01 5.0000000000000000e-01"
 STRUCTURE ELEMENTS:
-  - "1 SOLID HEX8 1 2 3 4 5 6 7 8 MAT 1 KINEM nonlinear FIBER1 0 0 1.0"
+  - "1 SOLIDSCATRA HEX8 1 2 3 4 5 6 7 8 MAT 1 KINEM nonlinear FIBER1 0 0 1.0 TYPE Undefined"

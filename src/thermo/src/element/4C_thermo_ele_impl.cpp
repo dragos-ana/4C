@@ -209,7 +209,8 @@ int Discret::Elements::TemperImpl<distype>::evaluate(
     // tangent ctemp
     plasticmat_ = false;
     if ((structmat->material_type() == Core::Materials::m_thermopllinelast) or
-        (structmat->material_type() == Core::Materials::m_thermoplhyperelast))
+        (structmat->material_type() == Core::Materials::m_thermoplhyperelast) or
+        (structmat->material_type() == Core::Materials::m_multiplicative_split_defgrad_elasthyper))
       plasticmat_ = true;
   }  // (la.Size > 1)
 
@@ -2203,37 +2204,31 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_dissipation_fint_tang(
   Core::Geo::fill_initial_position_array<distype, nsd_, Core::LinAlg::Matrix<nsd_, nen_>>(
       ele, xyze_);
 
-  // update element geometry
-  Core::LinAlg::Matrix<nen_, nsd_> xrefe;  // material coord. of element
-  Core::LinAlg::Matrix<nen_, nsd_> xcurr;  // current  coord. of element
-
-  // now get current element displacements and velocities
-  auto nodes = ele->nodes();
-  for (int i = 0; i < nen_; ++i)
-  {
-    const auto& x = nodes[i]->x();
-    // (8x3) = (nen_xnsd_)
-    for (int j = 0; j < nsd_; ++j)
-    {
-      xrefe(i, j) = x[j];
-      xcurr(i, j) = x[j] + disp[i * nsd_ + j];
-    }
-  }
-
-  // --------------------------------------------------------------- initialise
-  // thermal material tangent
-  Core::LinAlg::Matrix<6, 1> ctemp(Core::LinAlg::Initialization::zero);
-
   // ------------------------------------------------------ structural material
   std::shared_ptr<Core::Mat::Material> structmat = get_str_material(ele);
 
-  if (structmat->material_type() != Core::Materials::m_thermoplhyperelast)
+  // store possible pointers for specific material types for later use
+  std::shared_ptr<Mat::ThermoPlasticHyperElast> thermoplhyperelast;
+  std::shared_ptr<Mat::MultiplicativeSplitDefgradElastHyper>
+      multiplicative_split_defgrad_elast_hyper_ptr;
+
+  if (structmat->material_type() == Core::Materials::m_thermoplhyperelast)
   {
-    FOUR_C_THROW("So far dissipation only for ThermoPlasticHyperElast material!");
+    thermoplhyperelast = std::dynamic_pointer_cast<Mat::ThermoPlasticHyperElast>(structmat);
+    // true: error if cast fails
   }
-  std::shared_ptr<Mat::ThermoPlasticHyperElast> thermoplhyperelast =
-      std::dynamic_pointer_cast<Mat::ThermoPlasticHyperElast>(structmat);
-  // true: error if cast fails
+  else if (structmat->material_type() == Core::Materials::m_multiplicative_split_defgrad_elasthyper)
+  {
+    multiplicative_split_defgrad_elast_hyper_ptr =
+        std::dynamic_pointer_cast<Mat::MultiplicativeSplitDefgradElastHyper>(structmat);
+    // true: error if cast fails
+  }
+  else
+  {
+    FOUR_C_THROW(
+        "So far dissipation only for ThermoPlasticHyperElast and "
+        "MultiplicativeSplitDefgradElastHyper materials!");
+  }
 
   // --------------------------------------------------------- time integration
   // get step size dt
@@ -2258,10 +2253,20 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_dissipation_fint_tang(
     // ------------------------------------------------------------ dissipation
     // plastic contribution thermoplastichyperelastic material
 
-    // mechanical Dissipation
-    // Dmech := sqrt(2/3) . sigma_y(T_{n+1}) . Dgamma/Dt
-    // with MechDiss := sqrt(2/3) . sigma_y(T_{n+1}) . Dgamma
-    const double Dmech = thermoplhyperelast->mech_diss(iquad) / stepsize;
+    double Dmech = 0.0;
+    if (structmat->material_type() == Core::Materials::m_thermoplhyperelast)
+    {
+      // mechanical Dissipation
+      // Dmech := sqrt(2/3) . sigma_y(T_{n+1}) . Dgamma/Dt
+      // with MechDiss := sqrt(2/3) . sigma_y(T_{n+1}) . Dgamma
+      Dmech = thermoplhyperelast->mech_diss(iquad) / stepsize;
+    }
+    else if (structmat->material_type() ==
+             Core::Materials::m_multiplicative_split_defgrad_elasthyper)
+    {
+      Dmech = multiplicative_split_defgrad_elast_hyper_ptr->mech_diss(
+          iquad);  // dont divide by stepsize here
+    }
 
     // update/integrate internal force vector (coupling fraction towards displacements)
     if (efint != nullptr)
@@ -2273,10 +2278,20 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_dissipation_fint_tang(
 
     if (econd != nullptr)
     {
-      // Contribution of dissipation to cond matrix
-      // econd += - N_T^T . dDmech_dT/Dt . N_T
-      econd->multiply_nt(
-          (-fac_ * thermoplhyperelast->mech_diss_k_tt(iquad) / stepsize), funct_, funct_, 1.0);
+      if (structmat->material_type() == Core::Materials::m_thermoplhyperelast)
+      {
+        // Contribution of dissipation to cond matrix
+        // econd += - N_T^T . dDmech_dT/Dt . N_T
+        econd->multiply_nt(
+            (-fac_ * thermoplhyperelast->mech_diss_k_tt(iquad) / stepsize), funct_, funct_, 1.0);
+      }
+      else if (structmat->material_type() ==
+               Core::Materials::m_multiplicative_split_defgrad_elasthyper)
+      {
+        econd->multiply_nt(
+            (-fac_ * multiplicative_split_defgrad_elast_hyper_ptr->mech_diss_k_tt(iquad)), funct_,
+            funct_, 1.0);
+      }
     }
 
   }  // ---------------------------------- end loop over Gauss Points
@@ -2303,9 +2318,29 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_dissipation_coupled_tang(
 
   // ------------------------------------------------ structural material
   std::shared_ptr<Core::Mat::Material> structmat = get_str_material(ele);
-  std::shared_ptr<Mat::ThermoPlasticHyperElast> thermoplhyperelast =
-      std::dynamic_pointer_cast<Mat::ThermoPlasticHyperElast>(structmat);
-  // true: error if cast fails
+
+  // This should REALLY have a common interface!
+
+  // setup possible pointers for specific material types for later use
+  std::shared_ptr<Mat::ThermoPlasticHyperElast> thermoplhyperelast;
+  std::shared_ptr<Mat::MultiplicativeSplitDefgradElastHyper>
+      multiplicative_split_defgrad_elast_hyper;
+
+  if (structmat->material_type() == Core::Materials::m_thermoplhyperelast)
+  {
+    thermoplhyperelast = std::dynamic_pointer_cast<Mat::ThermoPlasticHyperElast>(structmat);
+  }
+  else if (structmat->material_type() == Core::Materials::m_multiplicative_split_defgrad_elasthyper)
+  {
+    multiplicative_split_defgrad_elast_hyper =
+        std::dynamic_pointer_cast<Mat::MultiplicativeSplitDefgradElastHyper>(structmat);
+  }
+  else
+  {
+    FOUR_C_THROW(
+        "So far dissipation only for ThermoPlasticHyperElast and "
+        "MultiplicativeSplitDefgradElastHyper materials!");
+  }
 
   // --------------------------------------------------- time integration
   // get step size dt
@@ -2371,7 +2406,18 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_dissipation_coupled_tang(
     // ----------------------------------------------- linearisation of Dmech_d
     // k_Td += - timefac . N_T^T . 1/Dt . mechdiss_kTd . dE/dd
     Core::LinAlg::Matrix<6, 1> dDmech_dE(Core::LinAlg::Initialization::uninitialized);
-    dDmech_dE.update(thermoplhyperelast->mech_diss_k_td(iquad));
+
+    if (structmat->material_type() == Core::Materials::m_thermoplhyperelast)
+    {
+      dDmech_dE.update(1 / stepsize, thermoplhyperelast->mech_diss_k_td(iquad));
+    }
+    else if (structmat->material_type() ==
+             Core::Materials::m_multiplicative_split_defgrad_elasthyper)
+    {
+      // 2 to account for the the fact that we only get the linearization wrt to C, not E.
+      dDmech_dE.update(2.0, multiplicative_split_defgrad_elast_hyper->mech_diss_k_td(iquad));
+    }
+
     Core::LinAlg::Matrix<1, nsd_ * nen_ * numdofpernode_> dDmech_dd(
         Core::LinAlg::Initialization::uninitialized);
     dDmech_dd.multiply_tn(dDmech_dE, bop);
@@ -2381,7 +2427,7 @@ void Discret::Elements::TemperImpl<distype>::nonlinear_dissipation_coupled_tang(
     {
       // k_Td^e += - timefac . N_T^T . 1/Dt . dDmech_dE . B . detJ . w(gp)
       // (8x24)  = (8x1) .        (1x6)  (6x24)
-      etangcoupl->multiply_nn(-fac_ * timefac / stepsize, funct_, dDmech_dd, 1.0);
+      etangcoupl->multiply_nn(-fac_ * timefac, funct_, dDmech_dd, 1.0);
     }  // (etangcoupl != nullptr)
 
   }  //--------------------------------------------- end loop over Gauss Points

@@ -794,6 +794,7 @@ four_c_test(TEST_FILE mat_gtn_solid_necking_bar_with_f0_fc_h8.4C.yaml NP 2 RESTA
 four_c_test(TEST_FILE mat_holzapfelcardio.4C.yaml NP 2)
 four_c_test(TEST_FILE mat_humphreycardio.4C.yaml NP 2)
 four_c_test(TEST_FILE mat_iso_viscoplast_refJC_log_timint.4C.yaml RESTART_STEP 90)
+four_c_test(TEST_FILE mat_iso_viscoplast_refJC_log_timint_TSI.4C.yaml RESTART_STEP 90)
 four_c_test(TEST_FILE mat_iso_viscoplast_anand_log_timint.4C.yaml RESTART_STEP 90)
 four_c_test(TEST_FILE mat_muscle_combo_hex.4C.yaml NP 2 RESTART_STEP 140)
 four_c_test(TEST_FILE mat_muscle_combo_hex_act_map_every_timestep.4C.yaml NP 2 RESTART_STEP 140)

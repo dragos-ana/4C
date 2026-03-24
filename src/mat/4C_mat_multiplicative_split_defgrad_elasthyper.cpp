@@ -188,6 +188,10 @@ void Mat::MultiplicativeSplitDefgradElastHyper::unpack(Core::Communication::Unpa
   }
 
   anisotropy_->unpack_anisotropy(buffer);
+  const int numgp = anisotropy_->get_number_of_gauss_points();
+  FOUR_C_ASSERT_ALWAYS(numgp >= 0, "Number of Gauss points must be non-negative.");
+  // Reinitialize thermo-coupling cache on restart: values are recomputed in evaluate().
+  thermal_coupling_quantities_.setup(numgp);
 
   Core::Communication::PotentiallyUnusedBufferScope summand_scope{buffer};
   if (params_ != nullptr)  // summands are not accessible in postprocessing mode
@@ -371,6 +375,15 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
     // compute thermal stress derivative
     d_stress_d_scalar_view = Mat::evaluate_thermal_stress_deriv(
         kinematic_quantities.iFinM, thermal_quantities, thermal_stress_factors);
+
+    /// store \f$\frac{\partial \mathbf{S}}{\partial T}\f$ for later use in thermo evaluation.
+
+    thermal_coupling_quantities_.partialS_partialT[gp] =
+        Core::LinAlg::make_symmetric_tensor_from_stress_like_voigt_matrix(d_stress_d_scalar_view);
+    // linearizations remain to be investigated!
+
+    // just to check consistency later
+    thermal_coupling_quantities_.defgrad[gp] = defgrad;
   }
 
 
@@ -1008,6 +1021,8 @@ void Mat::MultiplicativeSplitDefgradElastHyper::setup(const int numgp,
 
   // setup inelastic materials
   inelastic_->setup(numgp, fibers, coord_system);
+
+  thermal_coupling_quantities_.setup(numgp);
 }
 
 /*--------------------------------------------------------------------*
@@ -1030,8 +1045,7 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_od_stiff_mat(PAR::Inela
     const Core::LinAlg::Matrix<3, 3>* const defgrad, const Core::LinAlg::Matrix<6, 9>& dSdiFin,
     Core::LinAlg::Matrix<6, 1>& dstressdx)
 {
-  // clear variable
-  dstressdx.clear();
+  // do not clear dstressdx here, as it already contains contributions.
 
   // References to vector of inelastic contributions and inelastic deformation gradients
   const auto& facdefgradin = inelastic_->fac_def_grad_in();
@@ -1113,6 +1127,44 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_od_stiff_mat(PAR::Inela
     FOUR_C_THROW("You should not be here");
 }
 
+void Mat::MultiplicativeSplitDefgradElastHyper::stress_temperature_modulus_and_deriv(
+    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
+    Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT,
+    Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& stm_dC, const int gp)
+{
+  stm = thermal_coupling_quantities_.partialS_partialT[gp];
+
+  // we need to calculate these linearizations still (atm they're empty)
+  // Obtain dF_in/dT and dF_in/dC by accumulating them from the factors.
+  stm_dT = thermal_coupling_quantities_.d_dT_partialS_partialT[gp];
+  stm_dC = thermal_coupling_quantities_.d_dC_partialS_partialT[gp];
+}
+
+double Mat::MultiplicativeSplitDefgradElastHyper::mech_diss(const int gp) const
+{
+  double mech_diss = 0.0;
+  for (int p = 0; p < inelastic_->num_inelastic_def_grad(); ++p)
+    mech_diss += inelastic_->fac_def_grad_in()[p].second->mech_diss(gp);
+  return mech_diss;
+}
+
+double Mat::MultiplicativeSplitDefgradElastHyper::mech_diss_k_tt(const int gp) const
+{
+  double mech_diss_k_tt = 0.0;
+  for (int p = 0; p < inelastic_->num_inelastic_def_grad(); ++p)
+    mech_diss_k_tt += inelastic_->fac_def_grad_in()[p].second->mech_diss_k_tt(gp);
+  return mech_diss_k_tt;
+}
+Core::LinAlg::Matrix<6, 1> Mat::MultiplicativeSplitDefgradElastHyper::mech_diss_k_td(
+    const int gp) const
+{
+  Core::LinAlg::Matrix<6, 1> mech_diss_k_td(Core::LinAlg::Initialization::zero);
+  for (int p = 0; p < inelastic_->num_inelastic_def_grad(); ++p)
+  {
+    mech_diss_k_td.update(1.0, inelastic_->fac_def_grad_in()[p].second->mech_diss_k_td(gp), 1.0);
+  }
+  return mech_diss_k_td;
+}
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::pre_evaluate(
@@ -1276,7 +1328,7 @@ void Mat::InelasticFactorsHandler::unpack_inelastic(Core::Communication::UnpackB
 Mat::KinematicQuantities Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kinematic_quantities(
     const Mat::MultiplicativeSplitDefgradElastHyper& splitdefgrd,
     Mat::InelasticFactorsHandler& inelastic_factors_handler,
-    const Core::LinAlg::Matrix<3, 3>& defgrad, const int gp, const int eleGID)
+    const Core::LinAlg::Matrix<3, 3>& defgrad, const int gp, const int eleGID) const
 {
   Mat::KinematicQuantities quantities{};
 

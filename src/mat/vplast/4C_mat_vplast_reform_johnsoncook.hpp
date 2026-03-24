@@ -125,6 +125,111 @@ namespace Mat
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var) override;
 
+      /**
+       * @brief Computes derivatives of the equivalent plastic strain rate.
+       *
+       * This function evaluates the partial derivatives of the equivalent plastic
+       * strain rate \f$\dot{\varepsilon}_p\f$ with respect to
+       * the equivalent stress \f$\sigma_{eq}\f$, the equivalent plastic strain
+       * \f$\varepsilon_p\f$, and temperature.
+       *
+       * The reformulated Johnson-Cook type viscoplastic flow rule is written as
+       *
+       * \f[
+       * \dot{\varepsilon}_p =
+       * \hat{P}\hat{E}
+       * \exp\left[
+       * \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
+       * \right]
+       * \f]
+       *
+       * where the temperature-dependent yield stress is
+       *
+       * \f[
+       * \sigma_y = (\sigma_{Y0} + B \varepsilon_p^N)\,\theta(T)
+       * \f]
+       *
+       * with
+       * - \f$\sigma_{Y0}\f$ initial yield stress
+       * - \f$B,N\f$ hardening parameters
+       * - \f$\theta(T)\f$ temperature scaling factor.
+       *
+       * The derivatives are
+       *
+       * Stress derivative
+       *
+       * \f[
+       * \frac{\partial \dot{\varepsilon}_p}{\partial \sigma_{eq}}
+       * =
+       * \frac{\hat{P}\hat{E}^2}{\sigma_y}
+       * \exp\!\left[
+       * \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
+       * \right]
+       * \f]
+       *
+       * Plastic strain derivative
+       *
+       * \f[
+       * \frac{\partial \dot{\varepsilon}_p}{\partial \varepsilon_p}
+       * =
+       * -\hat{P}\hat{E}^2
+       * \frac{\sigma_{eq}}{\sigma_y^2}
+       * \frac{\partial \sigma_y}{\partial \varepsilon_p}
+       * \exp\!\left[
+       * \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
+       * \right]
+       * \f]
+       *
+       * with
+       *
+       * \f[
+       * \frac{\partial \sigma_y}{\partial \varepsilon_p}
+       * =
+       * B N \varepsilon_p^{N-1}\theta(T)
+       * \f]
+       *
+       * Temperature derivative
+       *
+       * \f[
+       * \frac{\partial \dot{\varepsilon}_p}{\partial T}
+       * =
+       * -\hat{P}\hat{E}^2
+       * \frac{\sigma_{eq}}{\sigma_y^2}
+       * \frac{\partial \sigma_y}{\partial T}
+       * \exp\!\left[
+       * \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
+       * \right]
+       * \f]
+       *
+       * To avoid floating-point overflow the derivatives are first computed
+       * in logarithmic form, e.g.
+       *
+       * \f[
+       * \log\left(
+       * \frac{\partial \dot{\varepsilon}_p}{\partial \sigma_{eq}}
+       * \right)
+       * =
+       * \log(\hat{P}\hat{E})
+       * + \hat{E}\left(\frac{\sigma_{eq}}{\sigma_y}-1\right)
+       * - \log(\sigma_y)
+       * \f]
+       *
+       * The exponential is evaluated only after verifying that the increment
+       * \f$\Delta t\,\partial\dot{\varepsilon}_p\f$ does not exceed a prescribed
+       * maximum value.
+       *
+       * If the stress ratio satisfies \f$\sigma_{eq}/\sigma_y < 1\f$,
+       * the derivatives are zero.
+       *
+       * @return Vector containing
+       * \f[
+       * \begin{bmatrix}
+       * \partial\dot{\varepsilon}_p/\partial\sigma_{eq} \\
+       * \partial\dot{\varepsilon}_p/\partial\varepsilon_p \\
+       * \partial\dot{\varepsilon}_p/\partial T
+       * \end{bmatrix}
+       * \f]
+       */
       Core::LinAlg::Matrix<3, 1> evaluate_derivatives_of_plastic_strain_rate(
           const double equiv_stress, const double equiv_plastic_strain, const double dt,
           const double max_plastic_strain_deriv_incr,

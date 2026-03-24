@@ -852,6 +852,35 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
         const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdx) = 0;
 
+    /**
+     * @brief return mechanical dissipation contribution introduced by this inelastic factor. 0 by
+     * default.
+     *
+     * @return double
+     */
+    [[nodiscard]] virtual double mech_diss(const int gp) const { return 0.0; }
+
+    /**
+     * @brief return linearization of the mechanical dissipation wrt temperature contribution
+     * introduced by this inelastic factor. 0 by default.
+     *
+     * @param gp
+     * @return double
+     */
+    [[nodiscard]] virtual double mech_diss_k_tt(const int gp) const { return 0.0; }
+
+    /**
+     * @brief return linearization of the mechanical dissipation wrt Cauchy-Green Tensor in vector
+     * form introduced by this inelastic factor. 0 by default.
+     *
+     * @param gp
+     * @return Core::LinAlg::Matrix<6, 1>
+     */
+    [[nodiscard]] virtual Core::LinAlg::Matrix<6, 1> mech_diss_k_td(const int gp) const
+    {
+      return Core::LinAlg::Matrix<6, 1>(Core::LinAlg::Initialization::zero);
+    }
+
     /*!
      * @brief pre-evaluation, intended to be used for stuff that has to be done only once per
      *        evaluate()
@@ -1643,7 +1672,7 @@ namespace Mat
      */
     StateQuantities evaluate_state_quantities(const Core::LinAlg::Matrix<3, 3>& CM,
         const Core::LinAlg::Matrix<3, 3>& iFinM, const double plastic_strain, ErrorType& err_status,
-        const double dt, const StateQuantityEvalType& eval_type);
+        const double dt, const StateQuantityEvalType& eval_type) const;
 
     /*! @brief Evaluate the current state variable derivatives with respect to the right
      * Cauchy-Green deformation tensor, the inverse plastic deformation gradient and the equivalent
@@ -1666,7 +1695,7 @@ namespace Mat
     StateQuantityDerivatives evaluate_state_quantity_derivatives(
         const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<3, 3>& iFinM,
         const double plastic_strain, ErrorType& err_status, const double dt,
-        const StateQuantityDerivEvalType& eval_type, const bool eval_state = false);
+        const StateQuantityDerivEvalType& eval_type, const bool eval_state = false) const;
 
     //! return the fiber direction of transverse isotropy for the considered element
     Core::LinAlg::Matrix<3, 1> get_fiber_direction() { return m_; }
@@ -1805,7 +1834,7 @@ namespace Mat
      *                   in Holzapfel - Nonlinear Solid Mechanics(2000)
      */
     void calculate_gamma_delta(const Core::LinAlg::Matrix<3, 3>& CeM,
-        Core::LinAlg::Matrix<3, 1>& gamma, Core::LinAlg::Matrix<8, 1>& delta);
+        Core::LinAlg::Matrix<3, 1>& gamma, Core::LinAlg::Matrix<8, 1>& delta) const;
 
     /*!
      * @brief Check if the elastic predictor provides the solution for the current time step,
