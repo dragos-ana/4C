@@ -172,6 +172,7 @@ namespace Mat
   }
 
 
+  // seems to be unused
   inline void elast_hyper_evaluate_elastic_part(const Core::LinAlg::Matrix<3, 3>& F,
       const Core::LinAlg::Matrix<3, 3>& iFin, Core::LinAlg::Matrix<6, 1>& S_stress,
       Core::LinAlg::Matrix<6, 6>& cmat,

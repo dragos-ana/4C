@@ -2662,8 +2662,11 @@ namespace
     Mat::StressFactors stress_factors;
     Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kin_quantities.prinv,
         kin_quantities.dPIe, kin_quantities.ddPIIe);
-    Core::LinAlg::Matrix<6, 9> dSdiFinj =
-        multiplicative_split_defgrad->evaluated_sdi_fin(kin_quantities, stress_factors);
+
+    Mat::ThermalQuantities thermal_quantities{};
+    Mat::StressFactors thermal_stress_factors{};
+    Core::LinAlg::Matrix<6, 9> dSdiFinj = multiplicative_split_defgrad->evaluated_sdi_fin(
+        kin_quantities, stress_factors, thermal_quantities, thermal_stress_factors);
 
     // declare cmatadd
     Core::LinAlg::Matrix<6, 6> cmatadd{Core::LinAlg::Initialization::zero};

@@ -282,7 +282,8 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
 
   // derivative of 2nd Piola Kirchhoff stresses w.r.t. the inverse inelastic deformation
   // gradient
-  Core::LinAlg::Matrix<6, 9> dSdiFin = evaluated_sdi_fin(kinematic_quantities, stress_factors);
+  Core::LinAlg::Matrix<6, 9> dSdiFin = evaluated_sdi_fin(
+      kinematic_quantities, stress_factors, thermal_quantities, thermal_stress_factors);
 
   // right Cauchy-Green deformation tensor
   Core::LinAlg::Matrix<3, 3> CM(Core::LinAlg::Initialization::zero);
@@ -346,11 +347,12 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
   Mat::StressFactors stress_factors;
   Mat::calculate_gamma_delta(stress_factors.gamma, stress_factors.delta, kinematic_quantities.prinv,
       kinematic_quantities.dPIe, kinematic_quantities.ddPIIe);
-  Core::LinAlg::Matrix<6, 9> dSdiFin = evaluated_sdi_fin(kinematic_quantities, stress_factors);
 
   Core::LinAlg::SymmetricTensor<double, 3, 3> d_stress_d_scalar{};
   Core::LinAlg::Matrix<6, 1> d_stress_d_scalar_view =
       Core::LinAlg::make_stress_like_voigt_view(d_stress_d_scalar);
+
+  double delta_temperature = 0.0;
 
   // evaluate thermal stress derivative
   if (source == PAR::InelasticSource::temperature)
@@ -358,33 +360,28 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
     // compute thermal quantities
     // set temperature difference as 0 first; and then we add the temperature from the
     // parameter container on top of it (in TSI: temperature is always 0 at beginning of simulation)
-    double delta_temperature = 0.0;
+
     if (params.isParameter("temperature"))
     {
       delta_temperature += params.get<double>("temperature");
     }
-    Mat::ThermalQuantities thermal_quantities =
-        Mat::evaluate_thermal_quantities(delta_temperature, params_->thermal_expansion_mat_type_,
-            params_->thermal_expansion_fac_, kinematic_quantities.iFinM, gp, eleGID, potsumel_);
-
-    // compute thermal stress factors
-    Mat::StressFactors thermal_stress_factors;
-    Mat::calculate_gamma_delta(thermal_stress_factors.gamma, thermal_stress_factors.delta,
-        thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
-
-    // compute thermal stress derivative
-    d_stress_d_scalar_view = Mat::evaluate_thermal_stress_deriv(
-        kinematic_quantities.iFinM, thermal_quantities, thermal_stress_factors);
-
-    /// store \f$\frac{\partial \mathbf{S}}{\partial T}\f$ for later use in thermo evaluation.
-
-    thermal_coupling_quantities_.partialS_partialT[gp] =
-        Core::LinAlg::make_symmetric_tensor_from_stress_like_voigt_matrix(d_stress_d_scalar_view);
-    // linearizations remain to be investigated!
-
-    // just to check consistency later
-    thermal_coupling_quantities_.defgrad[gp] = defgrad;
   }
+
+  Mat::ThermalQuantities thermal_quantities =
+      Mat::evaluate_thermal_quantities(delta_temperature, params_->thermal_expansion_mat_type_,
+          params_->thermal_expansion_fac_, kinematic_quantities.iFinM, gp, eleGID, potsumel_);
+
+  // compute thermal stress factors
+  Mat::StressFactors thermal_stress_factors;
+  Mat::calculate_gamma_delta(thermal_stress_factors.gamma, thermal_stress_factors.delta,
+      thermal_quantities.prinv, thermal_quantities.dPI, thermal_quantities.ddPII);
+
+  // compute thermal stress derivative
+  d_stress_d_scalar_view = Mat::evaluate_thermal_stress_deriv(
+      kinematic_quantities.iFinM, thermal_quantities, thermal_stress_factors);
+
+  Core::LinAlg::Matrix<6, 9> dSdiFin = evaluated_sdi_fin(
+      kinematic_quantities, stress_factors, thermal_quantities, thermal_stress_factors);
 
 
   evaluate_od_stiff_mat(source, &defgrad_mat, dSdiFin, d_stress_d_scalar_view);
@@ -730,7 +727,9 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate_kin_quant_elast(
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<6, 9> Mat::MultiplicativeSplitDefgradElastHyper::evaluated_sdi_fin(
-    const Mat::KinematicQuantities& kinemat_quant, const Mat::StressFactors& stress_fact) const
+    const Mat::KinematicQuantities& kinemat_quant, const Mat::StressFactors& stress_fact,
+    const ThermalQuantities& thermal_quantities,
+    const Mat::StressFactors& thermal_stress_factors) const
 {
   // declare output variables
   Core::LinAlg::Matrix<6, 9> dSdiFin{Core::LinAlg::Initialization::zero};
@@ -794,6 +793,32 @@ Core::LinAlg::Matrix<6, 9> Mat::MultiplicativeSplitDefgradElastHyper::evaluated_
 
   // chain rule to get dS/d(det(Fin)) * d(det(Fin))/diFin
   dSdiFin.multiply_nt(1.0, dSddetFin, ddetFindiFinV, 1.0);
+
+  // contribution from thermal expansion
+  /// \f$ \boldsymbol{S}_{\theta,T} \f$
+  Core::LinAlg::Matrix<6, 1> SthetaT_V{Core::LinAlg::Initialization::zero};
+
+  {
+    // extract variables from thermal_quant
+    Core::LinAlg::Matrix<3, 3> CT{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(thermal_quantities.CTV, CT);
+    const Core::LinAlg::Matrix<3, 1>& thermal_gamma = thermal_stress_factors.gamma;
+    const Core::LinAlg::Matrix<8, 1>& thermal_delta = thermal_stress_factors.delta;
+    Core::LinAlg::Matrix<6, 6> temp{Core::LinAlg::Initialization::zero};
+    elast_hyper_evaluate_elastic_stress_and_stiffness(
+        CT, thermal_gamma, thermal_delta, SthetaT_V, temp);
+  }
+  Core::LinAlg::Matrix<3, 3> SthetaT_M(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Voigt::Stresses::vector_to_matrix(SthetaT_V, SthetaT_M);
+  Core::LinAlg::Matrix<3, 3> iFinSthetaT(Core::LinAlg::Initialization::zero);
+  iFinSthetaT.multiply(1.0, iFinM, SthetaT_M, 0.0);
+
+  /// \f$\texttt{dSdiFin}\; \mathrel{-}= \frac{\partial}{\partial
+  /// \mathbf{F}_{\text{in}}^{-1}}\left(\mathbf{F}_{\text{in}}^{-1} \cdot \mathbf{S}_{\theta,T}
+  /// \cdot
+  /// \mathbf{F}_{\text{in}}^{-T}\right)\f$
+  Core::LinAlg::FourTensorOperations::add_right_non_symmetric_holzapfel_product(
+      dSdiFin, id, iFinSthetaT, -1.0);
 
   return dSdiFin;
 }

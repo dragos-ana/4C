@@ -428,8 +428,10 @@ namespace Mat
      * @return derivative \f$ \frac{\partial \mathsymbol{S}}{\partial
      * \mathsymbol{F}^{-1}_{\text{in}}} \f$
      */
-    Core::LinAlg::Matrix<6, 9> evaluated_sdi_fin(const Mat::KinematicQuantities& kinemat_quant,
-        const Mat::StressFactors& stress_factors) const;
+    [[nodiscard]] Core::LinAlg::Matrix<6, 9> evaluated_sdi_fin(
+        const Mat::KinematicQuantities& kinemat_quant, const Mat::StressFactors& stress_factors,
+        const ThermalQuantities& thermal_quantities,
+        const Mat::StressFactors& thermal_stress_factors) const;
 
     /*!
      * @brief  Evaluate the stress and stiffness components of the transversely isotropic components

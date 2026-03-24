@@ -548,8 +548,11 @@ namespace
     stress_fact.gamma = gamma_ref_;
     stress_fact.delta = delta_ref_;
 
-    Core::LinAlg::Matrix<6, 9> dSdiFin =
-        multiplicative_split_defgrad_->evaluated_sdi_fin(kinemat_quant, stress_fact);
+    Mat::ThermalQuantities thermal_quant;
+    Mat::StressFactors thermal_stress_factors;
+
+    Core::LinAlg::Matrix<6, 9> dSdiFin = multiplicative_split_defgrad_->evaluated_sdi_fin(
+        kinemat_quant, stress_fact, thermal_quant, thermal_stress_factors);
 
     FOUR_C_EXPECT_NEAR(dSdiFin, dSdiFin_ref_, 1.0e-10);
   }
