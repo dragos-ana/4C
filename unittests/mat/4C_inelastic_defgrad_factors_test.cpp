@@ -25,6 +25,7 @@
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_singleton_owner.hpp"
 
+#include <memory>
 #include <optional>
 
 
@@ -36,8 +37,13 @@ namespace
   class InelasticDefgradFactorsTest : public ::testing::Test
   {
    protected:
+    static constexpr int problemid_ = 0;
+
     void SetUp() override
     {
+      Global::Problem& problem = (*Global::Problem::instance(problemid_));
+      Global::Problem::instance()->materials()->set_read_from_problem(problemid_);
+
       // clang-format off
       // set up the deformation gradient
       FM_(0, 0) = 1.1;  FM_(0, 1) = 0.01; FM_(0, 2) = 0.03;
@@ -149,9 +155,6 @@ namespace
 
       // InelasticDefgradPolyIntercalFracIso object initialize container for required electrode
       // material parameters
-      const int problemid(0);
-      Global::Problem& problem = (*Global::Problem::instance());
-      problem.materials()->set_read_from_problem(problemid);
       // set up material to be added to problem instance
       const int matid(1);
 
@@ -185,7 +188,7 @@ namespace
       // Set up parameters in global problem instance
       auto params = std::make_shared<Teuchos::ParameterList>();
       params->sublist("ELCH CONTROL").set("GAS_CONSTANT", 8.314472);
-      Global::Problem::instance()->set_parameter_list(params);
+      problem.set_parameter_list(params);
 
       // add actually required parameters to electrode material
       const double c_max(4.91375e4);
@@ -308,6 +311,7 @@ namespace
           "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
@@ -318,6 +322,22 @@ namespace
           "YIELD_COND_B", 2.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add<std::optional<double>>(
           "YIELD_COND_F", 2.5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("CONV_CHECK", Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                 LocalNewtonConvCheck::residual_and_increment_ratio);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("DIVER_CONT",
+              Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("INCR_TOL", 1.0e-8);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("RES_TOL", 1.0e-8);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON").add("MAX_ITER", 100);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("MAX_EXCEEDANCE_FACT_RES_TOL", 1.0e1);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("MAX_EXCEEDANCE_FACT_INCR_TOL", 1.0e1);
+
 
       // get pointer to parameter class
       params_transv_isotrop_vplast_refJC_ =
@@ -344,6 +364,7 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
@@ -354,7 +375,19 @@ namespace
           "YIELD_COND_B", std::nullopt);
       inelastic_defgrad_isotrop_vplast_refJC_data.add<std::optional<double>>(
           "YIELD_COND_F", std::nullopt);
-
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("CONV_CHECK", Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                 LocalNewtonConvCheck::residual_and_increment_ratio);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("DIVER_CONT",
+              Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON").add("INCR_TOL", 1.0e-8);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON").add("RES_TOL", 1.0e-8);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON").add("MAX_ITER", 100);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("MAX_EXCEEDANCE_FACT_RES_TOL", 1.0e1);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
+          .add("MAX_EXCEEDANCE_FACT_INCR_TOL", 1.0e1);
 
       params_isotrop_vplast_refJC_ =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
@@ -425,10 +458,11 @@ namespace
       std::shared_ptr<Mat::Elastic::PAR::CoupTransverselyIsotropic> params_fiber_reader_ =
           std::dynamic_pointer_cast<Mat::Elastic::PAR::CoupTransverselyIsotropic>(std::shared_ptr(
               Mat::make_parameter(1, Core::Materials::MaterialType::mes_couptransverselyisotropic,
-                  fiber_reader_data)));  // the fiber reader is only required for the setup of
-                                         // InelasticDefgradTransvIsotropElastViscoplast, that's
-                                         // why: we don't need to worry about it losing its params
-                                         // class after the SetUp method ends
+                  fiber_reader_data)));  // the fiber reader is only required for the setup
+                                         // of InelasticDefgradTransvIsotropElastViscoplast,
+                                         // that's why: we don't need to worry about it
+                                         // losing its params class after the SetUp method
+                                         // ends
       Mat::Elastic::CoupTransverselyIsotropic fiber_reader_{params_fiber_reader_.get()};
 
       // finally construct the InelasticDefgradTransvIsotropElastViscoplast objects
@@ -1156,6 +1190,91 @@ namespace
       iso.curr_dlpdepsp(2, 0) = iso.curr_ddpdepsp(2, 0);
     }
 
+    void set_up_local_newton_material(
+        const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams&
+            local_newton_params,
+        std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>&
+            local_newton_material_params,
+        std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast>& local_newton_material)
+    {
+      Core::IO::InputParameterContainer material_data;
+      material_data.add("FIBER_READER_ID", 5);
+      material_data.add("LINEARIZATION",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType::analytic);
+      material_data.add("MATRIX_EXP_CALC_METHOD", Core::LinAlg::MatrixExpCalcMethod::automatic);
+      material_data.add("MATRIX_EXP_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::automatic);
+      material_data.add(
+          "MATRIX_LOG_CALC_METHOD", Core::LinAlg::MatrixLogCalcMethod::inv_scal_square);
+      material_data.add("MATRIX_LOG_DERIV_CALC_METHOD",
+          Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
+      material_data.add("MAT_BEHAVIOR",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior::isotropic);
+      material_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
+      material_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      material_data.add("USE_SUBSTEPPING", false);
+      material_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
+      material_data.add("TIME_INTEGRATION_HIST_VARS",
+          Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
+      material_data.add("VISCOPLAST_LAW_ID", 4);
+      material_data.add<std::optional<double>>("YIELD_COND_A", 1.0);
+      material_data.add<std::optional<double>>("YIELD_COND_B", 2.0);
+      material_data.add<std::optional<double>>("YIELD_COND_F", 2.5);
+      material_data.group("LOCAL_NEWTON").add("CONV_CHECK", local_newton_params.conv_check);
+      material_data.group("LOCAL_NEWTON").add("DIVER_CONT", local_newton_params.diver_cont);
+      material_data.group("LOCAL_NEWTON").add("INCR_TOL", local_newton_params.incr_tol);
+      material_data.group("LOCAL_NEWTON").add("RES_TOL", local_newton_params.res_tol);
+      material_data.group("LOCAL_NEWTON")
+          .add("MAX_ITER", static_cast<int>(local_newton_params.max_iter));
+      material_data.group("LOCAL_NEWTON")
+          .add("MAX_EXCEEDANCE_FACT_RES_TOL", local_newton_params.max_exceedance_fact_res_tol);
+      material_data.group("LOCAL_NEWTON")
+          .add("MAX_EXCEEDANCE_FACT_INCR_TOL", local_newton_params.max_exceedance_fact_incr_tol);
+
+      local_newton_material_params =
+          std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
+              std::shared_ptr(Mat::make_parameter(1,
+                  Core::Materials::MaterialType::mfi_transv_isotrop_elast_viscoplast,
+                  material_data)));
+
+      Core::IO::InputParameterContainer fiber_reader_data;
+      fiber_reader_data.add("ALPHA", 1.0);
+      fiber_reader_data.add("BETA", 1.0);
+      fiber_reader_data.add("GAMMA", 1.0);
+      fiber_reader_data.add("ANGLE", 0.0);
+      fiber_reader_data.add("STR_TENS_ID", 100);
+      fiber_reader_data.add<std::string>("STRATEGY", "Standard");
+      fiber_reader_data.add<std::string>("DISTR", "none");
+      fiber_reader_data.add("C1", 1.0);
+      fiber_reader_data.add("C2", 0.0);
+      fiber_reader_data.add("C3", 0.0);
+      fiber_reader_data.add("C4", 1.0e16);
+      fiber_reader_data.add("FIBER", 1);
+      fiber_reader_data.add("INIT", 1);
+
+      auto fiber_reader_params =
+          std::dynamic_pointer_cast<Mat::Elastic::PAR::CoupTransverselyIsotropic>(std::shared_ptr(
+              Mat::make_parameter(1, Core::Materials::MaterialType::mes_couptransverselyisotropic,
+                  fiber_reader_data)));
+      Mat::Elastic::CoupTransverselyIsotropic fiber_reader{fiber_reader_params.get()};
+
+      auto viscoplastic_law = std::make_shared<Mat::Viscoplastic::ReformulatedJohnsonCook>(
+          Global::Problem::instance(problemid_)->materials()->parameter_by_id(400));
+
+      std::vector<std::shared_ptr<Mat::Elastic::Summand>> pot_sum_el;
+      pot_sum_el.emplace_back(Mat::Elastic::Summand::factory(200));
+      std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>> pot_sum_el_transv_iso;
+
+      local_newton_material = std::make_shared<Mat::InelasticDefgradTransvIsotropElastViscoplast>(
+          local_newton_material_params.get(), viscoplastic_law, fiber_reader, pot_sum_el,
+          pot_sum_el_transv_iso);
+
+      Discret::Elements::Fibers fibers;
+      fibers.element_fibers.emplace_back(Core::LinAlg::Tensor<double, 3>{{0.0, 0.0, 1.0}});
+      local_newton_material->setup(1, fibers, {});
+    }
+
+
     // deformation gradient
     Core::LinAlg::Matrix<3, 3> FM_;
     // derivative of second Piola-Kirchhoff stress tensor w.r.t. inverse inelastic deformation
@@ -1631,13 +1750,13 @@ namespace
                 iFin_transv_isotrop_vplast_refJC_solution_,
                 plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
-                    FullEval);
+                    full_eval);
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities
         computed_state_quantities_isotrop = isotrop_vplast_refJC_->evaluate_state_quantities(CM,
             iFin_transv_isotrop_vplast_refJC_solution_,
             plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
             Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
-                FullEval);
+                full_eval);
 
     if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
@@ -1683,6 +1802,489 @@ namespace
     FOUR_C_EXPECT_NEAR(state_quantities_solution_isotrop_.curr_lpM,
         computed_state_quantities_isotrop.curr_lpM, 1.0e-10);
   }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonParametersParsing)
+  {
+    const auto local_newton_params = params_transv_isotrop_vplast_refJC_->local_newton_params();
+
+    EXPECT_EQ(local_newton_params.conv_check,
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+            residual_and_increment_ratio);
+    EXPECT_EQ(local_newton_params.diver_cont,
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop);
+    EXPECT_EQ(local_newton_params.max_iter, 100);
+    EXPECT_DOUBLE_EQ(local_newton_params.res_tol, 1.0e-8);
+    EXPECT_DOUBLE_EQ(local_newton_params.incr_tol, 1.0e-8);
+    EXPECT_DOUBLE_EQ(local_newton_params.max_exceedance_fact_res_tol, 1.0e1);
+    EXPECT_DOUBLE_EQ(local_newton_params.max_exceedance_fact_incr_tol, 1.0e1);
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonManagerBookkeeping)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
+        params_transv_isotrop_vplast_refJC_->local_newton_params());
+
+    EXPECT_EQ(local_newton_manager.iter, 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters.size(), 1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[0], 0);
+
+    local_newton_manager.resize(3);
+    EXPECT_EQ(local_newton_manager.curr_num_iters.size(), 3);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[0], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[2], 0);
+
+    local_newton_manager.iter = 4;
+    local_newton_manager.post_lnl(1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 4);
+
+    local_newton_manager.iter = 2;
+    local_newton_manager.post_lnl(1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 6);
+
+    local_newton_manager.update();
+    EXPECT_EQ(local_newton_manager.curr_num_iters[0], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters[2], 0);
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingStop)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-8,
+        .incr_tol = 1.0e-8,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 0,
+        .max_exceedance_fact_res_tol = 1.0e1,
+        .max_exceedance_fact_incr_tol = 1.0e1,
+    };
+
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
+        Core::Exception, "Local Newton Loop did not converge");
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingContinue)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-8,
+        .incr_tol = 1.0e-8,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::continue_sim,
+        .max_iter = 0,
+        .max_exceedance_fact_res_tol = 1.0e1,
+        .max_exceedance_fact_incr_tol = 1.0e1,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result);
+
+    FOUR_C_EXPECT_NEAR(iFin_result, unit_3x3,
+        1.0e-15);  // since we continue with 0 iterations, the elastic predictor must be the
+                   // solution
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingContinueWithSafeguard)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-3,    // solution for the following settings: 0.013683468721433008
+        .incr_tol = 1.0e-12,  // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::continue_with_safeguard,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 1.0e2,
+        .max_exceedance_fact_incr_tol = 1.0e2,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result);
+
+
+    Core::LinAlg::Matrix<3, 3> iFin_result_ref(Core::LinAlg::Initialization::zero);
+    iFin_result_ref(0, 0) = 1.0000000000451326;
+    iFin_result_ref(0, 1) = -0.0000000000119367;
+    iFin_result_ref(0, 2) = -0.0000000000213770;
+    iFin_result_ref(1, 0) = -0.0000000000119367;
+    iFin_result_ref(1, 1) = 1.0000000000009559;
+    iFin_result_ref(1, 2) = -0.0000000000168552;
+    iFin_result_ref(2, 0) = -0.0000000000213770;
+    iFin_result_ref(2, 1) = -0.0000000000168552;
+    iFin_result_ref(2, 2) = 0.9999999999539116;
+
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+  }
+
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingStopWithSafeguard)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-3,    // solution for the following settings: 0.013683468721433008
+        .incr_tol = 1.0e-12,  // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::continue_with_safeguard,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
+        Core::Exception, "by more than the set exceedance tolerance");
+  }
+
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonResidualDivergence)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-3,  // solution for the following settings: 0.013683468721433008
+        .incr_tol = 0.0,    // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
+        Core::Exception, "Local Newton Loop did not converge");
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonResidualConvergence)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-1,  // solution for the following settings: 0.013683468721433008
+        .incr_tol = 0.0,    // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result);
+
+    FOUR_C_EXPECT_NEAR(iFin_result, unit_3x3,
+        1.0e-15);  // elastic predictor directly suffices for the posed conditions
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonIncrementRatioDivergence)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 0.0,       // solution for the following settings: 0.013683468721433008
+        .incr_tol = 1.0e-15,  // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
+        Core::Exception, "Local Newton Loop did not converge");
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonIncrementRatioConvergence)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 0.0,       // solution for the following settings: 0.013683468721433008
+        .incr_tol = 1.0e-10,  // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result);
+
+
+    Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
+    iFin_result_ref(0, 0) = 1.0000000000001195;
+    iFin_result_ref(0, 1) = -0.0000000000000316;
+    iFin_result_ref(0, 2) = -0.0000000000000566;
+    iFin_result_ref(1, 0) = -0.0000000000000316;
+    iFin_result_ref(1, 1) = 1.0000000000000024;
+    iFin_result_ref(1, 2) = -0.0000000000000446;
+    iFin_result_ref(2, 0) = -0.0000000000000566;
+    iFin_result_ref(2, 1) = -0.0000000000000446;
+    iFin_result_ref(2, 2) = 0.9999999999998780;
+
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonResidualAndIncrementRatioDivergence)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-15,   // solution for the following settings: 0.013683468721433008
+        .incr_tol = 1.0e-15,  // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
+        Core::Exception, "Local Newton Loop did not converge");
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonResidualAndIncrementRatioConvergence)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-1,    // solution for the following settings: 0.013683468721433008
+        .incr_tol = 1.0e-10,  // solution for the following settings: 5.7240307737697736e-11,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 2,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material;
+    set_up_local_newton_material(local_newton_params, material_params, material);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+    material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result);
+
+
+    Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
+    iFin_result_ref(0, 0) = 1.0000000000001195;
+    iFin_result_ref(0, 1) = -0.0000000000000316;
+    iFin_result_ref(0, 2) = -0.0000000000000566;
+    iFin_result_ref(1, 0) = -0.0000000000000316;
+    iFin_result_ref(1, 1) = 1.0000000000000024;
+    iFin_result_ref(1, 2) = -0.0000000000000446;
+    iFin_result_ref(2, 0) = -0.0000000000000566;
+    iFin_result_ref(2, 1) = -0.0000000000000446;
+    iFin_result_ref(2, 2) = 0.9999999999998780;
+
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+  }
+
+
+
   TEST_F(InelasticDefgradFactorsTest, TestEvaluateStateQuantityDerivatives)
   {
     set_up_state_quantity_derivatives_solution();
@@ -1701,7 +2303,7 @@ namespace
                 iFin_transv_isotrop_vplast_refJC_solution_,
                 plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivEvalType::
-                    FullEval,
+                    full_eval,
                 true);
 
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
@@ -1710,7 +2312,7 @@ namespace
                 iFin_transv_isotrop_vplast_refJC_solution_,
                 plastic_strain_transv_isotrop_vplast_refJC_solution_, err_status, 1.0,
                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivEvalType::
-                    FullEval,
+                    full_eval,
                 true);
 
     if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
@@ -1778,5 +2380,6 @@ namespace
     FOUR_C_EXPECT_NEAR(state_quantity_derivatives_solution_isotrop_.curr_dlpdepsp,
         computed_state_quantity_derivatives_isotrop.curr_dlpdepsp, 1.0e-6);
   }
+
 
 }  // namespace

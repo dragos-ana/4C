@@ -88,6 +88,7 @@ MATERIALS:
       MAT_BEHAVIOR: "isotropic"
       TIME_INTEGRATION_HIST_VARS: logarithmic
       MAX_SUBSTEPPING_HALVE_NUM: 10
+
   - MAT: 23
     MAT_ViscoplasticLawReformulatedJohnsonCook:
       STRAIN_RATE_PREFAC: 1

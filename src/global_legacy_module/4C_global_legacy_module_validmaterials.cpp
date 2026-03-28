@@ -10,6 +10,7 @@
 #include "4C_global_data.hpp"
 #include "4C_inpar_structure.hpp"
 #include "4C_io_input_field.hpp"
+#include "4C_io_input_parameter_container.hpp"
 #include "4C_io_input_spec_builders.hpp"
 #include "4C_io_input_spec_validators.hpp"
 #include "4C_linalg_tensor_generators.hpp"
@@ -2825,10 +2826,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
     using namespace Core::IO::InputSpecBuilders::Validators;
     known_materials[Core::Materials::mfi_transv_isotrop_elast_viscoplast] = group(
         "MAT_InelasticDefgradTransvIsotropElastViscoplast",
-        {
-            parameter<int>(
-                "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law",
-                                         .validator = positive<int>()}),
+        {parameter<int>(
+             "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law",
+                                      .validator = positive<int>()}),
             parameter<int>(
                 "FIBER_READER_ID", {.description = "MAT ID of the used fiber direction reader for "
                                                    "transversely isotropic behavior",
@@ -2858,6 +2858,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "evolution equation for the plastic deformation gradient -> default)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         TimIntType::logarithmic}),
+            parameter<bool>("USE_SUBSTEPPING",
+                {.description =
+                        "boolean: use substepping in the Local Newton Loop? (true: yes, false: no)",
+                    .default_value = false}),
+
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType>(
                 "LINEARIZATION",
                 {.description =
@@ -2900,7 +2905,50 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "logarithm w.r.t. matrix",
                     .default_value =
                         Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract}),
-        },
+            group("LOCAL_NEWTON",
+                {parameter<
+                     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck>(
+                     "CONV_CHECK",
+                     {.description = "convergence check type",
+                         .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                             LocalNewtonConvCheck::residual_and_increment_ratio}),
+                    parameter<int>("MAX_ITER", {.description = "maximum number of iterations",
+                                                   .default_value = 100,
+                                                   .validator = positive<int>()}),
+                    parameter<double>(
+                        "RES_TOL", {.description = "residual tolerance (absolute residual 2-norm)",
+                                       .default_value = 1.0e-8,
+                                       .validator = positive<double>()}),
+                    parameter<double>("MAX_EXCEEDANCE_FACT_RES_TOL",
+                        {.description =
+                                "maximum exceedance factor for the specified residual tolerance "
+                                "(Local Newton divergence safeguard for "
+                                "continuing the simulation, if desired so by the user)",
+                            .default_value = 1.0e1,
+                            .validator = positive_or_zero<double>()}),
+                    parameter<double>(
+                        "INCR_TOL", {.description = "increment tolerance ("
+                                                    "ratio of |increment| / |solution|)",
+                                        .default_value = 1.0e-8,
+                                        .validator = positive<double>()}),
+                    parameter<double>("MAX_EXCEEDANCE_FACT_INCR_TOL",
+                        {.description =
+                                "maximum exceedance factor for the specified increment tolerance "
+                                "(Local Newton divergence safeguard for "
+                                "continuing the simulation, if desired so by the user)",
+                            .default_value = 1.0e1,
+                            .validator = positive_or_zero<double>()}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            LocalNewtonDiverCont>("DIVER_CONT",
+                        {.description = "strategy to deal with divergence in the Local Newton Loop",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    LocalNewtonDiverCont::stop})
+
+                },
+                {.description = "Parameters used in the Local Newton--Raphson procedure "
+                                "(viscoplastic corrector stage)",
+                    .required = false})},
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
                         "viscoplasticity laws (flow rule + hardening model)"});

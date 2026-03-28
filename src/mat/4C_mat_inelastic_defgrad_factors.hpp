@@ -352,7 +352,10 @@ namespace Mat
           const
       {
         return mat_behavior_;
-      }
+      };
+      //! get boolean: use substepping in the time integration scheme? (true: yes, false: no)
+      [[nodiscard]] bool use_substepping() const { return use_substepping_; };
+
       //! get maximum number of times a time step can be halved into smaller and smaller
       //! substeps
       [[nodiscard]] unsigned int max_halve_number() const
@@ -400,6 +403,12 @@ namespace Mat
       {
         return mat_log_deriv_calc_method_;
       }
+      //! get Local Newton--Raphson parameters
+      [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams
+      local_newton_params() const
+      {
+        return local_newton_params_;
+      }
 
      private:
       //! ID of the viscoplasticity law
@@ -432,6 +441,10 @@ namespace Mat
       //! plastic strain derivatives (time_step * derivative)
       const double max_plastic_strain_deriv_incr_;
 
+      //! boolean: use substepping?
+      const bool use_substepping_;
+
+
       //! maximum number of times the given time step can be halved before reaching the minimum
       //! allowed substep length
       const int max_substepping_halve_num_;
@@ -447,6 +460,10 @@ namespace Mat
 
       //! utilized computation method for the first derivative of the matrix logarithm
       const Core::LinAlg::GenMatrixLogFirstDerivCalcMethod mat_log_deriv_calc_method_;
+
+      //! Local Newton--Raphson parameters
+      const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams
+          local_newton_params_;
     };
   }  // namespace PAR
 
@@ -1500,6 +1517,19 @@ namespace Mat
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
         int gp, int eleGID) override;
 
+    /*!
+     * Perform all preparation tasks for the return mapping in the current timestep.
+     * In contrast to the pre_evaluate method, these tasks shall not be repeated in case of the
+     * redundant evaluate call, see Issue #121 at https://github.com/4C-multiphysics/4C/issues/121.
+     * This means that the current, public pre-evaluate method performs only the safely repeatable
+     * pre-evaluation tasks. This also means that we prepare and perform the return mapping within
+     * evaluate_inverse_inelastic_defgrad only if we are not in the
+     * redundant call (see quick-fix PR #131 at
+     * https://github.com/4C-multiphysics/4C/pull/131).
+     *
+     */
+    void prepare_return_mapping();
+
     void update() override;
 
     void pack_inelastic(Core::Communication::PackBuffer& data) const override;
@@ -1626,6 +1656,9 @@ namespace Mat
     InelasticDefgradTransvIsotropElastViscoplastUtils::LocalSubsteppingUtils
         local_substepping_utils_;
 
+    //! dedicated Local Newton manager containing settings and iteration data
+    InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager_;
+
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
      * components
@@ -1721,6 +1754,19 @@ namespace Mat
         const Core::LinAlg::Matrix<10, 1>& x,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
+    /*!
+     * @brief Performs return mapping (elastic predictor - viscoplastic plastic corrector procedure)
+     * at each GP. It first evaluates whether the elastic predictor is a consistent solution, and
+     * performs the local time integration (Local Newton Loop) afterwards if that is not the case.
+     *
+     * @param[in] FredM reduced deformation gradient \f$ \boldsymbol{F}_{\text{red}} =
+     * \boldsymbol{F} \boldsymbol{F_{\text{in,other}}^{-1}} \f$ accounting for all the already
+     * computed inelastic defgrad factors
+     * @return inverse inelastic deformation gradient \boldsymbol{F}_{\text{in}}^{-1}
+     */
+    Core::LinAlg::Matrix<3, 3> return_mapping(const Core::LinAlg::Matrix<3, 3>& FredM);
+
+
 
     /*!
      * @brief Setup new substep in the Local Newton Loop in case of an encountered evaluation
@@ -1738,8 +1784,26 @@ namespace Mat
     bool prepare_new_substep(Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM);
 
     /*!
-     * @brief Evaluate the additional cmat stiffness tensor using a perturbation-based approach,
-     if
+     * @brief Routine utilized during the Local Newton evaluations to manage eventual evaluation
+     * errors. The performed steps depend on the input error status and the user specifications
+     * (e.g. management through substepping).
+     *
+     *
+     *
+     * @param[in] err_status error status
+     * @param[in,out] sol current (in) / updated (out) solution of the Local Newton Loop
+     * @param[in,out] curr_CM current right Cauchy-Green deformation tensor, interpolated using
+     * the reference matrices of the time step / substep (interpolated again within this method with
+     * the updated new substep length if substepping is employed)
+     * @param[out] eval_action action to be performed subsequently in the Local Newton Loop
+     */
+    void manage_evaluation(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
+        Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
+
+    /*!
+     * @brief Evaluate the additional cmat stiffness tensor using a perturbation-based approach, if
      * the analytical evaluation fails
      *
      * @note For further information on the procedure, refer to:

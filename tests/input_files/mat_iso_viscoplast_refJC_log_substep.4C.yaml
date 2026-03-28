@@ -52,6 +52,14 @@ MATERIALS:
       MAT_BEHAVIOR: "isotropic"
       TIME_INTEGRATION_HIST_VARS: logarithmic
       MAX_SUBSTEPPING_HALVE_NUM: 10
+      LOCAL_NEWTON:
+        CONV_CHECK: residual_and_increment_ratio
+        MAX_ITER: 100
+        RES_TOL: 1e-8
+        INCR_TOL: 1e-8
+        MAX_EXCEEDANCE_FACT_RES_TOL: 10
+        MAX_EXCEEDANCE_FACT_INCR_TOL: 10
+        DIVER_CONT: stop
   - MAT: 4
     MAT_ViscoplasticLawReformulatedJohnsonCook:
       STRAIN_RATE_PREFAC: 1
