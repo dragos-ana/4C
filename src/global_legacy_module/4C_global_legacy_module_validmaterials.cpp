@@ -2777,7 +2777,25 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
 
   /*----------------------------------------------------------------------*/
   {
-    known_materials[Core::Materials::mfi_time_funct] = group("MAT_InelasticDefgradTimeFunct",
+    known_materials[Core::Materials::mfi_time_funct_aniso] =
+        group("MAT_InelasticDefgradTimeFunctAniso",
+            {
+                parameter<int>(
+                    "FUNCT_NUM", {.description = "Time-dependent function of the determinant "
+                                                 "of the inelastic deformation gradient"}),
+                parameter<int>(
+                    "NUMSPACEDIM", {.description = "Number of space dimension (only 3 valid)"}),
+                parameter<std::vector<double>>(
+                    "GrowthDirection", {.description = "vector that defines the growth direction",
+                                           .size = from_parameter<int>("NUMSPACEDIM")}),
+            },
+            {.description = "Time-dependent anisotropic growth law; growth in direction as given "
+                            "in input-file. Determinant of volume change dependent on time "
+                            "function defined by 'FUNCT_NUM"});
+  }
+  /*----------------------------------------------------------------------*/
+  {
+    known_materials[Core::Materials::mfi_time_funct_iso] = group("MAT_InelasticDefgradTimeFunctIso",
         {
             parameter<int>(
                 "FUNCT_NUM", {.description = "Time-dependent function of the determinant "

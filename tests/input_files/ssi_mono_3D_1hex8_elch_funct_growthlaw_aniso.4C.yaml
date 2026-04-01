@@ -4,13 +4,14 @@ TITLE:
   - "- cubic domain discretized by 1 hex8 element"
   - "- constant transported scalar"
   - "- structure and scatra fields are coupled via MAT_MultiplicativeSplitDefgradElastHyper using:"
-  - "- MAT_InelasticDefgradTimeFunct: isotropic strain dependending on a given function"
+  - "- MAT_InelasticDefgradTimeFunctAniso: anisotropic strain dependending on a given function and GrowthDirection"
 PROBLEM TYPE:
   PROBLEMTYPE: "Structure_Scalar_Interaction"
 IO:
   STDOUTEVERY: 0
 STRUCTURAL DYNAMIC:
   LINEAR_SOLVER: 1
+  NEGLECTINERTIA: true
 SCALAR TRANSPORT DYNAMIC:
   SOLVERTYPE: "nonlinear"
   VELOCITYFIELD: "Navier_Stokes"
@@ -41,7 +42,7 @@ SSI CONTROL/MONOLITHIC:
 SSI CONTROL/ELCH:
   INITPOTCALC: true
 SOLVER 1:
-  SOLVER: "UMFPACK"
+  SOLVER: MUMPS
 MATERIALS:
   - MAT: 1
     MAT_electrode:
@@ -72,8 +73,10 @@ MATERIALS:
       YOUNG: 10000
       NUE: 0.3
   - MAT: 4
-    MAT_InelasticDefgradTimeFunctIso:
+    MAT_InelasticDefgradTimeFunctAniso:
       FUNCT_NUM: 2
+      NUMSPACEDIM: 3
+      GrowthDirection: [1.0, 0.0, 0.0]
 CLONING MATERIAL MAP:
   - SRC_FIELD: "structure"
     SRC_MAT: 2
@@ -85,7 +88,7 @@ FUNCT1:
   - COMPONENT: 1
     SYMBOLIC_FUNCTION_OF_SPACE_TIME: "3.6"
 FUNCT2:
-  - SYMBOLIC_FUNCTION_OF_TIME: "t+1"
+  - SYMBOLIC_FUNCTION_OF_TIME: "t"
 FUNCT3:
   - FASTPOLYNOMIAL:
       NUMCOEFF: 1
@@ -95,62 +98,62 @@ RESULT DESCRIPTION:
       DIS: "structure"
       NODE: 1
       QUANTITY: "dispx"
-      VALUE: 0
-      TOLERANCE: 1e-16
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 3
       QUANTITY: "dispx"
-      VALUE: 0.006921856954941938
-      TOLERANCE: 6.9e-11
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 3
       QUANTITY: "dispy"
-      VALUE: 0.2622678912417408
-      TOLERANCE: 2.6e-09
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 3
       QUANTITY: "dispz"
-      VALUE: -0.25929459138640365
-      TOLERANCE: 2.6e-09
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 5
       QUANTITY: "dispx"
-      VALUE: 0.2592789519922163
-      TOLERANCE: 2.6e-09
+      VALUE: 1.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 5
       QUANTITY: "dispy"
-      VALUE: -0.004226665065493477
-      TOLERANCE: 4.2e-11
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 5
       QUANTITY: "dispz"
-      VALUE: 0.0006981477990695778
-      TOLERANCE: 7e-12
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 7
       QUANTITY: "dispx"
-      VALUE: 0.26636392660789293
-      TOLERANCE: 2.7e-09
+      VALUE: 1.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 7
       QUANTITY: "dispy"
-      VALUE: 0.25959312689235386
-      TOLERANCE: 2.6e-09
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
   - STRUCTURE:
       DIS: "structure"
       NODE: 7
       QUANTITY: "dispz"
-      VALUE: -0.2536979872589032
-      TOLERANCE: 2.5e-09
+      VALUE: 0.0
+      TOLERANCE: 1.0e-09
 DESIGN POINT DIRICH CONDITIONS:
   - E: 1
     NUMDOF: 3
