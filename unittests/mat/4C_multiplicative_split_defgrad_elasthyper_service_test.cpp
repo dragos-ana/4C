@@ -164,10 +164,20 @@ namespace
   TEST_F(MultiplicativeSplitDefgradElastHyperServiceTest,
       TestEvaluateThermalQuantitiesStressAndStiffness)
   {
-    Core::LinAlg::Matrix<6, 1> S_stress;
-    Core::LinAlg::Matrix<6, 6> cmat;
-
-    // set reference values
+    //**************************************************
+    double delta_temperature = 100.0000000000000000;
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
+    iFinM(0, 0) = 1.0026809779767947;
+    iFinM(0, 1) = 0.2005361955953590;
+    iFinM(0, 2) = 0.0000000000000000;
+    iFinM(1, 0) = 0.3008042933930384;
+    iFinM(1, 1) = 1.3034852713698331;
+    iFinM(1, 2) = 0.0000000000000000;
+    iFinM(2, 0) = 0.0000000000000000;
+    iFinM(2, 1) = 0.0000000000000000;
+    iFinM(2, 2) = 0.8021447823814358;
+    //**************************************************
     Core::LinAlg::Matrix<3, 3> CTM_ref_{Core::LinAlg::Initialization::zero};
     CTM_ref_(0, 0) = 21.0000000000000000;
     CTM_ref_(0, 1) = 0.0000000000000000;
@@ -178,6 +188,7 @@ namespace
     CTM_ref_(2, 0) = 0.0000000000000000;
     CTM_ref_(2, 1) = 0.0000000000000000;
     CTM_ref_(2, 2) = 21.0000000000000000;
+    //**************************************************
     Core::LinAlg::Matrix<3, 3> dCTM_dT_ref_{Core::LinAlg::Initialization::zero};
     dCTM_dT_ref_(0, 0) = 0.2000000000000000;
     dCTM_dT_ref_(0, 1) = 0.0000000000000000;
@@ -188,68 +199,34 @@ namespace
     dCTM_dT_ref_(2, 0) = 0.0000000000000000;
     dCTM_dT_ref_(2, 1) = 0.0000000000000000;
     dCTM_dT_ref_(2, 2) = 0.2000000000000000;
-    Core::LinAlg::Matrix<3, 3> S_theta_ref_{Core::LinAlg::Initialization::zero};
-    S_theta_ref_(0, 0) = -57.6893976104649298;
-    S_theta_ref_(0, 1) = 0.0000000000000000;
-    S_theta_ref_(0, 2) = 0.0000000000000000;
-    S_theta_ref_(1, 0) = 0.0000000000000000;
-    S_theta_ref_(1, 1) = -57.6893976104649298;
-    S_theta_ref_(1, 2) = 0.0000000000000000;
-    S_theta_ref_(2, 0) = 0.0000000000000000;
-    S_theta_ref_(2, 1) = 0.0000000000000000;
-    S_theta_ref_(2, 2) = -57.6893976104649298;
-    Core::LinAlg::Matrix<3, 3> dS_theta_dT_ref_{Core::LinAlg::Initialization::zero};
-    dS_theta_dT_ref_(0, 0) = 0.0001801479235998;
-    dS_theta_dT_ref_(0, 1) = 0.0000000000000000;
-    dS_theta_dT_ref_(0, 2) = 0.0000000000000000;
-    dS_theta_dT_ref_(1, 0) = 0.0000000000000000;
-    dS_theta_dT_ref_(1, 1) = 0.0001801479235998;
-    dS_theta_dT_ref_(1, 2) = 0.0000000000000000;
-    dS_theta_dT_ref_(2, 0) = 0.0000000000000000;
-    dS_theta_dT_ref_(2, 1) = 0.0000000000000000;
-    dS_theta_dT_ref_(2, 2) = 0.0001801479235998;
-    Core::LinAlg::Matrix<3, 3> S_ref_{Core::LinAlg::Initialization::zero};
-    S_ref_(0, 0) = -57.6893976104649298;
-    S_ref_(0, 1) = 0.0000000000000000;
-    S_ref_(0, 2) = 0.0000000000000000;
-    S_ref_(1, 0) = 0.0000000000000000;
-    S_ref_(1, 1) = -57.6893976104649298;
-    S_ref_(1, 2) = 0.0000000000000000;
-    S_ref_(2, 0) = 0.0000000000000000;
-    S_ref_(2, 1) = 0.0000000000000000;
-    S_ref_(2, 2) = -57.6893976104649298;
+    //**************************************************
     Core::LinAlg::Matrix<3, 3> S_T_ref_{Core::LinAlg::Initialization::zero};
-    S_T_ref_(0, 0) = 57.6893976104649298;
-    S_T_ref_(0, 1) = 0.0000000000000000;
+    S_T_ref_(0, 0) = 60.3191058810404357;
+    S_T_ref_(0, 1) = 32.4795185513294626;
     S_T_ref_(0, 2) = 0.0000000000000000;
-    S_T_ref_(1, 0) = 0.0000000000000000;
-    S_T_ref_(1, 1) = 57.6893976104649298;
+    S_T_ref_(1, 0) = 32.4795185513294626;
+    S_T_ref_(1, 1) = 103.2384696810115088;
     S_T_ref_(1, 2) = 0.0000000000000000;
     S_T_ref_(2, 0) = 0.0000000000000000;
     S_T_ref_(2, 1) = 0.0000000000000000;
-    S_T_ref_(2, 2) = 57.6893976104649298;
-    Core::LinAlg::Matrix<3, 3> dS_T_dT_ref_{Core::LinAlg::Initialization::zero};
-    dS_T_dT_ref_(0, 0) = -0.00009007396;
-    dS_T_dT_ref_(0, 1) = 0.0000000000000000;
-    dS_T_dT_ref_(0, 2) = 0.0000000000000000;
-    dS_T_dT_ref_(1, 0) = 0.0000000000000000;
-    dS_T_dT_ref_(1, 1) = -0.00009007396;
-    dS_T_dT_ref_(1, 2) = 0.0000000000000000;
-    dS_T_dT_ref_(2, 0) = 0.0000000000000000;
-    dS_T_dT_ref_(2, 1) = 0.0000000000000000;
-    dS_T_dT_ref_(2, 2) = -0.00009007396;
-
-
+    S_T_ref_(2, 2) = 37.1194497729479664;
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> dS_dT_ref_{Core::LinAlg::Initialization::zero};
+    dS_dT_ref_(0, 0) = -0.0000941798851085;
+    dS_dT_ref_(0, 1) = -0.0000507122458277;
+    dS_dT_ref_(0, 2) = -0.0000000000000000;
+    dS_dT_ref_(1, 0) = -0.0000507122458277;
+    dS_dT_ref_(1, 1) = -0.0001611924956665;
+    dS_dT_ref_(1, 2) = -0.0000000000000000;
+    dS_dT_ref_(2, 0) = -0.0000000000000000;
+    dS_dT_ref_(2, 1) = -0.0000000000000000;
+    dS_dT_ref_(2, 2) = -0.0000579568523745;
 
     // set thermal info
-    const double delta_temperature = 100.0;
     const Mat::ThermalExpansionMaterialType thermal_expansion_mat_type =
         FourC::Mat::ThermalExpansionMaterialType::isotropic;
     const double thermal_expansion_fac = 0.1;
 
-    // set inverse inelastic defgrad
-    Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
-    for (int i = 0; i < 3; ++i) iFinM(i, i) = 1.0;
     Core::LinAlg::Matrix<3, 3> iCinM{Core::LinAlg::Initialization::zero};
     iCinM.multiply_nt(1.0, iFinM, iFinM, 0.0);
     Core::LinAlg::Matrix<6, 1> iCinV{Core::LinAlg::Initialization::zero};
@@ -288,10 +265,10 @@ namespace
     Core::LinAlg::Matrix<3, 3> ST_M{Core::LinAlg::Initialization::zero};
     Core::LinAlg::Voigt::Stresses::vector_to_matrix(ST_V, ST_M);
     // evaluate partial derivative of thermal stress wrt temperature
-    Core::LinAlg::Matrix<6, 1> dST_dT_V =
+    Core::LinAlg::Matrix<6, 1> dS_dT_V =
         Mat::evaluate_thermal_stress_deriv(iFinM, thermal_quantities, thermal_stress_factors);
-    Core::LinAlg::Matrix<3, 3> dST_dT_M{Core::LinAlg::Initialization::zero};
-    Core::LinAlg::Voigt::Stresses::vector_to_matrix(dST_dT_V, dST_dT_M);
+    Core::LinAlg::Matrix<3, 3> dS_dT_M{Core::LinAlg::Initialization::zero};
+    Core::LinAlg::Voigt::Stresses::vector_to_matrix(dS_dT_V, dS_dT_M);
 
 
     // postprocessed data for assertions
@@ -303,6 +280,6 @@ namespace
     FOUR_C_EXPECT_NEAR(CTM, CTM_ref_, 1.0e-10);
     FOUR_C_EXPECT_NEAR(dCTM_dT, dCTM_dT_ref_, 1.0e-10);
     FOUR_C_EXPECT_NEAR(ST_M, S_T_ref_, 1.0e-10);
-    FOUR_C_EXPECT_NEAR(dST_dT_M, dS_T_dT_ref_, 1.0e-10);
+    FOUR_C_EXPECT_NEAR(dS_dT_M, dS_dT_ref_, 1.0e-10);
   }
 }  // namespace
