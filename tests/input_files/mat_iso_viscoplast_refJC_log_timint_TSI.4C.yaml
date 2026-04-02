@@ -24,7 +24,7 @@ IO/RUNTIME VTK OUTPUT:
   INTERVAL_STEPS: 1
 STRUCTURAL DYNAMIC:
   INT_STRATEGY: "Standard"
-  DYNAMICTYPE: "Statics"
+  DYNAMICTYPE: OneStepTheta
   RESTARTEVERY: 30
   TIMESTEP: 1e-06
   NUMSTEP: 100000000
@@ -70,14 +70,12 @@ TSI DYNAMIC:
   MATCHINGGRID: true
   RESTARTEVERY: 1
   NUMSTEP: 100000000
-  MAXTIME: 0.02
-  TIMESTEP: 1e-4
+  MAXTIME: 0.02 # [s]
+  TIMESTEP: 1e-4 # [s]
   ITEMAX: 20
   ITEMIN: 0
   RESULTSEVERY: 1
   NORM_INC: Rel
-# TSI DYNAMIC/PARTITIONED:
-#   COUPVARIABLE: Temperature # this works for some reason with tsi_oneway
 TSI DYNAMIC/MONOLITHIC:
   LINEAR_SOLVER: 1
   MERGE_TSI_BLOCK_MATRIX: true
@@ -97,17 +95,17 @@ MATERIALS:
       MATIDSEL: [2]
       NUMFACINEL: 1
       INELDEFGRADFACIDS: [3]
-      DENS: 7830
-      REF_TEMPERATURE: 293
-      THERMAL_EXPANSION_FAC: 11e-6
+      DENS: 7830e-12 # [t/mm^3 = N*s^2/mm^4]
+      REF_TEMPERATURE: 293 # [K]
+      THERMAL_EXPANSION_FAC: 11e-6 # [1/K]
   - MAT: 2
     ELAST_CoupNeoHooke:
-      YOUNG: 200000
-      NUE: 0.29
+      YOUNG: 200e3 # [N/mm^2]
+      NUE: 0.29 # [-]
   - MAT: 3
     MAT_InelasticDefgradTransvIsotropElastViscoplast:
       VISCOPLAST_LAW_ID: 4
-      TAYLOR_QUINNEY_FACTOR: 0.85
+      TAYLOR_QUINNEY_FACTOR: 0.85 # [-]
       FIBER_READER_ID: 5
       YIELD_COND_A: 0
       YIELD_COND_B: 0
@@ -116,14 +114,14 @@ MATERIALS:
       MAX_SUBSTEPPING_HALVE_NUM: 1
   - MAT: 4
     MAT_ViscoplasticLawReformulatedJohnsonCook:
-      STRAIN_RATE_PREFAC: 1
-      STRAIN_RATE_EXP_FAC: 0.014
-      INIT_YIELD_STRENGTH: 792
-      ISOTROP_HARDEN_PREFAC: 510
-      ISOTROP_HARDEN_EXP: 0.26
-      REF_TEMPERATURE: 293
-      MELT_TEMPERATURE: 1793
-      TEMPERATURE_SENS: 1.03
+      STRAIN_RATE_PREFAC: 1 # [1/s]
+      STRAIN_RATE_EXP_FAC: 0.014 # [-]
+      INIT_YIELD_STRENGTH: 792 # [N/mm^2]
+      ISOTROP_HARDEN_PREFAC: 510 # [N/mm^2]
+      ISOTROP_HARDEN_EXP: 0.26 # [-]
+      REF_TEMPERATURE: 293 # [K]
+      MELT_TEMPERATURE: 1793 # [K]
+      TEMPERATURE_SENS: 1.03 # [-]
   - MAT: 5
     ELAST_CoupTransverselyIsotropic:
       ALPHA: 1
@@ -137,9 +135,9 @@ MATERIALS:
 
   - MAT: 10
     MAT_Fourier:
-      CAPA: 2
+      CAPA: 3.734910 # [mJ/(mm^3*K) = N/(mm^2*K)]
       CONDUCT:
-        constant: [1]
+        constant: [37] # [mW/(mm*K) = N/s/K]
 
 CLONING MATERIAL MAP:
   - SRC_FIELD: structure
@@ -154,7 +152,7 @@ FUNCT1:
     TYPE: "multifunction"
     NUMPOINTS: 2
     TIMES: [0, 1.6e+16]
-    DESCRIPTION: ["(exp(1.0e2*t)-1.0)"]
+    DESCRIPTION: ["(exp(1.0e2*t)-1.0)"] # [mm]
     # RESULT DESCRIPTION:
 # - STRUCTURE:
 #     DIS: "structure"
