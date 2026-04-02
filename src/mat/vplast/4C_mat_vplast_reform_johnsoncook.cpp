@@ -45,7 +45,7 @@ Mat::Viscoplastic::PAR::ReformulatedJohnsonCook::ReformulatedJohnsonCook(
  *--------------------------------------------------------------------*/
 Mat::Viscoplastic::ReformulatedJohnsonCook::ReformulatedJohnsonCook(
     Core::Mat::PAR::Parameter* params)
-    : Mat::Viscoplastic::Law(params),
+    : Mat::Viscoplastic::Law(params, true),
       const_pars_(parameter()->strain_rate_pre_fac(), 1.0 / parameter()->strain_rate_exp_fac(),
           parameter()->isotrop_harden_prefac(), parameter()->isotrop_harden_exp(),
           parameter()->init_yield_strength())

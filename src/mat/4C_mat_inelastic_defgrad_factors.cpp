@@ -69,13 +69,6 @@ namespace
   // declare numerical tolerance to be used in the verification of (numerically) zero plastic strain
   // increments
   constexpr double zero_plastic_strain_increment = 1.0e-14;
-  // set reference plastic strain increments for LNGI: if elastic predictor has a smaller plastic
-  // strain increment than this value, then it is directly used as the initial LNL guess without
-  // performing the LNGI; otherwise, the plastic predictor is updated such that its plastic strain
-  // increment is smaller than this value, but higher than the numerical value of the set zero
-  // plastic strain increment
-  constexpr double ref_plastic_strain_increment = 1.0e-6;
-
   // declare file-scope instance of the constant non-material tensors
   static ConstNonMatTensors const_non_mat_tensors = ConstNonMatTensors::instance();
 
@@ -3649,126 +3642,127 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_lngi(
   }
 
 
-  // TODO: routine for determining exact plastic predictor (yield surface);
-  // evaluate the states associated with both predictors
-  ErrorType err_status{ErrorType::no_errors};
-  Core::LinAlg::Matrix<3, 3> right_cg{Core::LinAlg::Initialization::zero};
-  right_cg.multiply_tn(1.0, defgrad, defgrad, 0.0);
-
-  StateQuantities state_quantities_plastic_pred = evaluate_state_quantities(right_cg,
-      inv_plastic_defgrad_plastic_pred, time_step_quantities_.last_plastic_strain_[gp_], err_status,
-      time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
-  if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+  // --> routine for determining exact plastic predictor (on the yield surface) for
+  // yield-surface-based viscoplastic models
+  if (viscoplastic_law_->uses_yield_surface())
   {
-    state_quantities_plastic_pred.curr_equiv_plastic_strain_rate_ = 1.0;
-  }
+    // evaluate the stress states, and the relative yield stress deviations associated with both
+    // predictors
+    ErrorType err_status{ErrorType::no_errors};
+    Core::LinAlg::Matrix<3, 3> right_cg{Core::LinAlg::Initialization::zero};
+    right_cg.multiply_tn(1.0, defgrad, defgrad, 0.0);
 
 
-
-  // compute plastic strain increments for both predictors
-  const double plastic_strain_increment_plast_pred = std::abs(
-      state_quantities_plastic_pred.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_);
-
-  err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
-  StateQuantities state_quantities_elastic_pred =
-      evaluate_state_quantities(right_cg, time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
-          time_step_quantities_.last_plastic_strain_[gp_], err_status, time_step_tracker_.dt_,
-          StateQuantityEvalType::PlasticStrainRateOnly);
-  if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
-  {
-    state_quantities_elastic_pred.curr_equiv_plastic_strain_rate_ = 1.0;
-  }
-
-
-  const double plastic_strain_increment_elast_pred = std::abs(
-      state_quantities_elastic_pred.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_);
-
+    double rel_stress_deviation_elastic_pred;
+    StateQuantities state_quantities_elastic_pred = evaluate_state_quantities(right_cg,
+        time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
+        time_step_quantities_.last_plastic_strain_[gp_], err_status, time_step_tracker_.dt_,
+        StateQuantityEvalType::FullEval);
+    if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+    {
+      state_quantities_elastic_pred.curr_equiv_plastic_strain_rate_ = -1.0;
+      rel_stress_deviation_elastic_pred = 1.0;
+    }
+    else
+    {
+      rel_stress_deviation_elastic_pred =
+          viscoplastic_law_->evaluate_stress_ratio(state_quantities_elastic_pred.curr_equiv_stress_,
+              time_step_quantities_.last_plastic_strain_[gp_]) -
+          1.0;
+    }
 
 
-  // DEBUG
-  if (debug_mode(ele_gid_, gp_) && debug_pred_adapt)
-  {
-    std::cout << std::string(50, '-') << std::endl;
-    std::cout << "elastic_defgrad_elast_pred: " << std::endl;
-    Core::LinAlg::Matrix<3, 3> elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
-    elastic_defgrad_elast_pred.multiply_nn(
-        1.0, defgrad, time_step_quantities_.last_plastic_defgrad_inverse_[gp_], 0.0);
-    elastic_defgrad_elast_pred.print(std::cout);
-    std::cout << "plastic_strain_increment_elast_pred: " << plastic_strain_increment_elast_pred
-              << std::endl;
-    Core::LinAlg::Matrix<3, 3> elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
-    elastic_defgrad_plast_pred.multiply_nn(1.0, defgrad, inv_plastic_defgrad_plastic_pred, 0.0);
-    elastic_defgrad_plast_pred.print(std::cout);
-    std::cout << "plastic_strain_increment_plast_pred: " << plastic_strain_increment_plast_pred
-              << std::endl;
-  }
+    double rel_stress_deviation_plastic_pred;
+    err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
+    StateQuantities state_quantities_plastic_pred = evaluate_state_quantities(right_cg,
+        inv_plastic_defgrad_plastic_pred, time_step_quantities_.last_plastic_strain_[gp_],
+        err_status, time_step_tracker_.dt_, StateQuantityEvalType::EquivStressOnly);
+    FOUR_C_ASSERT_ALWAYS(
+        err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors,
+        "Inconsistent preliminary plastic predictor stress! This should always be computable for "
+        "the interpolation to work");
+    rel_stress_deviation_plastic_pred =
+        viscoplastic_law_->evaluate_stress_ratio(state_quantities_plastic_pred.curr_equiv_stress_,
+            time_step_quantities_.last_plastic_strain_[gp_]) -
+        1.0;
+
+    // determine whether to update the plastic predictor, or to
+    // directly use the elastic predictor (if its equivalent stress is already close to the yield
+    // surface)
+    if (rel_stress_deviation_elastic_pred <=
+        InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+            max_rel_stress_deviation_)
+    {
+      use_elastic_predictor_ = true;
+      return;
+    }
+    else
+    {
+      // determine an updated plastic predictor (only if the preliminary plastic predictor leads to
+      // a stress below the yield surface; otherwise, preliminary plastic predictor = plastic
+      // predictor)
+      if (rel_stress_deviation_plastic_pred <= 0.0)
+      {
+        determine_updated_plastic_predictor_lngi(defgrad);
+        use_elastic_predictor_ = false;
 
 
-  // based on the plastic strain increment: determine whether to update the plastic predictor, or to
-  // directly use the elastic predictor (if its plastic strain increment is already small)
-  if (plastic_strain_increment_elast_pred <= ref_plastic_strain_increment)
-  {
-    use_elastic_predictor_ = true;
-    return;
+        // DEBUG
+        if (debug_mode(ele_gid_, gp_) && debug_pred_adapt)
+        {
+          std::cout << std::string(50, '.') << std::endl;
+          std::cout << "...after updated plastic predictor..." << std::endl;
+          std::cout << "updated_elastic_defgrad_elast_pred: " << std::endl;
+          Core::LinAlg::Matrix<3, 3> elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
+          Core::LinAlg::Matrix<3, 3> inv_defgrad{Core::LinAlg::Initialization::zero};
+          inv_defgrad.invert(defgrad);
+          Core::LinAlg::Matrix<3, 3> updated_inv_plastic_defgrad_elast_pred =
+              lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(gp_, defgrad,
+                  LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 0.0,
+                      .xi_lambda_2_ = 0.0,
+                      .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}},
+                  inv_defgrad);
+          elastic_defgrad_elast_pred.multiply_nn(
+              1.0, defgrad, updated_inv_plastic_defgrad_elast_pred, 0.0);
+          elastic_defgrad_elast_pred.print(std::cout);
+          StateQuantities state_quantities_updated_elastic_pred =
+              evaluate_state_quantities(right_cg, updated_inv_plastic_defgrad_elast_pred,
+                  time_step_quantities_.last_plastic_strain_[gp_], err_status,
+                  time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+          const double plastic_strain_increment_updated_elast_pred =
+              std::abs(state_quantities_updated_elastic_pred.curr_equiv_plastic_strain_rate_ *
+                       time_step_tracker_.dt_);
+          std::cout << "updated_plastic_strain_increment_elast_pred: "
+                    << plastic_strain_increment_updated_elast_pred << std::endl;
+
+          std::cout << "updated_elastic_defgrad_plast_pred: " << std::endl;
+          Core::LinAlg::Matrix<3, 3> elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
+          Core::LinAlg::Matrix<3, 3> updated_inv_plastic_defgrad_plast_pred =
+              lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(gp_, defgrad,
+                  LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 1.0,
+                      .xi_lambda_2_ = 1.0,
+                      .xi_rel_eigenvect_rot_ = {1.0, 1.0, 1.0}},
+                  inv_defgrad);
+          elastic_defgrad_plast_pred.multiply_nn(
+              1.0, defgrad, updated_inv_plastic_defgrad_plast_pred, 0.0);
+          elastic_defgrad_plast_pred.print(std::cout);
+          StateQuantities state_quantities_updated_plastic_pred =
+              evaluate_state_quantities(right_cg, updated_inv_plastic_defgrad_plast_pred,
+                  time_step_quantities_.last_plastic_strain_[gp_], err_status,
+                  time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
+          const double plastic_strain_increment_updated_plast_pred =
+              std::abs(state_quantities_updated_plastic_pred.curr_equiv_plastic_strain_rate_ *
+                       time_step_tracker_.dt_);
+
+          std::cout << "updated_plastic_strain_increment_plast_pred: "
+                    << plastic_strain_increment_updated_plast_pred << std::endl;
+        }
+      }
+    }
   }
   else
   {
-    // determine an updated plastic predictor
-    if (plastic_strain_increment_plast_pred <= zero_plastic_strain_increment)
-    {
-      determine_updated_plastic_predictor_lngi(defgrad);
-      use_elastic_predictor_ = false;
-
-
-      // DEBUG
-      if (debug_mode(ele_gid_, gp_) && debug_pred_adapt)
-      {
-        std::cout << std::string(50, '.') << std::endl;
-        std::cout << "...after updated plastic predictor..." << std::endl;
-        std::cout << "updated_elastic_defgrad_elast_pred: " << std::endl;
-        Core::LinAlg::Matrix<3, 3> elastic_defgrad_elast_pred{Core::LinAlg::Initialization::zero};
-        Core::LinAlg::Matrix<3, 3> inv_defgrad{Core::LinAlg::Initialization::zero};
-        inv_defgrad.invert(defgrad);
-        Core::LinAlg::Matrix<3, 3> updated_inv_plastic_defgrad_elast_pred =
-            lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(gp_, defgrad,
-                LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 0.0,
-                    .xi_lambda_2_ = 0.0,
-                    .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}},
-                inv_defgrad);
-        elastic_defgrad_elast_pred.multiply_nn(
-            1.0, defgrad, updated_inv_plastic_defgrad_elast_pred, 0.0);
-        elastic_defgrad_elast_pred.print(std::cout);
-        StateQuantities state_quantities_updated_elastic_pred = evaluate_state_quantities(right_cg,
-            updated_inv_plastic_defgrad_elast_pred, time_step_quantities_.last_plastic_strain_[gp_],
-            err_status, time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
-        const double plastic_strain_increment_updated_elast_pred =
-            std::abs(state_quantities_updated_elastic_pred.curr_equiv_plastic_strain_rate_ *
-                     time_step_tracker_.dt_);
-        std::cout << "updated_plastic_strain_increment_elast_pred: "
-                  << plastic_strain_increment_updated_elast_pred << std::endl;
-
-        std::cout << "updated_elastic_defgrad_plast_pred: " << std::endl;
-        Core::LinAlg::Matrix<3, 3> elastic_defgrad_plast_pred{Core::LinAlg::Initialization::zero};
-        Core::LinAlg::Matrix<3, 3> updated_inv_plastic_defgrad_plast_pred =
-            lnl_guess_interpolation_.interpolate_inv_plastic_defgrad(gp_, defgrad,
-                LocalNewtonGuessInterpolation::InterpolationPoint{.xi_lambda_1_ = 1.0,
-                    .xi_lambda_2_ = 1.0,
-                    .xi_rel_eigenvect_rot_ = {1.0, 1.0, 1.0}},
-                inv_defgrad);
-        elastic_defgrad_plast_pred.multiply_nn(
-            1.0, defgrad, updated_inv_plastic_defgrad_plast_pred, 0.0);
-        elastic_defgrad_plast_pred.print(std::cout);
-        StateQuantities state_quantities_updated_plastic_pred = evaluate_state_quantities(right_cg,
-            updated_inv_plastic_defgrad_plast_pred, time_step_quantities_.last_plastic_strain_[gp_],
-            err_status, time_step_tracker_.dt_, StateQuantityEvalType::PlasticStrainRateOnly);
-        const double plastic_strain_increment_updated_plast_pred =
-            std::abs(state_quantities_updated_plastic_pred.curr_equiv_plastic_strain_rate_ *
-                     time_step_tracker_.dt_);
-
-        std::cout << "updated_plastic_strain_increment_plast_pred: "
-                  << plastic_strain_increment_updated_plast_pred << std::endl;
-      }
-    }
+    // nothing to do for no-yield-surface laws; preliminary plastic predictor = plastic predictor
   }
 }
 
@@ -3803,14 +3797,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_updated_plasti
       .xi_lambda_1_ = 1.0, .xi_lambda_2_ = 1.0, .xi_rel_eigenvect_rot_ = {1.0, 1.0, 1.0}};
   LocalNewtonGuessInterpolation::InterpolationPoint curr_interp_point = upper_bound_interp_point;
 
-
   // reset the error status to no errors and set the plastic increment to 0.0
   err_status = ErrorType::no_errors;
-  double plastic_strain_increment = 0.0;
 
   // set counter and maximum for iterations needed to get the updated plastic predictor
   unsigned int lngi_plastic_pred_iters = 0;
-  const unsigned int max_lngi_plastic_pred_iters = 100;
 
   // start the procedure of determining the updated upper bound $\xi_u$ for the plastic predictor
   while (true)
@@ -3818,7 +3809,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_updated_plasti
     ++lngi_plastic_pred_iters;
 
     // check whether interpolation is still possible
-    if (lngi_plastic_pred_iters > max_lngi_plastic_pred_iters)
+    if (lngi_plastic_pred_iters > InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                      LocalNewtonGuessInterpolation::max_lngi_plastic_pred_iters_)
     {
       std::cout << debug_get_error_info("Could not determine an updated plastic predictor!")
                 << std::endl;
@@ -3842,55 +3834,58 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_updated_plasti
     }
 
 
-    // evaluate the current state with the adapted predictor
+    // evaluate the current stress state with the adapted predictor
     StateQuantities state_quantities = evaluate_state_quantities(CM, iFin_updated_plastic_pred,
         plastic_strain_updated_plastic_pred, err_status, time_step_tracker_.dt_,
-        StateQuantityEvalType::PlasticStrainRateOnly);
+        StateQuantityEvalType::EquivStressOnly);
 
     // check for convergence and adapt used interpolation points based on the obtained error
     if (err_status == ErrorType::no_errors)
     {
-      // compute plastic strain increment associated with the computed state
-      plastic_strain_increment =
-          std::abs(state_quantities.curr_equiv_plastic_strain_rate_ * time_step_tracker_.dt_);
+      // compute relative stress deviation (no absolute value yet, we can reuse the sign
+      // subsequently)
+      const double rel_stress_deviation =
+          viscoplastic_law_->evaluate_stress_ratio(
+              state_quantities.curr_equiv_stress_, plastic_strain_updated_plastic_pred) -
+          1.0;
 
-      // check whether we have obtained the relevant interpolation point (yield surface) based on
-      // the maximum plastic strain increment
-      if (zero_plastic_strain_increment <= plastic_strain_increment)
+
+      // verify stress state
+      if (rel_stress_deviation >= 0.0 &&
+          std::abs(rel_stress_deviation) <
+              InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpolation::
+                  max_rel_stress_deviation_)  // on the yield surface
       {
-        if (plastic_strain_increment <= ref_plastic_strain_increment)
+        // recall pre-evaluate routine of the LNGI with the updated plastic deformation gradient
+        // within the plastic predictor
+        if (parameter()->lngi_precondition_matrices())
         {
-          // recall pre-evaluate routine of the LNGI with the updated plastic deformation gradient
-          // within the plastic predictor
-          if (parameter()->lngi_precondition_matrices())
-          {
-            lnl_guess_interpolation_.pre_evaluate(gp_,
-                precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
-                    parameter()->lngi_precondition_matrices_num_tol() *
-                        time_step_quantities_.last_plastic_defgrad_inverse_[gp_].norm2()),
-                precondition_matrix(
-                    iFin_updated_plastic_pred, parameter()->lngi_precondition_matrices_num_tol() *
-                                                   iFin_updated_plastic_pred.norm2()),
-                precondition_matrix(
-                    defgrad, parameter()->lngi_precondition_matrices_num_tol() * defgrad.norm2()));
-          }
-          else
-          {
-            lnl_guess_interpolation_.pre_evaluate(gp_,
-                time_step_quantities_.last_plastic_defgrad_inverse_[gp_], iFin_updated_plastic_pred,
-                defgrad);
-          }
-          // we can now exit the loop
-          break;
+          lnl_guess_interpolation_.pre_evaluate(gp_,
+              precondition_matrix(time_step_quantities_.last_plastic_defgrad_inverse_[gp_],
+                  parameter()->lngi_precondition_matrices_num_tol() *
+                      time_step_quantities_.last_plastic_defgrad_inverse_[gp_].norm2()),
+              precondition_matrix(
+                  iFin_updated_plastic_pred, parameter()->lngi_precondition_matrices_num_tol() *
+                                                 iFin_updated_plastic_pred.norm2()),
+              precondition_matrix(
+                  defgrad, parameter()->lngi_precondition_matrices_num_tol() * defgrad.norm2()));
         }
         else
         {
-          lower_bound_interp_point = curr_interp_point;
+          lnl_guess_interpolation_.pre_evaluate(gp_,
+              time_step_quantities_.last_plastic_defgrad_inverse_[gp_], iFin_updated_plastic_pred,
+              defgrad);
         }
+        // we can now exit the loop
+        break;
       }
-      else
+      else if (rel_stress_deviation < 0.0)  // below the yield surface
       {
         upper_bound_interp_point = curr_interp_point;
+      }
+      else  // above the yield surface
+      {
+        lower_bound_interp_point = curr_interp_point;
       }
     }
     else
@@ -5292,7 +5287,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::interpolate_local_newton_gues
                   .xi_rel_eigenvect_rot_ = {0.0, 0.0, 0.0}}))
       {
         // set number of lngi to maximum, since LNGI should not be used anymore
-        lnl_guess_interpolation_.num_of_lngi_ = lnl_guess_interpolation_.max_num_lngi_;
+        lnl_guess_interpolation_.num_of_lngi_ = lnl_guess_interpolation_.max_num_reestimate_lngi_;
 
         // set and return standard elastic predictor
         lnl_guess_interpolation_.guess_inv_plast_defgrad_ =

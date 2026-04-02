@@ -459,7 +459,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonGuessInterpol
         const PlasticPredictorRotationType rot_type, const double min_interp_interval)
     : k_scan_(k_scan),
       num_of_lngi_(0),
-      max_num_lngi_(max_num_reinterp),
+      max_num_reestimate_lngi_(max_num_reinterp),
       min_interp_interval_(min_interp_interval),
       guess_inv_plast_defgrad_{Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero}},
       plast_pred_elast_stretch_eigenval_type_(elastic_stretch_eigenval_type),

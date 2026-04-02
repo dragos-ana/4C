@@ -572,16 +572,25 @@ namespace Mat
       unsigned int num_of_lngi_;
 
       //! maximum number of allowed
-      //! Reinterpolations (including the initial Local Newton Guess Interpolation) before throwing
+      //! reestimations (including the initial Local Newton Guess Interpolation) before throwing
       //! error
-      const unsigned int max_num_lngi_;
+      const unsigned int max_num_reestimate_lngi_;
 
       //! minimum interpolation interval as a 2-norm \f$ \|  \mathbf{\xi}_{\text{upper}} -
       //! \mathbf{\xi}_{\text{upper}} \| \f$
       const double min_interp_interval_;
 
-      // maximum allowed number number of Local Newton Guess Interpolation iterations
-      static constexpr unsigned int MAX_NUM_PRED_ADAPT_ITERS = 100;
+      //! set maximum relative deviation between equiv stress and yield stress for LNGI: if elastic
+      //! predictor has a smaller stress deviation than this this value, then it is directly used as
+      //! the initial LNL guess without performing the LNGI; otherwise, the plastic predictor is
+      //! updated such that its relative stress deviation is smaller than this value
+      static constexpr double max_rel_stress_deviation_ = 1.0e-6;
+
+      // maximum number of Local Newton Guess Interpolation iterations
+      static constexpr unsigned int max_num_lngi_iters_ = 50;
+
+      // maximum number of plastic predictor construction iterations
+      static constexpr unsigned int max_lngi_plastic_pred_iters_ = 50;
 
       //! current initial guess containing the inverse inelastic deformation
       //! gradient (components 0-8) and the plastic strain (component 9)
@@ -630,20 +639,20 @@ namespace Mat
         }
 
         // check number of reinterpolations
-        bool check_num_reinterp = (num_of_lngi_ <= max_num_lngi_);
+        bool check_num_reinterp = (num_of_lngi_ <= max_num_reestimate_lngi_);
         if (!check_num_reinterp)
         {
           std::cout << "INIT GUESS INTERPOLATION ERROR: num of reinterpolations : " << num_of_lngi_
-                    << " > " << max_num_lngi_ << std::endl;
+                    << " > " << max_num_reestimate_lngi_ << std::endl;
           return false;
         }
 
         // check number of interpolation iterations
-        bool check_interp_iters = (num_interp_iters <= MAX_NUM_PRED_ADAPT_ITERS);
+        bool check_interp_iters = (num_interp_iters <= max_num_lngi_iters_);
         if (!check_interp_iters)
         {
           std::cout << "INIT GUESS INTERPOLATION ERROR: num of interpolation iters : "
-                    << check_interp_iters << " > " << MAX_NUM_PRED_ADAPT_ITERS << std::endl;
+                    << check_interp_iters << " > " << max_num_lngi_iters_ << std::endl;
           return false;
         }
 

@@ -52,7 +52,7 @@ Mat::Viscoplastic::PAR::Anand::Anand(const Core::Mat::PAR::Parameter::Data& matd
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Mat::Viscoplastic::Anand::Anand(Core::Mat::PAR::Parameter* params)
-    : Mat::Viscoplastic::Law(params),
+    : Mat::Viscoplastic::Law(params, false),
       const_pars_(parameter()->strain_rate_pre_fac(), 1.0 / parameter()->strain_rate_sensitivity(),
           parameter()->init_flow_res(), parameter()->harden_rate_pre_fac(),
           parameter()->harden_rate_sensitivity(), parameter()->flow_res_sat_fac(),

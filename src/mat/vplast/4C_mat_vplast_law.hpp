@@ -62,8 +62,14 @@ namespace Mat
     class Law
     {
      public:
-      /// construct viscoplastic laws with specific material params
-      explicit Law(Core::Mat::PAR::Parameter* params);
+      /*!
+       * @brief Law constructor
+       *
+       * @param[in] params material parameters
+       * @param[in] uses_yield_surface_formulation law-specific boolean to determine whether the
+       * viscoplastic law uses a yield surface formulation, or a no-yield-surface formulation
+       */
+      explicit Law(Core::Mat::PAR::Parameter* params, const bool uses_yield_surface_formulation);
       /// construct empty viscoplastic law
       Law();
 
@@ -214,6 +220,10 @@ namespace Mat
         return false;
       }
 
+
+      /// getter for formulation type in regards to yield surface
+      [[nodiscard]] bool uses_yield_surface() const { return uses_yield_surface_; }
+
       /*!
        * @brief Get information on the eventual last_ quantities of the
        * viscoplasticity law, to be shown during the error message at
@@ -223,6 +233,7 @@ namespace Mat
        */
       virtual std::string debug_get_error_info(int gp) { return ""; };
 
+
      protected:
       /// Gauss point
       int gp_;
@@ -230,7 +241,9 @@ namespace Mat
       /// global element id
       int ele_gid_;
 
-
+      /// variable to store whether the specific viscoplastic law uses a yield surface formulation
+      /// or not
+      const bool uses_yield_surface_;
 
      private:
       /// material parameters

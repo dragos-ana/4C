@@ -21,11 +21,15 @@ FOUR_C_NAMESPACE_OPEN
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Mat::Viscoplastic::Law::Law(Core::Mat::PAR::Parameter* params) : params_(params) {}
+Mat::Viscoplastic::Law::Law(
+    Core::Mat::PAR::Parameter* params, const bool uses_yield_surface_formulation)
+    : uses_yield_surface_(uses_yield_surface_formulation), params_(params)
+{
+}
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Mat::Viscoplastic::Law::Law() : params_(nullptr) {}
+Mat::Viscoplastic::Law::Law() : uses_yield_surface_(false), params_(nullptr) {}
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
