@@ -12,6 +12,7 @@
 #include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_voigt_notation.hpp"
+#include "4C_linalg_four_tensor.hpp"
 #include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_electrode.hpp"
@@ -31,6 +32,8 @@
 
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -2330,40 +2333,205 @@ namespace
         computed_state_quantity_derivatives_isotrop.curr_dlpdepsp_, 1.0e-6);
   }
 
-  TEST_F(InelasticDefgradFactorsTest, ThermoViscoplastTest)
+  TEST_F(InelasticDefgradFactorsTest, ThermoViscoplastStateQuantitiesAndDerivativesTest)
   {
+    // This tests evaluate_state_quantities and evaluate_state_quantity_derivatives
+    // if there are temperature contribtutions, i.e. the temperature is not the reference
+    // temperature.
+
     set_up_thermo_viscoplast_material();
 
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> CM{Core::LinAlg::Initialization::zero};
+    CM(0, 0) = 2.0000000000000000;
+    CM(0, 1) = 0.0000000000000000;
+    CM(0, 2) = 0.0000000000000000;
+    CM(1, 0) = 0.0000000000000000;
+    CM(1, 1) = 1.0000000000000000;
+    CM(1, 2) = 0.0000000000000000;
+    CM(2, 0) = 0.0000000000000000;
+    CM(2, 1) = 0.0000000000000000;
+    CM(2, 2) = 1.0000000000000000;
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
+    iFinM(0, 0) = 1.0026809779767947;
+    iFinM(0, 1) = 0.2005361955953590;
+    iFinM(0, 2) = 0.0000000000000000;
+    iFinM(1, 0) = 0.3008042933930384;
+    iFinM(1, 1) = 1.3034852713698331;
+    iFinM(1, 2) = 0.0000000000000000;
+    iFinM(2, 0) = 0.0000000000000000;
+    iFinM(2, 1) = 0.0000000000000000;
+    iFinM(2, 2) = 0.8021447823814358;
+    //**************************************************
+    double plastic_strain = 0.0100000000000000;
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> CeM_ref{Core::LinAlg::Initialization::zero};
+    CeM_ref(0, 0) = 2.1012215101166878;
+    CeM_ref(0, 1) = 0.7942416234412362;
+    CeM_ref(0, 2) = 0.0000000000000000;
+    CeM_ref(1, 0) = 0.7942416234412362;
+    CeM_ref(1, 1) = 1.7795033841658074;
+    CeM_ref(1, 2) = 0.0000000000000000;
+    CeM_ref(2, 0) = 0.0000000000000000;
+    CeM_ref(2, 1) = 0.0000000000000000;
+    CeM_ref(2, 2) = 0.6434362519017610;
+    //**************************************************
     Core::LinAlg::Matrix<3, 3> M_theta_dev_ref_{Core::LinAlg::Initialization::zero};
-    M_theta_dev_ref_(0, 0) = 368.5382665361394174;
-    M_theta_dev_ref_(0, 1) = 0.0000000000000000;
+    M_theta_dev_ref_(0, 0) = 327.9075462478140253;
+    M_theta_dev_ref_(0, 1) = 439.0626466708126827;
     M_theta_dev_ref_(0, 2) = 0.0000000000000000;
-    M_theta_dev_ref_(1, 0) = 0.0000000000000000;
-    M_theta_dev_ref_(1, 1) = -184.2691332680624328;
+    M_theta_dev_ref_(1, 0) = 439.0626466708126827;
+    M_theta_dev_ref_(1, 1) = 150.0593855710376374;
     M_theta_dev_ref_(1, 2) = 0.0000000000000000;
     M_theta_dev_ref_(2, 0) = 0.0000000000000000;
     M_theta_dev_ref_(2, 1) = 0.0000000000000000;
-    M_theta_dev_ref_(2, 2) = -184.2691332680624328;
+    M_theta_dev_ref_(2, 2) = -477.9669318188643956;
+    //**************************************************
     Core::LinAlg::Matrix<3, 3> dM_theta_dev_dT_ref_{Core::LinAlg::Initialization::zero};
-    dM_theta_dev_dT_ref_(0, 0) = -45.2775584601535286;
-    dM_theta_dev_dT_ref_(0, 1) = 0.0000000000000000;
+    dM_theta_dev_dT_ref_(0, 0) = -40.2857842533041861;
+    dM_theta_dev_dT_ref_(0, 1) = -53.9419823052717007;
     dM_theta_dev_dT_ref_(0, 2) = 0.0000000000000000;
-    dM_theta_dev_dT_ref_(1, 0) = 0.0000000000000000;
-    dM_theta_dev_dT_ref_(1, 1) = 22.6387792300767465;
+    dM_theta_dev_dT_ref_(1, 0) = -53.9419823052717007;
+    dM_theta_dev_dT_ref_(1, 1) = -18.4358673701561528;
     dM_theta_dev_dT_ref_(1, 2) = 0.0000000000000000;
     dM_theta_dev_dT_ref_(2, 0) = 0.0000000000000000;
     dM_theta_dev_dT_ref_(2, 1) = 0.0000000000000000;
-    dM_theta_dev_dT_ref_(2, 2) = 22.6387792300767501;
+    dM_theta_dev_dT_ref_(2, 2) = 58.7216516234603034;
+    //**************************************************
+    Core::LinAlg::Matrix<6, 6> dM_theta_dev_dC_Voigt_ref_{Core::LinAlg::Initialization::zero};
+    dM_theta_dev_dC_Voigt_ref_(0, 0) = 363.1066613817729376;
+    dM_theta_dev_dC_Voigt_ref_(0, 1) = -279.7403360645203065;
+    dM_theta_dev_dC_Voigt_ref_(0, 2) = -118.5654404511806206;
+    dM_theta_dev_dC_Voigt_ref_(0, 3) = 62.9878902396917510;
+    dM_theta_dev_dC_Voigt_ref_(0, 4) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(0, 5) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(1, 0) = -170.4378206485835108;
+    dM_theta_dev_dC_Voigt_ref_(1, 1) = 609.5004673193998315;
+    dM_theta_dev_dC_Voigt_ref_(1, 2) = -118.5654404511969915;
+    dM_theta_dev_dC_Voigt_ref_(1, 3) = 40.7568701550985679;
+    dM_theta_dev_dC_Voigt_ref_(1, 4) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(1, 5) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(2, 0) = -192.6688407331839699;
+    dM_theta_dev_dC_Voigt_ref_(2, 1) = -329.7601312548686110;
+    dM_theta_dev_dC_Voigt_ref_(2, 2) = 237.1308809023903450;
+    dM_theta_dev_dC_Voigt_ref_(2, 3) = -103.7447603947904895;
+    dM_theta_dev_dC_Voigt_ref_(2, 4) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(2, 5) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(3, 0) = 111.1551004229891078;
+    dM_theta_dev_dC_Voigt_ref_(3, 1) = 216.7524458248308292;
+    dM_theta_dev_dC_Voigt_ref_(3, 2) = 0.0000000000009095;
+    dM_theta_dev_dC_Voigt_ref_(3, 3) = 377.9273414381614202;
+    dM_theta_dev_dC_Voigt_ref_(3, 4) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(3, 5) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(4, 0) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(4, 1) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(4, 2) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(4, 3) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(4, 4) = 289.0032610997777738;
+    dM_theta_dev_dC_Voigt_ref_(4, 5) = 44.4620401691959160;
+    dM_theta_dev_dC_Voigt_ref_(5, 0) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(5, 1) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(5, 2) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(5, 3) = 0.0000000000000000;
+    dM_theta_dev_dC_Voigt_ref_(5, 4) = 66.6930602537963750;
+    dM_theta_dev_dC_Voigt_ref_(5, 5) = 222.3102008459791250;
+    //**************************************************
+    Core::LinAlg::Matrix<6, 9> dM_theta_dev_diFp_Voigt_ref_{Core::LinAlg::Initialization::zero};
+    dM_theta_dev_diFp_Voigt_ref_(0, 0) = 1478.1052380493056262;
+    dM_theta_dev_diFp_Voigt_ref_(0, 1) = -480.3842023659963161;
+    dM_theta_dev_diFp_Voigt_ref_(0, 2) = -295.6210476098422077;
+    dM_theta_dev_diFp_Voigt_ref_(0, 3) = -147.8105238049520267;
+    dM_theta_dev_diFp_Voigt_ref_(0, 4) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(0, 5) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(0, 6) = 221.7157857073802916;
+    dM_theta_dev_diFp_Voigt_ref_(0, 7) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(0, 8) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(1, 0) = -739.0526190246309852;
+    dM_theta_dev_diFp_Voigt_ref_(1, 1) = 960.7684047320144600;
+    dM_theta_dev_diFp_Voigt_ref_(1, 2) = -295.6210476098567597;
+    dM_theta_dev_diFp_Voigt_ref_(1, 3) = 295.6210476098658546;
+    dM_theta_dev_diFp_Voigt_ref_(1, 4) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(1, 5) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(1, 6) = -110.8578928536853709;
+    dM_theta_dev_diFp_Voigt_ref_(1, 7) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(1, 8) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(2, 0) = -739.0526190246528131;
+    dM_theta_dev_diFp_Voigt_ref_(2, 1) = -480.3842023659963161;
+    dM_theta_dev_diFp_Voigt_ref_(2, 2) = 591.2420952197353472;
+    dM_theta_dev_diFp_Voigt_ref_(2, 3) = -147.8105238049192849;
+    dM_theta_dev_diFp_Voigt_ref_(2, 4) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(2, 5) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(2, 6) = -110.8578928536990134;
+    dM_theta_dev_diFp_Voigt_ref_(2, 7) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(2, 8) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(3, 0) = 221.7157857073789273;
+    dM_theta_dev_diFp_Voigt_ref_(3, 1) = 166.2868392805457916;
+    dM_theta_dev_diFp_Voigt_ref_(3, 2) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(3, 3) = 1108.5789285369537538;
+    dM_theta_dev_diFp_Voigt_ref_(3, 4) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(3, 5) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(3, 6) = 720.5763035490163020;
+    dM_theta_dev_diFp_Voigt_ref_(3, 7) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(3, 8) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(4, 0) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(4, 1) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(4, 2) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(4, 3) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(4, 4) = 720.5763035490126640;
+    dM_theta_dev_diFp_Voigt_ref_(4, 5) = 221.7157857073962077;
+    dM_theta_dev_diFp_Voigt_ref_(4, 6) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(4, 7) = 443.4315714147905965;
+    dM_theta_dev_diFp_Voigt_ref_(4, 8) = -0.0000000000018190;
+    dM_theta_dev_diFp_Voigt_ref_(5, 0) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(5, 1) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(5, 2) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(5, 3) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(5, 4) = 166.2868392805389703;
+    dM_theta_dev_diFp_Voigt_ref_(5, 5) = 1108.5789285369901336;
+    dM_theta_dev_diFp_Voigt_ref_(5, 6) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(5, 7) = 0.0000000000000000;
+    dM_theta_dev_diFp_Voigt_ref_(5, 8) = 443.4315714147869585;
+    //**************************************************
+    double equiv_stress_ref_ = 1056.4413718231478470;
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> Np_ref_{Core::LinAlg::Initialization::zero};
+    Np_ref_(0, 0) = 0.4655831667429818;
+    Np_ref_(0, 1) = 0.6234079690287537;
+    Np_ref_(0, 2) = 0.0000000000000000;
+    Np_ref_(1, 0) = 0.6234079690287537;
+    Np_ref_(1, 1) = 0.2130634830857771;
+    Np_ref_(1, 2) = 0.0000000000000000;
+    Np_ref_(2, 0) = 0.0000000000000000;
+    Np_ref_(2, 1) = 0.0000000000000000;
+    Np_ref_(2, 2) = -0.6786466498287770;
+    //**************************************************
+    double plastic_strain_rate_ref_ = 11834.3385362621665990;
+    //**************************************************
+    Core::LinAlg::Matrix<3, 3> lp_ref_{Core::LinAlg::Initialization::zero};
+    lp_ref_(0, 0) = 5509.8688120214428636;
+    lp_ref_(0, 1) = 7377.6209516899116352;
+    lp_ref_(0, 2) = 0.0000000000000000;
+    lp_ref_(1, 0) = 7377.6209516899116352;
+    lp_ref_(1, 1) = 2521.4653885522548080;
+    lp_ref_(1, 2) = 0.0000000000000000;
+    lp_ref_(2, 0) = 0.0000000000000000;
+    lp_ref_(2, 1) = 0.0000000000000000;
+    lp_ref_(2, 2) = -8031.3342005739114029;
+    //**************************************************
+    Core::LinAlg::Matrix<9, 1> dlp_dT_Voigt_ref_{Core::LinAlg::Initialization::zero};
+    dlp_dT_Voigt_ref_(0) = -54414.3835141564777587;
+    dlp_dT_Voigt_ref_(1) = -24901.4975403773642029;
+    dlp_dT_Voigt_ref_(2) = 79315.8810545359301614;
+    dlp_dT_Voigt_ref_(3) = -72859.9372477706201607;
+    dlp_dT_Voigt_ref_(4) = 0.0000000000000000;
+    dlp_dT_Voigt_ref_(5) = 0.0000000000000000;
+    dlp_dT_Voigt_ref_(6) = -72859.9372477706201607;
+    dlp_dT_Voigt_ref_(7) = 0.0000000000000000;
+    dlp_dT_Voigt_ref_(8) = 0.0000000000000000;
 
 
-
-    // test out with unit stretch (and unit plastic defgrad, 0.0 plastic strain)
-    Core::LinAlg::Matrix<3, 3> CM{Core::LinAlg::Initialization::zero};
-    for (int i = 0; i < 3; ++i) CM(i, i) = 1.0;
-    CM(0, 0) = 2.0;
-    Core::LinAlg::Matrix<3, 3> iFinM{Core::LinAlg::Initialization::zero};
-    for (int i = 0; i < 3; ++i) iFinM(i, i) = 1.0;
-    const double plastic_strain = 0.1;
+    FOUR_C_ASSERT_ALWAYS(std::abs(iFinM.determinant() - 1) < 1.0e-12, "iFinM is not volume preserving");
 
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status{
         FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors};
@@ -2375,10 +2543,13 @@ namespace
             Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityEvalType::
                 FullEval);
 
-    FOUR_C_ASSERT_ALWAYS(computed_state_quantities.curr_equiv_plastic_strain_rate_ == 0.0,
-        "The plastic strain rate should be 0! It is currently {}, for the stress {}",
-        computed_state_quantities.curr_equiv_plastic_strain_rate_,
-        computed_state_quantities.curr_equiv_stress_);
+    EXPECT_NEAR(
+        computed_state_quantities.curr_equiv_plastic_strain_rate_, plastic_strain_rate_ref_, 1e-8);
+    EXPECT_NEAR(computed_state_quantities.curr_equiv_stress_, equiv_stress_ref_, 1e-8);
+    FOUR_C_EXPECT_NEAR(computed_state_quantities.curr_CeM_, CeM_ref, 1e-8);
+    FOUR_C_EXPECT_NEAR(computed_state_quantities.curr_lpM_, lp_ref_, 1e-8);
+    FOUR_C_EXPECT_NEAR(computed_state_quantities.curr_Me_dev_sym_M_, M_theta_dev_ref_, 1e-8);
+    FOUR_C_EXPECT_NEAR(computed_state_quantities.curr_NpM_, Np_ref_, 1e-8);
 
 
     // compute StateQuantityDerivatives objects
@@ -2395,10 +2566,13 @@ namespace
     Core::LinAlg::Voigt::Stresses::vector_to_matrix(
         computed_state_quantity_derivatives.curr_dMe_dev_sym_dT_, curr_dMe_dev_sym_dT);
 
-
     // assert equality
-    FOUR_C_EXPECT_NEAR(computed_state_quantities.curr_Me_dev_sym_M_, M_theta_dev_ref_, 1.0e-8);
     FOUR_C_EXPECT_NEAR(curr_dMe_dev_sym_dT, dM_theta_dev_dT_ref_, 1.0e-8);
+    FOUR_C_EXPECT_NEAR(
+        computed_state_quantity_derivatives.curr_dMe_dev_sym_dC_, dM_theta_dev_dC_Voigt_ref_, 1e-8);
+    FOUR_C_EXPECT_NEAR(computed_state_quantity_derivatives.curr_dMe_dev_sym_diFin_,
+        dM_theta_dev_diFp_Voigt_ref_, 1e-8);
+    FOUR_C_EXPECT_NEAR(computed_state_quantity_derivatives.curr_dlpdT_, dlp_dT_Voigt_ref_, 1e-6);
   }
 
 
