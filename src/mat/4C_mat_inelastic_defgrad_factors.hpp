@@ -31,6 +31,7 @@
 
 #include <array>
 #include <cmath>
+#include <format>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -1014,10 +1015,13 @@ namespace Mat
 
    protected:
     [[nodiscard]] double funct_value() const { return funct_value_; }
+    [[nodiscard]] unsigned int gp() const { return gp_; }
 
    private:
     //! evaluated function value. Gets filled in pre_evaluate()
     double funct_value_;
+    //! Gauss point index; gets set in pre_evaluate
+    unsigned int gp_;
   };
 
   /*--------------------------------------------------------------------*/
@@ -1070,17 +1074,27 @@ namespace Mat
     void update() override {}
 
     void setup(const int numgp, const Discret::Elements::Fibers& fibers,
-        const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override
-    {
-    }
+        const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
 
     void pack_inelastic(Core::Communication::PackBuffer& data) const override {}
 
     void unpack_inelastic(Core::Communication::UnpackBuffer& data) override {}
 
+
+    void register_output_data_names(
+        std::unordered_map<std::string, int>& names_and_size) const override;
+
+    bool evaluate_output_data(
+        const std::string& name, Core::LinAlg::SerialDenseMatrix& data) const override;
+
+
+
    private:
     //! identity tensor
     Core::LinAlg::SymmetricTensor<double, 3, 3> identity_;
+
+    /// current inelastic deformation gradients at each Gauss points
+    std::vector<Core::LinAlg::Matrix<3, 3>> current_inverse_inelastic_defgrad_;
   };
 
   /*--------------------------------------------------------------------*/
@@ -1120,15 +1134,26 @@ namespace Mat
     void update() override {};
 
     void setup(const int numgp, const Discret::Elements::Fibers& fibers,
-        const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override {};
+        const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
 
     void pack_inelastic(Core::Communication::PackBuffer& data) const override {};
 
     void unpack_inelastic(Core::Communication::UnpackBuffer& data) override {};
 
+    void register_output_data_names(
+        std::unordered_map<std::string, int>& names_and_size) const override;
+
+    bool evaluate_output_data(
+        const std::string& name, Core::LinAlg::SerialDenseMatrix& data) const override;
+
+
+
    private:
     //! identity tensor
     Core::LinAlg::SymmetricTensor<double, 3, 3> identity_;
+
+    /// current inelastic deformation gradients at each Gauss points
+    std::vector<Core::LinAlg::Matrix<3, 3>> current_inverse_inelastic_defgrad_;
   };
 
   class InelasticDefgradScalar : public InelasticDefgradFactors

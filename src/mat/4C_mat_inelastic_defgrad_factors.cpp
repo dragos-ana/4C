@@ -1797,6 +1797,7 @@ void Mat::InelasticDefgradTimeFunct::pre_evaluate(const Teuchos::ParameterList& 
   FOUR_C_ASSERT(context.total_time, "Time not given in evaluation context.");
   const double time = *context.total_time;
   funct_value_ = funct.evaluate(time);
+  gp_ = gp;
 }
 
 /*--------------------------------------------------------------------*
@@ -1823,6 +1824,17 @@ Mat::InelasticDefgradTimeFunctAniso::InelasticDefgradTimeFunctAniso(
     : InelasticDefgradTimeFunct(params),
       identity_(Core::LinAlg::TensorGenerators::identity<double, 3, 3>)
 {
+  current_inverse_inelastic_defgrad_.resize(
+      1, Core::LinAlg::make_matrix(Core::LinAlg::get_full(identity_)));
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTimeFunctAniso::setup(const int numgp,
+    const Discret::Elements::Fibers& fibers,
+    const std::optional<Discret::Elements::CoordinateSystem>& coord_system)
+{
+  current_inverse_inelastic_defgrad_.resize(numgp, current_inverse_inelastic_defgrad_[0]);
 }
 
 /*--------------------------------------------------------------------*
@@ -1838,7 +1850,42 @@ void Mat::InelasticDefgradTimeFunctAniso::evaluate_inverse_inelastic_def_grad(
   Fin += funct_value() * Core::LinAlg::get_full(parameter()->growth_dir_tensor());
 
   iFinM.invert(FinM);
+
+  current_inverse_inelastic_defgrad_[gp()] = iFinM;
 }
+
+void Mat::InelasticDefgradTimeFunctAniso::register_output_data_names(
+    std::unordered_map<std::string, int>& names_and_size) const
+{
+  names_and_size[std::format(
+      "iFin(InelasticDefgradTimeFunctAniso)", EnumTools::enum_name(material_type()))] = 9;
+}
+
+bool Mat::InelasticDefgradTimeFunctAniso::evaluate_output_data(
+    const std::string& name, Core::LinAlg::SerialDenseMatrix& data) const
+{
+  Core::LinAlg::Matrix<9, 1> temp9x1;
+
+  if (name ==
+      std::format("iFin(InelasticDefgradTimeFunctAniso)", EnumTools::enum_name(material_type())))
+  {
+    for (int gp = 0; gp < 8; ++gp)
+    {
+      Core::LinAlg::Voigt::matrix_3x3_to_9x1(current_inverse_inelastic_defgrad_[gp], temp9x1);
+
+      for (int col = 0; col < 9; ++col)
+      {
+        data(gp, col) = temp9x1(col);
+      }
+    }
+    return true;
+  }
+
+
+  return false;
+}
+
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -1846,6 +1893,16 @@ Mat::PAR::InelasticSource Mat::InelasticDefgradTimeFunctIso::get_inelastic_sourc
 {
   return PAR::InelasticSource::none;
 }
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTimeFunctIso::setup(const int numgp,
+    const Discret::Elements::Fibers& fibers,
+    const std::optional<Discret::Elements::CoordinateSystem>& coord_system)
+{
+  current_inverse_inelastic_defgrad_.resize(numgp, current_inverse_inelastic_defgrad_[0]);
+}
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -1858,6 +1915,9 @@ void Mat::InelasticDefgradTimeFunctIso::evaluate_inverse_inelastic_def_grad(
 
   const double idetFin = std::pow(funct_value(), -1.0 / 3.0);
   iFin += idetFin * Core::LinAlg::get_full(identity_);
+
+
+  current_inverse_inelastic_defgrad_[gp()] = iFinM;
 }
 
 /*--------------------------------------------------------------------*
@@ -1866,7 +1926,41 @@ Mat::InelasticDefgradTimeFunctIso::InelasticDefgradTimeFunctIso(Core::Mat::PAR::
     : InelasticDefgradTimeFunct(params),
       identity_(Core::LinAlg::TensorGenerators::identity<double, 3, 3>)
 {
+  current_inverse_inelastic_defgrad_.resize(
+      1, Core::LinAlg::make_matrix(Core::LinAlg::get_full(identity_)));
 }
+
+void Mat::InelasticDefgradTimeFunctIso::register_output_data_names(
+    std::unordered_map<std::string, int>& names_and_size) const
+{
+  names_and_size[std::format(
+      "iFin(InelasticDefgradTimeFunctIso)", EnumTools::enum_name(material_type()))] = 9;
+}
+
+bool Mat::InelasticDefgradTimeFunctIso::evaluate_output_data(
+    const std::string& name, Core::LinAlg::SerialDenseMatrix& data) const
+{
+  Core::LinAlg::Matrix<9, 1> temp9x1;
+
+  if (name ==
+      std::format("iFin(InelasticDefgradTimeFunctIso)", EnumTools::enum_name(material_type())))
+  {
+    for (int gp = 0; gp < 8; ++gp)
+    {
+      Core::LinAlg::Voigt::matrix_3x3_to_9x1(current_inverse_inelastic_defgrad_[gp], temp9x1);
+
+      for (int col = 0; col < 9; ++col)
+      {
+        data(gp, col) = temp9x1(col);
+      }
+    }
+    return true;
+  }
+
+
+  return false;
+}
+
 
 
 /*--------------------------------------------------------------------*
@@ -5503,8 +5597,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::debug_set_last_quantitie
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::register_output_data_names(
     std::unordered_map<std::string, int>& names_and_size) const
 {
+  names_and_size[std::format("iFin(InelasticDefgradTransvIsotropElastViscoplast)",
+      EnumTools::enum_name(material_type()))] = 9;
   names_and_size["lnl_iters"] = 1;
-  names_and_size["inverse_plastic_defgrad"] = 9;
   names_and_size["plastic_strain"] = 1;
   names_and_size["plastic_strain_LNL"] =
       lnl_data_.max_iter_;  // plastic strain in each local iteration of the LNL
@@ -5531,18 +5626,11 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   // auxiliaries
   Core::LinAlg::Matrix<9, 1> temp9x1{Core::LinAlg::Initialization::zero};
 
-  if (name == "lnl_iters")
+
+  if (name == std::format("iFin(InelasticDefgradTransvIsotropElastViscoplast)",
+                  EnumTools::enum_name(material_type())))
   {
-    for (int gp = 0; gp < static_cast<int>(lnl_data_.num_iter_curr_timestep_.size()); ++gp)
-    {
-      data(gp, 0) = lnl_data_.num_iter_curr_timestep_[gp];
-    }
-    return true;
-  }
-  else if (name == "inverse_plastic_defgrad")
-  {
-    for (int gp = 0;
-        gp < static_cast<int>(time_step_quantities_.current_plastic_defgrad_inverse_.size()); ++gp)
+    for (int gp = 0; gp < 8; ++gp)
     {
       Core::LinAlg::Voigt::matrix_3x3_to_9x1(
           time_step_quantities_.current_plastic_defgrad_inverse_[gp], temp9x1);
@@ -5551,6 +5639,14 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
       {
         data(gp, col) = temp9x1(col);
       }
+    }
+    return true;
+  }
+  else if (name == "lnl_iters")
+  {
+    for (int gp = 0; gp < static_cast<int>(lnl_data_.num_iter_curr_timestep_.size()); ++gp)
+    {
+      data(gp, 0) = lnl_data_.num_iter_curr_timestep_[gp];
     }
     return true;
   }
