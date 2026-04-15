@@ -18,7 +18,6 @@
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_so3_material.hpp"
-#include "4C_mat_vplast_law.hpp"
 #include "4C_mat_vplast_reform_johnsoncook.hpp"
 #include "4C_solid_ele_fibers.hpp"
 #include "4C_unittest_utils_assertions_test.hpp"
@@ -311,8 +310,6 @@ namespace
           "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
-      inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add("VISCOPLAST_LAW_ID", 4);
@@ -322,6 +319,10 @@ namespace
           "YIELD_COND_B", 2.0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.add<std::optional<double>>(
           "YIELD_COND_F", 2.5);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_SUBSTEPPING")
+          .add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_SUBSTEPPING")
+          .add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_transv_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
           .add("CONV_CHECK", Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                                  LocalNewtonConvCheck::residual_and_increment_ratio);
@@ -364,8 +365,6 @@ namespace
       inelastic_defgrad_isotrop_vplast_refJC_data.add(
           "MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("USE_SUBSTEPPING", false);
-      inelastic_defgrad_isotrop_vplast_refJC_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       inelastic_defgrad_isotrop_vplast_refJC_data.add("VISCOPLAST_LAW_ID", 4);
@@ -375,6 +374,10 @@ namespace
           "YIELD_COND_B", std::nullopt);
       inelastic_defgrad_isotrop_vplast_refJC_data.add<std::optional<double>>(
           "YIELD_COND_F", std::nullopt);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_SUBSTEPPING")
+          .add("USE_SUBSTEPPING", false);
+      inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_SUBSTEPPING")
+          .add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       inelastic_defgrad_isotrop_vplast_refJC_data.group("LOCAL_NEWTON")
           .add("CONV_CHECK", Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                                  LocalNewtonConvCheck::residual_and_increment_ratio);
@@ -1195,7 +1198,8 @@ namespace
             local_newton_params,
         std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>&
             local_newton_material_params,
-        std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast>& local_newton_material)
+        std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast>& local_newton_material,
+        const bool use_substepping = false, const unsigned int max_substepping_halve_num = 0)
     {
       Core::IO::InputParameterContainer material_data;
       material_data.add("FIBER_READER_ID", 5);
@@ -1212,14 +1216,15 @@ namespace
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::MatBehavior::isotropic);
       material_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       material_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-      material_data.add("USE_SUBSTEPPING", false);
-      material_data.add("MAX_SUBSTEPPING_HALVE_NUM", 0);
       material_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       material_data.add("VISCOPLAST_LAW_ID", 4);
       material_data.add<std::optional<double>>("YIELD_COND_A", 1.0);
       material_data.add<std::optional<double>>("YIELD_COND_B", 2.0);
       material_data.add<std::optional<double>>("YIELD_COND_F", 2.5);
+      material_data.group("LOCAL_SUBSTEPPING").add("USE_SUBSTEPPING", use_substepping);
+      material_data.group("LOCAL_SUBSTEPPING")
+          .add("MAX_SUBSTEPPING_HALVE_NUM", static_cast<int>(max_substepping_halve_num));
       material_data.group("LOCAL_NEWTON").add("CONV_CHECK", local_newton_params.conv_check);
       material_data.group("LOCAL_NEWTON").add("DIVER_CONT", local_newton_params.diver_cont);
       material_data.group("LOCAL_NEWTON").add("INCR_TOL", local_newton_params.incr_tol);
@@ -1824,28 +1829,28 @@ namespace
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
         params_transv_isotrop_vplast_refJC_->local_newton_params());
 
-    EXPECT_EQ(local_newton_manager.iter, 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters.size(), 1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[0], 0);
+    EXPECT_EQ(local_newton_manager.iter(), 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
 
     local_newton_manager.resize(3);
-    EXPECT_EQ(local_newton_manager.curr_num_iters.size(), 3);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[0], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[2], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 3);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
 
-    local_newton_manager.iter = 4;
-    local_newton_manager.post_lnl(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 4);
+    local_newton_manager.set_iteration_count(4);
+    local_newton_manager.update_after_local_newton(1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 4);
 
-    local_newton_manager.iter = 2;
-    local_newton_manager.post_lnl(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 6);
+    local_newton_manager.set_iteration_count(2);
+    local_newton_manager.update_after_local_newton(1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 6);
 
-    local_newton_manager.update();
-    EXPECT_EQ(local_newton_manager.curr_num_iters[0], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[1], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters[2], 0);
+    local_newton_manager.reset();
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
   }
 
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingStop)
@@ -1940,7 +1945,7 @@ namespace
         .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
             LocalNewtonConvCheck::residual_and_increment_ratio,
         .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            LocalNewtonDiverCont::continue_with_safeguard,
+            LocalNewtonDiverCont::continue_sim_with_safeguard,
         .max_iter = 2,
         .max_exceedance_fact_res_tol = 1.0e2,
         .max_exceedance_fact_incr_tol = 1.0e2,
@@ -1992,7 +1997,7 @@ namespace
         .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
             LocalNewtonConvCheck::residual_and_increment_ratio,
         .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            LocalNewtonDiverCont::continue_with_safeguard,
+            LocalNewtonDiverCont::continue_sim_with_safeguard,
         .max_iter = 2,
         .max_exceedance_fact_res_tol = 0.0,
         .max_exceedance_fact_incr_tol = 0.0,
@@ -2280,6 +2285,73 @@ namespace
     iFin_result_ref(2, 1) = -0.0000000000000446;
     iFin_result_ref(2, 2) = 0.9999999999998780;
 
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+  }
+
+  TEST_F(InelasticDefgradFactorsTest, TestViscoplasticCorrectionSubstepping)
+  {
+    // tests a challenging scenario, where the material formulation without substepping (one single
+    // step delta_t) does not converge, while the material formulation using local substepping and
+    // the same parameters does
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-8,
+        .incr_tol = 1.0e-8,
+        .conv_check = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonConvCheck::residual_and_increment_ratio,
+        .diver_cont = FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            LocalNewtonDiverCont::stop,
+        .max_iter = 50,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
+        material_params_one_step;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material_one_step;
+    set_up_local_newton_material(local_newton_params, material_params_one_step, material_one_step);
+
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
+        material_params_substepping;
+    std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material_substepping;
+    set_up_local_newton_material(
+        local_newton_params, material_params_substepping, material_substepping, true, 10);
+
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0e-6;
+    double time_step_size = 1.0e-6;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+    material_one_step->pre_evaluate(params_list, context, 0, 0);
+    material_substepping->pre_evaluate(params_list, context, 0, 0);
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> FM(Core::LinAlg::Initialization::zero);
+    FM(0, 0) = 2.0;
+    FM(1, 1) = 1.0;
+    FM(2, 2) = 1.0;
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+
+    // the one-step formulation fails to converge
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_one_step->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
+        Core::Exception, "Local Newton evaluation has failed with err status overflow_error");
+
+
+    // the local substepping formulation converges
+    material_substepping->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result);
+    Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
+    iFin_result_ref(0, 0) = 0.71055158583;
+    iFin_result_ref(1, 1) = 1.18632093229;
+    iFin_result_ref(2, 2) = 1.18632093229;
     FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
   }
 

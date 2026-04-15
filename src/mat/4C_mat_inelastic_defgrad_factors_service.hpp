@@ -21,6 +21,7 @@
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
+#include <format>
 #include <map>
 #include <string>
 
@@ -47,8 +48,8 @@ namespace Mat
       negative_plastic_strain,  ///< negative plastic strain which does not allow for evaluations
                                 ///< inside the viscoplasticity laws
       overflow_error,  ///< overflow error of the term \f$ \Delta t \dot{\varepsilon}^{\text{p}} \f$
-                       ///< (and \f$ \mathsymbol{E}^{\text{p}}  = \exp(- \Delta t
-                       ///< \dot{\varepsilon}^{\text{p}} \mathsymbol{N}^{\text{p}}) \f$)
+                       ///< (and \f$ \boldsymbol{E}^{\text{p}}  = \exp(- \Delta t
+                       ///< \dot{\varepsilon}^{\text{p}} \boldsymbol{N}^{\text{p}}) \f$)
       no_flow_resistance,  ///< the material has no flow resistance anymore, such that the
                            ///< evaluations model non-physical phenomena
       failed_solution_linear_system_lnl,  ///< solution of the linear system in the Local
@@ -79,8 +80,9 @@ namespace Mat
     /// Local Newton loop
     enum class EvaluationAction
     {
-      continue_current_iteration,  ///< continue current iteration
-      go_to_next_iteration,        ///< go to next iteration after performing certain reset steps
+      continue_current_iteration,    ///< continue current iteration
+      continue_with_next_iteration,  ///< go to next iteration after performing certain reset steps
+      exit_with_error,               ///< exit Local Newton Loop with the set error status
     };
 
     /// convert error type to detailed error message
@@ -273,27 +275,70 @@ namespace Mat
       void set_material_const_tensors(const Core::LinAlg::Matrix<3, 1>& m);
     };
 
-    //! struct with local substepping utilities
-    struct LocalSubsteppingUtils
+    //! class with local substepping utilities
+    class LocalSubsteppingUtils
     {
+     public:
+      LocalSubsteppingUtils() = delete;
+      //! Constructor (calling reset under the hood)
+      explicit LocalSubsteppingUtils(double dt) { reset(dt); }
+
+      //! reset routine: set a single substep of a given size dt
+      void reset(const double dt);
+
+      //! verify whether the substepping routine has reached its end
+      [[nodiscard]] bool end_substepping() const
+      {
+        return substep_counter_ > total_num_of_substeps_;
+      };
+
+      //! increment substep
+      void increment_substep();
+
+      //! halve current substep and update relevant quantities
+      void halve_substep();
+
+      //! get substep size
+      [[nodiscard]] double get_substep_size() const { return curr_dt_; }
+
+      //! retrieve the normalized time parameter computed currently
+      //! (1.0 corresponds to the full problem time step dt)
+      [[nodiscard]] double get_normalized_tnp(const double dt) const
+      {
+        return (t_ + curr_dt_) / dt;
+      }
+
+      //! get counter for the current number of time step halving procedures
+      [[nodiscard]] unsigned int get_halving_counter() const { return time_step_halving_counter_; }
+
+      //! get substepping info as string
+      [[nodiscard]] std::string get_info() const
+      {
+        std::string out;
+        out += "Substepping info: \n";
+        out += std::format(
+            "t: {}, substep_counter: {}, curr_dt: {}, time_step_halving_counter: {}, "
+            "total_num_of_substeps: {} \n",
+            t_, substep_counter_, curr_dt_, time_step_halving_counter_, total_num_of_substeps_);
+        return out;
+      };
+
+     private:
       //! current time parameter ranging from 0 to the problem time step \f$ \Delta t \f$
-      double t;
+      double t_;
       //! counter of evaluated substeps
-      unsigned int substep_counter;
+      unsigned int substep_counter_;
       //! current substep size
-      double curr_dt;
+      double curr_dt_;
       //! number of times the problem time step \f$ \Delta t \f$ has been halved
-      unsigned int time_step_halving_counter;
-      //!  current total number of substeps to be evaluated within the time step \f$ \Delta t
-      //! \f$; this is not always given by time_step_halving_counter, since the
+      unsigned int time_step_halving_counter_;
+      //!  total number of substeps to be evaluated within the time step \f$ \Delta t
+      //! \f$; this is not always directly proportional to time_step_halving_counter, since the
       //! halving does not have to be uniform (e.g. we could halve the time step twice and still
       //! have 3 substeps to evaluate instead of 4, i.e. if the first substep was evaluable
       //! numerically, but the second substep not, leading to another halving of the substep
       //! length)
-      unsigned int total_num_of_substeps;
-
-      //! reset routine: basically, create a new empty object
-      void reset();
+      unsigned int total_num_of_substeps_;
     };
 
     /// enum class for state quantity evaluations in
@@ -455,7 +500,6 @@ namespace Mat
     };
 
 
-
     /// enum: strategy in dealing with divergence of the Local Newton Loop
     enum class LocalNewtonConvCheck
     {
@@ -476,10 +520,22 @@ namespace Mat
       stop,          ///< stop the simulation entirely
       continue_sim,  ///<  continue the simulation, and display warning in regards to the current
                      ///<  state within the Local Newton Loop
-      continue_with_safeguard  ///< continue the simulation only if the convergence tolerances
-                               ///< are not exceeded excessively, as specified with specific
-                               ///< exceedance factors for the tolerances
+      continue_sim_with_safeguard  ///< continue the simulation only if the convergence tolerances
+                                   ///< are not exceeded excessively, as specified with specific
+                                   ///< exceedance factors for the tolerances
     };
+
+    /// enum: quantities relevant for convergence checking within the Local Newton Loop
+    struct LocalNewtonConvQuantities
+    {
+      //! residual 2-norm
+      double residual_norm;
+
+      //! ratio of solution increment to current solution: \f$ \frac{\left| \Delta
+      //! \boldsymbol{s}^{l+1} \right|}{\left| \boldsymbol{s}^{l} \right|}  \f$
+      double increment_norm;
+    };
+
 
 
     //! struct containing parameter specifications for the Local Newton loop
@@ -511,10 +567,11 @@ namespace Mat
       const double max_exceedance_fact_incr_tol;
     };
 
-    //! struct for managing the Local Newton loop, containing the utilized parameters and iteration
+    //! class for managing the Local Newton loop, containing the utilized parameters and iteration
     //! data
-    struct LocalNewtonManager
+    class LocalNewtonManager
     {
+     public:
       /*!
        * @brief Constructor
        *
@@ -522,6 +579,25 @@ namespace Mat
        *
        */
       LocalNewtonManager(const LocalNewtonParams& lnl_params);
+
+      /// getter for Local Newton parameters
+      [[nodiscard]] LocalNewtonParams params() const { return params_; }
+
+      /// getter for local iteration count
+      [[nodiscard]] unsigned int iter() const { return iter_; }
+
+      /// setter for local iteration count
+      void set_iteration_count(const unsigned int iter) { iter_ = iter; }
+
+      /// getter for total number of local iterations evaluated in this time step (vector over all
+      /// Gauss points)
+      [[nodiscard]] const std::vector<unsigned int>& curr_num_iters() const
+      {
+        return curr_num_iters_;
+      }
+
+      /// increment iteration count by 1
+      void increment_iteration_count() { iter_++; }
 
       /*!
        * @brief Resizing based on a given number of Gauss points
@@ -535,10 +611,10 @@ namespace Mat
        *
        * @param[in] gp Gauss point index
        */
-      void post_lnl(const unsigned int gp);
+      void update_after_local_newton(const unsigned int gp);
 
-      //! update method
-      void update();
+      //! reset method
+      void reset();
 
       //! pack values
       void pack(Core::Communication::PackBuffer& data) const;
@@ -546,19 +622,19 @@ namespace Mat
       //! unpack values
       void unpack(Core::Communication::UnpackBuffer& buffer);
 
-
+     private:
       //! Local Newton parameters
-      const LocalNewtonParams params;
+      const LocalNewtonParams params_;
 
       //! current local iteration
-      unsigned int iter;
+      unsigned int iter_;
 
       //! total number of local iterations for the current timestep; vector of Gauss point values
-      std::vector<unsigned int> curr_num_iters;
+      std::vector<unsigned int> curr_num_iters_;
 
       //! tracks whether the resizing function has been called, to set the current number of
       //! Gauss points exactly once!
-      bool resize_called{false};
+      bool resize_called_{false};
     };
 
 

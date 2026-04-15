@@ -353,15 +353,16 @@ namespace Mat
       {
         return mat_behavior_;
       };
-      //! get boolean: use substepping in the time integration scheme? (true: yes, false: no)
-      [[nodiscard]] bool use_substepping() const { return use_substepping_; };
+      //! use local substepping?
+      [[nodiscard]] bool use_local_substepping() const { return use_local_substepping_; }
 
-      //! get maximum number of times a time step can be halved into smaller and smaller
-      //! substeps
-      [[nodiscard]] unsigned int max_halve_number() const
+      //! get maximum number of times the global time step can be halved in the substepping
+      //! procedure
+      [[nodiscard]] unsigned int max_local_substepping_halve_num() const
       {
-        return static_cast<unsigned int>(max_substepping_halve_num_);
+        return max_local_substepping_halve_num_;
       }
+
       //! get the type of time integration for the evolution equations
       //! of history variables
       [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType timint_type()
@@ -441,13 +442,13 @@ namespace Mat
       //! plastic strain derivatives (time_step * derivative)
       const double max_plastic_strain_deriv_incr_;
 
-      //! boolean: use substepping?
-      const bool use_substepping_;
+      //! use local substepping to integrate the viscoplastic evolution equations
+      const bool use_local_substepping_;
 
 
-      //! maximum number of times the given time step can be halved before reaching the minimum
-      //! allowed substep length
-      const int max_substepping_halve_num_;
+      //! maximum number of times the global time step can be halved in the substepping procedure
+      const unsigned int max_local_substepping_halve_num_;
+
 
       //! utilized computation method for the matrix exponential
       const Core::LinAlg::MatrixExpCalcMethod mat_exp_calc_method_;
@@ -1690,7 +1691,7 @@ namespace Mat
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
-     * @brief Calculate the residual for the Local Newton Loop (LNL)
+     * @brief Evaluate the residual for the Local Newton Loop
      *
      * @note The state quantities (class variable) are updated in this method, since they
      * are used for the computation of the residual!
@@ -1699,17 +1700,72 @@ namespace Mat
      * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the
      * inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and plastic
      * strain \f$ \varepsilon_{\text{p}} \f$
-     * @param[in] last_iFinM last inverse inelastic deformation gradient modeling viscoplasticity
-     *                      \f$ \boldsymbol{F}_{\text{in}, n}^{-1} \f$ in matrix form
-     * @param[in] last_plastic_strain last plastic strain \f$ \varepsilon_{\text{p}, n}\f$
+     * @param[in] last_plastic_strain plastic strain \f$ \varepsilon_{\text{p}, n}\f$ at the
+     * previous time instant
+     * @param[in] last_iFinM last inverse inelastic deformation gradient
+     *                      \f$ \boldsymbol{F}_{\text{in}, n}^{-1} \f$ at the previous time instant
+     * in matrix form
      * @param[in] dt time step (or substep) length used for time integration
      * @param[out] err_status error status
      * @return  residual of the LNL equations
      */
-    Core::LinAlg::Matrix<10, 1> calculate_local_newton_loop_residual(
-        const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<10, 1>& x,
-        const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double last_plastic_strain,
-        const double dt, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+    Core::LinAlg::Matrix<10, 1> evaluate_local_newton_residual(const Core::LinAlg::Matrix<3, 3>& CM,
+        const Core::LinAlg::Matrix<10, 1>& x, const double last_plastic_strain,
+        const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+
+
+    /*!
+     * @brief   Determine whether the Local Newton Loop has converged.
+     *
+     * @param[in] conv_quantities quantities verified for convergence
+     * @return boolean: true = converged
+     */
+    bool is_local_newton_converged(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
+            conv_quantities);
+
+    /*!
+     * @brief   After an unsuccessful convergence check: determine whether the Local Newton is
+     * stuck, i.e., the relative solution increment is nearly 0, but there is no convergence yet.
+     *
+     * @param[in] conv_quantities quantities verified for convergence
+     * @return boolean: true = stuck
+     */
+    bool is_local_newton_stuck(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
+            conv_quantities);
+
+    /*!
+     * @brief   After an unsuccessful convergence check and after the maximum number of local
+     * iterations has been exceeded: verifies whether the Local Newton scheme can be safely exited
+     * based on the specified divergence continuation strategy.
+     *
+     * @note If no error is thrown in this verification routine, then the Local Newton scheme can be
+     * safely exited. The error status is reset to no_errors to continue with the computation.
+     *
+     * @param[in] conv_quantities quantities verified for convergence
+     * @param[in,out] err_status error status
+     */
+    void verify_local_newton_exit(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
+            conv_quantities,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+
+
+    /*!
+     * @brief   Solve local Newton linear system \f$ \boldsymbol{J} \mathrm{d}\boldsymbol{x} = -
+     * \boldsymbol{r} \f$ to update the iteration vector
+     *
+     *
+     * @param[in] residual residual \f$ \boldsymbol{r} \f$
+     * @param[in] jacobian jacobian \f$ \boldsymbol{J} \f$
+     * @param[out] dx increment: solution of the linear system \f$ \mathrm{d}\boldsymbol{x} \f$
+     * @return boolean: solution successful (true) or not (false)
+     */
+    bool solve_local_newton_linear_system(const Core::LinAlg::Matrix<10, 1>& residual,
+        const Core::LinAlg::Matrix<10, 10>& jacobian, Core::LinAlg::Matrix<10, 1>& dx);
+
 
 
     /*!
@@ -1725,22 +1781,26 @@ namespace Mat
      * @param[in] x vector of Local Newton Loop unknowns, composed of the components of the
      * inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$ and plastic
      * strain \f$ \varepsilon_{\text{p}} \f$
+     * @param[in] last_plastic_strain last plastic strain \f$ \varepsilon_{\text{p}, n}\f$ at the
+     * previous time instant
      * @param[in] last_iFinM last inverse plastic deformation gradient
-     *                      \f$ \boldsymbol{F}_{\text{in}, n}^{-1} \f$ in matrix form
-     * @param[in] last_plastic_strain last plastic strain \f$ \varepsilon_{\text{p}, n}\f$
+     *                      \f$ \boldsymbol{F}_{\text{in}, n}^{-1} \f$ at the previous time instant
+     * in matrix form
      * @param[in] dt time step (or substep) length used for time integration
      * @param[out] err_status error status
      * @return 10x10 jacobian matrix of the Local Newton Loop and of the linearization
      *         \f$ \boldsymbol{J} \f$
      */
-    Core::LinAlg::Matrix<10, 10> calculate_jacobian(const Core::LinAlg::Matrix<3, 3>& CM,
-        const Core::LinAlg::Matrix<10, 1>& x, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
-        const double last_plastic_strain, const double dt,
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+    Core::LinAlg::Matrix<10, 10> evaluate_local_newton_jacobian(
+        const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<10, 1>& x,
+        const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
+        const double dt, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
-     * @brief Local Newton Loop in order to calculate the current inverse plastic deformation
-     * gradient and the current plastic strain value
+     * @brief Performs the viscoplastic corrector step of the return mapping.
+     *
+     * @note Uses local substepping if specified so by the user; the current time step is halved if
+     * problematic numerical states, marked with an error status, are encountered
      *
      * @param[in] defgrad deformation gradient \f$ \boldsymbol{F} \f$ in matrix form
      * @param[in] x initial guess of Local Newton Loop, composed of the components of the
@@ -1750,14 +1810,35 @@ namespace Mat
      * @return solution vector of the Local Newton Loop, structured analogously to the initial guess
      * x
      */
-    Core::LinAlg::Matrix<10, 1> local_newton_loop(const Core::LinAlg::Matrix<3, 3>& defgrad,
+    Core::LinAlg::Matrix<10, 1> viscoplastic_correction(const Core::LinAlg::Matrix<3, 3>& defgrad,
         const Core::LinAlg::Matrix<10, 1>& x,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
-     * @brief Performs return mapping (elastic predictor - viscoplastic plastic corrector procedure)
-     * at each GP. It first evaluates whether the elastic predictor is a consistent solution, and
-     * performs the local time integration (Local Newton Loop) afterwards if that is not the case.
+     * @brief Local Newton Loop in order to calculate the current inverse
+     * plastic deformation gradient and the current plastic strain value
+     *
+     * @note The method does not perform local substepping internally, but only determines the
+     * solution of a single substep in the substep loop.
+     *
+     * @param[in] CM right Cauchy-Green deformation tensor at current time instant
+     * @param[in] last_plastic_strain plastic strain at the previous time instant
+     * @param[in] last_iFinM inverse inelastic deformation gradient at the previous time instant
+     * @param[in] dt time step size to use for evaluation
+     * @param[in,out] sol current (in) / updated (out) solution of the Local Newton Loop
+     * @param[in,out] err_status error status
+     */
+    void local_newton_loop(const Core::LinAlg::Matrix<3, 3>& CM, const double last_plastic_strain,
+        const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
+        Core::LinAlg::Matrix<10, 1>& sol,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+
+
+    /*!
+     * @brief Performs return mapping (elastic predictor - viscoplastic / plastic corrector
+     * procedure) at each GP. It first evaluates whether the elastic predictor is a consistent
+     * solution, and performs the local time integration (Local Newton Loop) afterwards if that is
+     * not the case.
      *
      * @param[in] FredM reduced deformation gradient \f$ \boldsymbol{F}_{\text{red}} =
      * \boldsymbol{F} \boldsymbol{F_{\text{in,other}}^{-1}} \f$ accounting for all the already
@@ -1769,37 +1850,38 @@ namespace Mat
 
 
     /*!
-     * @brief Setup new substep in the Local Newton Loop in case of an encountered evaluation
-     * error
+     * @brief Setup halved substep in case of an encountered evaluation error within the substep
+     * Local Newton Loop
+     *
+     * @note Also resets the solution to the previously converged time instant.
+     * The right Cauchy-Green tensor for the halved substep is not interpolated within this
+     * function, but in the viscoplastic correction substepping loop
      *
      * @param[in,out] sol current solution vector of the Local Newton Loop (reset to the last
      * converged value within this method)
-     * @param[in,out] curr_CM current right Cauchy-Green deformation tensor, interpolated using
-     * the reference matrices of the time step (interpolated again within this method with the
-     * updated new substep length)
+     * @param[in] curr_CM right Cauchy-Green deformation tensor at the current time instant
      * @return error status for the new substep (true: no errors, false: we have halved the time
      * step too many times)
      *
      */
-    bool prepare_new_substep(Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM);
+    bool halve_and_prepare_new_substep(
+        Core::LinAlg::Matrix<10, 1>& sol, const Core::LinAlg::Matrix<3, 3>& curr_CM);
 
     /*!
      * @brief Routine utilized during the Local Newton evaluations to manage eventual evaluation
-     * errors. The performed steps depend on the input error status and the user specifications
-     * (e.g. management through substepping).
+     * errors. The performed steps depend on the input error status and the user specifications.
      *
      *
      *
+     * @param[in] curr_CM right Cauchy-Green deformation tensor, interpolated using
+     * the reference matrices of the time step / substep
      * @param[in] err_status error status
      * @param[in,out] sol current (in) / updated (out) solution of the Local Newton Loop
-     * @param[in,out] curr_CM current right Cauchy-Green deformation tensor, interpolated using
-     * the reference matrices of the time step / substep (interpolated again within this method with
-     * the updated new substep length if substepping is employed)
      * @param[out] eval_action action to be performed subsequently in the Local Newton Loop
      */
-    void manage_evaluation(
+    void manage_evaluation(const Core::LinAlg::Matrix<3, 3>& curr_CM,
         const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-        Core::LinAlg::Matrix<10, 1>& sol, Core::LinAlg::Matrix<3, 3>& curr_CM,
+        Core::LinAlg::Matrix<10, 1>& sol,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
     /*!

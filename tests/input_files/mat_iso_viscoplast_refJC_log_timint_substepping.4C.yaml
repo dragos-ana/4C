@@ -1,5 +1,5 @@
 TITLE:
-  - "Simple test case based on 1hex8 element with transversely-isotropic elastic-viscoplastic"
+  - "Simple test case based on 1hex8 element with isotropic elastic-viscoplastic"
   - "behavior in a finite strain setting. The following conditions are assumed:"
   - "- element is stretched at a constant strain rate"
   - "- element can freely contract in lateral dimensions"
@@ -24,8 +24,8 @@ IO/RUNTIME VTK OUTPUT:
   INTERVAL_STEPS: 1
 STRUCTURAL DYNAMIC:
   DYNAMICTYPE: "Statics"
-  RESTARTEVERY: 30
-  TIMESTEP: 1e-06
+  RESTARTEVERY: 1
+  TIMESTEP: 1e-04
   NUMSTEP: 100000000
   MAXTIME: 0.0001
   TOLDISP: 1e-08
@@ -49,12 +49,11 @@ MATERIALS:
     MAT_InelasticDefgradTransvIsotropElastViscoplast:
       VISCOPLAST_LAW_ID: 4
       FIBER_READER_ID: 5
-      YIELD_COND_A: 1
-      YIELD_COND_B: 2
-      YIELD_COND_F: 2.5
-      MAT_BEHAVIOR: "transv_isotropic"
+      MAT_BEHAVIOR: "isotropic"
       TIME_INTEGRATION_HIST_VARS: logarithmic
-      MAX_SUBSTEPPING_HALVE_NUM: 10
+      LOCAL_SUBSTEPPING:
+        USE_SUBSTEPPING: true
+        MAX_SUBSTEPPING_HALVE_NUM: 10
       LOCAL_NEWTON:
         CONV_CHECK: residual_and_increment_ratio
         MAX_ITER: 100
@@ -63,7 +62,6 @@ MATERIALS:
         MAX_EXCEEDANCE_FACT_RES_TOL: 10
         MAX_EXCEEDANCE_FACT_INCR_TOL: 10
         DIVER_CONT: stop
-
   - MAT: 4
     MAT_ViscoplasticLawReformulatedJohnsonCook:
       STRAIN_RATE_PREFAC: 1
@@ -97,26 +95,26 @@ RESULT DESCRIPTION:
       DIS: "structure"
       NODE: 4
       QUANTITY: "dispy"
-      VALUE: -0.0042703014498665145
-      TOLERANCE: 4.3e-11
+      VALUE: -4.01558458380913558e-03
+      TOLERANCE: 4e-11
   - STRUCTURE:
       DIS: "structure"
       NODE: 5
       QUANTITY: "dispx"
-      VALUE: -0.0042703014498690454
-      TOLERANCE: 4.3e-11
+      VALUE: -4.01558458411293510e-03
+      TOLERANCE: 4e-11
   - STRUCTURE:
       DIS: "structure"
       NODE: 8
       QUANTITY: "dispx"
-      VALUE: -0.004270301449868496
-      TOLERANCE: 4.3e-11
+      VALUE: -4.01558458411200268e-03
+      TOLERANCE: 4e-11
   - STRUCTURE:
       DIS: "structure"
       NODE: 8
       QUANTITY: "dispy"
-      VALUE: -0.004270301449871235
-      TOLERANCE: 4.3e-11
+      VALUE: -4.01558458380949987e-03
+      TOLERANCE: 4e-11
   - STRUCTURE:
       DIS: "structure"
       NODE: 8
@@ -127,20 +125,20 @@ RESULT DESCRIPTION:
       DIS: "structure"
       NODE: 6
       QUANTITY: "dispx"
-      VALUE: -0.0042703014498694635
-      TOLERANCE: 4.3e-11
+      VALUE: -4.01558458411173293e-03
+      TOLERANCE: 4e-11
   - STRUCTURE:
       DIS: "structure"
       NODE: 4
       QUANTITY: "stress_zz"
-      VALUE: 686.9280604644466
-      TOLERANCE: 0.00069
+      VALUE: 9.31099439481390959e+02
+      TOLERANCE: 0.00098
   - STRUCTURE:
       DIS: "structure"
       NODE: 8
       QUANTITY: "stress_zz"
-      VALUE: 686.9280604651651
-      TOLERANCE: 0.00069
+      VALUE: 9.31099439481206900e+02
+      TOLERANCE: 0.00098
 DESIGN POINT DIRICH CONDITIONS:
   - E: 1
     NUMDOF: 3
