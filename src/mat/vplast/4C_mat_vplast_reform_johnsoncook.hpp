@@ -105,16 +105,18 @@ namespace Mat
      public:
       explicit ReformulatedJohnsonCook(Core::Mat::PAR::Parameter* params);
 
-      Mat::Viscoplastic::PAR::ReformulatedJohnsonCook* parameter() const override
+      [[nodiscard]] Mat::Viscoplastic::PAR::ReformulatedJohnsonCook* parameter() const override
       {
         return dynamic_cast<Mat::Viscoplastic::PAR::ReformulatedJohnsonCook*>(
             Mat::Viscoplastic::Law::parameter());
       }
 
-      Core::Materials::MaterialType material_type() const override
+      [[nodiscard]] Core::Materials::MaterialType material_type() const override
       {
         return Core::Materials::mvl_reformulated_Johnson_Cook;
       };
+
+      [[nodiscard]] bool uses_yield_surface() const override { return true; }
 
       double evaluate_stress_ratio(
           const double equiv_stress, const double equiv_plastic_strain) override;

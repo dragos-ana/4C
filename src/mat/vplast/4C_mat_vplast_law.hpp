@@ -78,7 +78,11 @@ namespace Mat
       static std::shared_ptr<Law> factory(int matnum);
 
       /// provide material type
-      virtual Core::Materials::MaterialType material_type() const = 0;
+      [[nodiscard]] virtual Core::Materials::MaterialType material_type() const = 0;
+
+      /// does the viscoplastic law use a yield surface formulation, or is it a no-yield-surface
+      /// law?
+      [[nodiscard]] virtual bool uses_yield_surface() const = 0;
 
       /*!
        * @brief Evaluate the ratio of the equivalent stress \f$ \overline{\sigma} \f$ to the yield
@@ -166,7 +170,7 @@ namespace Mat
           const bool update_hist_var = true) = 0;
 
       /// Return material parameters
-      virtual Core::Mat::PAR::Parameter* parameter() const { return params_; }
+      [[nodiscard]] virtual Core::Mat::PAR::Parameter* parameter() const { return params_; }
 
       /*!
        * @brief Setup viscoplasticity law for the specific element
