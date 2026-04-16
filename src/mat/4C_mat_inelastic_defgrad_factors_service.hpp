@@ -24,6 +24,7 @@
 #include <format>
 #include <map>
 #include <string>
+#include <vector>
 
 
 FOUR_C_NAMESPACE_OPEN
@@ -640,7 +641,603 @@ namespace Mat
       bool resize_called_{false};
     };
 
+    //! class: manager for the adaptive estimate interpolation proposed in
+    //! Ana, Schmidt, Wall: Adaptive Estimate Interpolation: Accelerating Local Newton-Raphson
+    //! Schemes in Computational (Visco)Plasticity, Preprint
+    class AdaptiveEstimateInterpolationManager
+    {
+     public:
+      //! plastic predictor: strategies for choosing the elastic stretch eigenvalues \f$
+      //! \boldsymbol{\Lambda} \f$
+      enum class PlasticPredictorElasticStretchEigenvalType
+      {
+        scale_previous,  ///< the elastic stretch eigenvalues from the previous time instant are
+                         ///< scaled with the deformation gradient determinant to maintain plastic
+                         ///< incompressibility
+        scale_unit,      ///< the unit tensor is scaled with the deformation gradient determinant to
+                         ///< maintain plastic incompressibility
+      };
 
+      //! plastic predictor: strategies for choosing elastic stretch eigenvectors \f$ \boldsymbol{Q}
+      //! \f$
+      enum class PlasticPredictorElasticStretchEigenvectRotType
+      {
+        from_elastic_predictor,  ///< eigenvector rotation is taken from the trial elastic state /
+                                 ///< the elastic predictor (for isotropic materials, this
+                                 ///< assumption is consistent with the solution of the Local
+                                 ///< Newton)
+      };
+
+
+      //! plastic predictor: strategies for choosing the elastic rotation \f$ \boldsymbol{R} \f$
+      enum class PlasticPredictorRotationType
+      {
+        from_elastic_predictor,  ///< elastic rotation = trial elastic rotation (elastic
+                                 ///< predictor)
+                                 /// within the plastic predictor (for isotropic models this is
+                                 /// generally consistent with the solution of the Local Newton)
+      };
+
+
+      /*!
+       * @brief Constructor
+       *
+       * @param[in] max_num_reestimations Maximum number of allowed re-estimations before the local
+       * integration is deemed infeasible
+       * @param[in] elastic_stretch_eigenval_type Strategy for choosing the elastic stretch
+       * eigenvalues of the plastic predictor
+       * @param[in] elastic_stretch_eigenvect_rot_type Strategy for choosing the elastic stretch
+       * eigenvectors of the plastic predictor
+       * @param[in] elastic_rot_type Strategy for choosing the elastic rotation
+       *  @param[in] min_interp_interval Minimum interpolation interval upper - lower (2-norm in
+       * interpolation space) which leads to an infeasible estimate interpolation
+       */
+      AdaptiveEstimateInterpolationManager(const unsigned int max_num_reestimations,
+          const PlasticPredictorElasticStretchEigenvalType elastic_stretch_eigenval_type,
+          const PlasticPredictorElasticStretchEigenvectRotType elastic_stretch_eigenvect_rot_type,
+          const PlasticPredictorRotationType rot_type, const double min_interp_interval);
+
+
+
+      //! starting point type
+      enum class StartingPointType
+      {
+        user_set,                  ///< User-set constant factor
+        last_interpolation_point,  ///< Takes the interpolation point from the last global iteration
+                                   ///< of the previous timestep, which led to a valid initial
+                                   ///< guess, as the starting point for the interpolation within
+                                   ///< the current timestep
+        optimal_equiv_stress       ///< Computes the interpolation factor based on the equivalent
+        ///< stress for the previous timestep with respect to the previous
+        ///< elastic and plastic predictors. All (generally different) interpolation point
+        ///< components are set to this one factor.
+      };
+
+
+      //! struct: decomposition of elastic deformation gradient using combined spectral-polar
+      //! decomposition as in Satheesh et al. 2023 (10.1002/nme.7373)
+      struct ElasticDefgradDecomposition
+      {
+        //! elastic predictor: full, non-decomposed specific deformation
+        // gradient considered
+        Core::LinAlg::Matrix<3, 3> specific_defgrad_elast_pred_;
+        //! plastic predictor: full, non-decomposed specific deformation
+        // gradient considered
+        Core::LinAlg::Matrix<3, 3> specific_defgrad_plast_pred_;
+        //! elastic predictor: eigenvalues \f$ \lambda_{\mathrm{elast}, i} \f$
+        std::array<double, 3> lambda_elast_pred_;
+        //! plastic predictor: eigenvalues \f$ \lambda_{\mathrm{plast}, i} \f$
+        std::array<double, 3> lambda_plast_pred_;
+        //! elastic predictor: logarithm of eigenvalues \f$ \log(\lambda_{\mathrm{elast}, i})
+        //! \f$
+        std::array<double, 3> log_lambda_elast_pred_;
+        //! plastic predictor: logarithm eigenvalues \f$ \log(\lambda_{\mathrm{plast}, i}) \f$
+        std::array<double, 3> log_lambda_plast_pred_;
+        //! elastic predictor: eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{elast}} \f$
+        Core::LinAlg::Matrix<3, 3> Qmat_elast_pred_;
+        //! plastic predictor: eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{plast}} \f$
+        Core::LinAlg::Matrix<3, 3> Qmat_plast_pred_;
+        //! plastic predictor: relative eigenvector rotation matrix \f$
+        //! \mathbf{Q}_{\mathrm{plast, rel}} \f$ with respect to the eigenvector rotation of the
+        //! elastic predictor
+        Core::LinAlg::Matrix<3, 3> Qmat_plast_pred_rel_;
+        //! plastic predictor: relative eigenvector rotation vector \f$
+        //! \mathbf{q}_{\mathrm{plast, rel}} \f$ with respect to the eigenvector rotation of the
+        //! elastic predictor
+        Core::LinAlg::Matrix<3, 1> Qvec_plast_pred_rel_;
+        //! elastic predictor: rotation matrix \f$ \mathbf{R}_{\mathrm{elast}} \f$
+        Core::LinAlg::Matrix<3, 3> Rmat_elast_pred_;
+        //! plastic predictor: rotation matrix \f$ \mathbf{R}_{\mathrm{plast}} \f$
+        Core::LinAlg::Matrix<3, 3> Rmat_plast_pred_;
+        //! plastic predictor: relative rotation matrix \f$ \mathbf{R}_{\mathrm{plast, rel}} \f$
+        //! with respect to rotation of the elastic predictor
+        Core::LinAlg::Matrix<3, 3> Rmat_plast_pred_rel_;
+        //! plastic predictor: relative rotation vector \f$ \mathbf{r}_{\mathrm{plast, rel}} \f$
+        //! with respect to rotation of the elastic predictor
+        Core::LinAlg::Matrix<3, 1> Rvec_plast_pred_rel_;
+        //! elastic predictor: spectral pairs containing the eigenvectors and eigenvalues
+        std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred_;
+        //! plastic predictor: spectral pairs containing the eigenvectors and eigenvalues
+        std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_plast_pred_;
+
+        /**
+         * @brief Constructor.
+         *
+         * @note The specific deformation gradient within the elastic predictor
+         * is considered as the reference when aligning eigenpairs, and
+         * determining the relative rotation.
+         *
+         * @param[in] defgrad_elast_pred Deformation gradient (
+         * elastic, inverse plastic, ...) within the elastic predictor
+         * @param[in] defgrad_plast_pred Deformation gradient (elastic,
+         * inverse plastic, ...) within the plastic predictor
+         * @param[in] spectral_pairs_ref Given reference / elastic predictor spectral pairs to
+         * be used for determining relative rotation and aligning eigenpairs for
+         * the plastic predictor. Only to be used in special cases, such as when
+         * we
+         * determine optimal interpolation factors to ensure consistent
+         * reference spectral pairs for interpolation and solution.
+         */
+        PredictorDefgradDecomposition(const Core::LinAlg::Matrix<3, 3>& defgrad_elast_pred,
+            const Core::LinAlg::Matrix<3, 3>& defgrad_plast_pred,
+            std::optional<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>>
+                spectral_pairs_ref = std::nullopt);
+
+        //! pack method
+        void pack(Core::Communication::PackBuffer& data) const
+        {
+          Core::Communication::add_to_pack(data, specific_defgrad_elast_pred_);
+          Core::Communication::add_to_pack(data, specific_defgrad_plast_pred_);
+          Core::Communication::add_to_pack(data, lambda_elast_pred_);
+          Core::Communication::add_to_pack(data, lambda_plast_pred_);
+          Core::Communication::add_to_pack(data, log_lambda_elast_pred_);
+          Core::Communication::add_to_pack(data, log_lambda_plast_pred_);
+          Core::Communication::add_to_pack(data, Qmat_elast_pred_);
+          Core::Communication::add_to_pack(data, Qmat_plast_pred_);
+          Core::Communication::add_to_pack(data, Qmat_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, Qvec_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, Rmat_elast_pred_);
+          Core::Communication::add_to_pack(data, Rmat_plast_pred_);
+          Core::Communication::add_to_pack(data, Rmat_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, Rvec_plast_pred_rel_);
+          Core::Communication::add_to_pack(data, specific_defgrad_elast_pred_);
+          Core::Communication::add_to_pack(data, specific_defgrad_plast_pred_);
+        }
+
+        //! unpack method
+        void unpack(Core::Communication::UnpackBuffer& buffer)
+        {
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, lambda_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, lambda_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, log_lambda_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, log_lambda_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, Qmat_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, Qmat_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, Qmat_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, Qvec_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, Rmat_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, Rmat_plast_pred_);
+          Core::Communication::extract_from_pack(buffer, Rmat_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, Rvec_plast_pred_rel_);
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_elast_pred_);
+          Core::Communication::extract_from_pack(buffer, specific_defgrad_plast_pred_);
+        }
+
+        //! print method
+        void print(std::ostream& os) const
+        {
+          std::cout << "PredictorDefgradDecomposition: \n";
+          std::cout << "elastic - plastic: " << std::endl;
+          std::cout << "lambda: [" << lambda_elast_pred_[0] << ", " << lambda_elast_pred_[1] << ", "
+                    << lambda_elast_pred_[2] << "] - [" << lambda_plast_pred_[0] << ", "
+                    << lambda_plast_pred_[1] << ", " << lambda_plast_pred_[2] << "]\n";
+          std::cout << "Qvec_rel: [" << "0" << ", " << "0" << ", "
+                    << "0" << "] - [" << Qvec_plast_pred_rel_(0) << ", " << Qvec_plast_pred_rel_(1)
+                    << ", " << Qvec_plast_pred_rel_(2) << "]\n";
+        }
+      };
+
+      //! struct: specified point in interpolation space used to interpolate the
+      //! inverse plastic deformation gradient (or the elastic deformation
+      //! gradient, depending on the user specification)
+      struct InterpolationPoint
+      {
+        //! interpolation parameters for the elastic stretch eigenvalues \f$ \boldsymbol{\Lambda}
+        //! \f$
+        std::array<double, 3> xi_lambda;
+        //! interpolation parameters for the rotation vector associated with the relative elastic
+        //! stretch eigenvector rotation \f$ \boldsymbol{Q}_{rel} \f$
+        std::array<double, 3> xi_rel_eigenvect_rot;
+        //! interpolation parameters for the rotation vector associated with the relative elastic
+        //! stretch rotation \f$ \boldsymbol{R}_{rel} \f$
+        std::array<double, 3> xi_rel_rot;
+
+        //! calculate 2-norm
+        double norm() const
+        {
+          const double squared_lambda = xi_lambda[0] * xi_lambda[0] + xi_lambda[1] * xi_lambda[1] +
+                                        xi_lambda[2] * xi_lambda[2];
+
+          const double squared_rel_eigenvect_rot =
+              xi_rel_eigenvect_rot[0] * xi_rel_eigenvect_rot[0] +
+              xi_rel_eigenvect_rot[1] * xi_rel_eigenvect_rot[1] +
+              xi_rel_eigenvect_rot[2] * xi_rel_eigenvect_rot[2];
+
+          const double squared_rel_rot = xi_rel_rot[0] * xi_rel_rot[0] +
+                                         xi_rel_rot[1] * xi_rel_rot[1] +
+                                         xi_rel_rot[2] * xi_rel_rot[2];
+
+
+          return std::sqrt(squared_lambda + squared_rel_eigenvect_rot + squared_rel_rot);
+        }
+
+        //! print method
+        void print(std::ostream& os) const
+        {
+          os << std::format(
+              "Interpolation point: \n lambda: [{}, {}, {}] \n rel_eigenvect_rot: [{}, {}, {}] \n "
+              "rel_rot: [{}, {}, {}] \n",
+              xi_lambda[0], xi_lambda[1], xi_lambda[2], xi_rel_eigenvect_rot[0],
+              xi_rel_eigenvect_rot[1], xi_rel_eigenvect_rot[2], xi_rel_rot[0], xi_rel_rot[1],
+              xi_rel_rot[2]);
+        }
+      };
+
+      //! enum class: shift direction for the interpolation
+      enum class InterpolationShiftAction
+      {
+        shift_towards_elastic_pred,  ///< shift towards the elastic predictor (e.g., in case of
+                                     ///< vanishing plastic strain increments)
+        shift_towards_plastic_pred,  ///< shift towards the plastic predictor (e.g., in case of
+                                     ///< overflow errors due to high overstresses)
+      };
+
+      //! get shift direction for errors encountered in the plastic predictor construction
+      static inline InterpolationShiftAction get_plastic_pred_construction_shift_action(
+          ErrorType error_type)
+      {
+        switch (error_type)
+        {
+          case ErrorType::overflow_error:
+            return InterpolationShiftAction::shift_towards_plastic_pred;
+            break;
+          case ErrorType::under_yield_surface:
+            return InterpolationShiftAction::shift_towards_elastic_pred;
+            break;
+          default:
+            FOUR_C_THROW(
+                "No action specified for error {} within the plastic predictor construction!",
+                EnumTools::enum_name(error_type));
+        }
+      }
+
+      //! get shift direction for errors encountered in the estimate interpolation procedure
+      static inline InterpolationShiftAction get_estimate_interpolation_shift_action(
+          ErrorType error_type)
+      {
+        switch (error_type)
+        {
+          case ErrorType::overflow_error:
+          case ErrorType::failed_computation_flow_resistance:
+          case ErrorType::failed_computation_flow_resistance_derivs:
+          case ErrorType::failed_matrix_log_evaluation:
+          case ErrorType::failed_matrix_exp_evaluation:
+            return InterpolationShiftAction::shift_towards_plastic_pred;
+            break;
+          case ErrorType::under_yield_surface:
+            return InterpolationShiftAction::shift_towards_elastic_pred;
+            break;
+          default:
+            FOUR_C_THROW("No action specified for error {} within the estimate interpolation!",
+                EnumTools::enum_name(error_type));
+        }
+      }
+
+      //! resize method: set the correct number of Gauss Points to track the internal variables of
+      //! the class
+      void resize(const unsigned int num_gp);
+
+      /*!
+       * @brief Verify whether interpolation is still possible, based on the
+       * set minimum interpolation interval, the set maximum number of interpolation
+       * iterations, and the set maximum number of reinterpolations
+       *
+       */
+      bool is_interpolation_possible(const unsigned int gp, const unsigned int num_interp_iters)
+      {
+        // check interpolation interval
+        const double diff_bounds = add_interpolation_points(
+            1.0, get_lower_bound_interp_point(gp), -1.0, get_upper_bound_interp_point(gp))
+                                       .norm();
+        bool check_min_interp_interval = (diff_bounds >= min_interp_interval_);
+
+        // check number of interpolation iterations
+        bool check_interp_iters = (num_interp_iters <= max_num_interp_iters_);
+
+        // check number of re-estimations
+        bool check_num_reestimations = (num_of_reestimations_ <= max_num_reestimations_);
+
+        return check_min_interp_interval && check_interp_iters && check_num_reestimations;
+      }
+
+      /*!
+       * @brief Pre-evaluation: setting element and Gauss point, and the reference quantities used
+       * for estimate interpolation
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] ele_gid element index
+       * @param[in] elastic_defgrad_elast_pred elastic deformation gradient within the elastic
+       * predictor
+       * @param[in] elastic_defgrad_plast_pred elastic deformation gradient within the plastic
+       * predictor
+       */
+      void pre_evaluate(const unsigned int gp, const unsigned int ele_gid,
+          const Core::LinAlg::Matrix<3, 3>& elastic_defgrad_elast_pred,
+          const Core::LinAlg::Matrix<3, 3>& elastic_defgrad_plast_pred);
+
+      //! update method
+      void update();
+
+      //! pack method
+      void pack(Core::Communication::PackBuffer& data) const;
+
+      //! unpack method
+      void unpack(Core::Communication::UnpackBuffer& buffer);
+
+      /*!
+       * @brief Perform decompositions of inverse plastic | elastic deformation
+       * gradient within the elastic and plastic predictors.
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] inv_plastic_defgrad_elast_pred inverse plastic deformation
+       * gradient within the elastic predictor
+       * @param[in] inv_plastic_defgrad_plast_pred inverse plastic deformation
+       * gradient within the plastic predictor
+       * @param[in] defgrad Current deformation gradient (current Local Newton
+       * iteration of \f$ \left[ t_n, t_{n+1} \right] \f$)
+       *
+       */
+      void perform_predictor_decomposition(const unsigned int gp,
+          const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_elast_pred,
+          const Core::LinAlg::Matrix<3, 3>& inv_plastic_defgrad_plast_pred,
+          const Core::LinAlg::Matrix<3, 3>& defgrad);
+
+      //! getter for the current interpolation point \f$ \xi \f$ at a specified Gauss point gp
+      InterpolationPoint get_current_interp_point(const unsigned int gp) const
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < current_interp_point_.size(),
+            "Cannot retrieve current interpolation point for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, current_interp_point_.size());
+        return current_interp_point_[gp];
+      };
+      //! setter for the current interpolation point \f$ \xi \f$ at a specified Gauss point gp
+      void set_current_interp_point(const unsigned gp, const InterpolationPoint interp_point)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < current_interp_point_.size(),
+            "Cannot set current interpolation point for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, current_interp_point_.size());
+        current_interp_point_[gp] = interp_point;
+      }
+
+      //! getter for the lower interpolation bound \f$ \xi_{\text{E}} \f$ at a specified Gauss point
+      //! gp
+      InterpolationPoint get_lower_interp_bound(const unsigned int gp) const
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < lower_interp_bound_.size(),
+            "Cannot retrieve lower interpolation bound for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, lower_interp_bound_.size());
+        return lower_interp_bound_[gp];
+      };
+      //! setter for the lower interpolation bound \f$ \xi_{\text{E}} \f$ at a specified Gauss point
+      //! gp
+      void set_lower_interp_bound(const unsigned gp, const InterpolationPoint interp_point)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < lower_interp_bound_.size(),
+            "Cannot set lower interpolation bound for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, current_interp_point_.size());
+        lower_interp_bound_[gp] = interp_point;
+      }
+
+      //! getter for the upper interpolation bound \f$ \xi_{\text{P}} \f$ at a specified Gauss point
+      //! gp
+      InterpolationPoint get_upper_interp_bound(const unsigned int gp) const
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < upper_interp_bound_.size(),
+            "Cannot retrieve upper interpolation bound for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, upper_interp_bound_.size());
+        return upper_interp_bound_[gp];
+      };
+      //! setter for the upper interpolation bound \f$ \xi_{\text{P}} \f$ at a specified Gauss point
+      //! gp
+      void set_upper_interp_bound(const unsigned gp, const InterpolationPoint interp_point)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < upper_interp_bound_.size(),
+            "Cannot set upper interpolation bound for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, upper_interp_bound_.size());
+        upper_interp_bound_[gp] = interp_point;
+      }
+
+      //! getter for the last interpolation point \f$ \xi_{n} \f$ at a specified Gauss point gp
+      InterpolationPoint get_last_interp_point(const unsigned int gp) const
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < last_interp_point_.size(),
+            "Cannot retrieve last interpolation point for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, last_interp_point_.size());
+        return last_interp_point_[gp];
+      };
+      //! setter for the last interpolation point \f$ \xi_{n} \f$ at a specified Gauss point gp
+      void set_last_interp_point(const unsigned gp, const InterpolationPoint interp_point)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < current_interp_point_.size(),
+            "Cannot set last interpolation point for Gauss point with index {}! The "
+            "assigned number of Gauss points is {}",
+            gp, last_interp_point_.size());
+        last_interp_point_[gp] = interp_point;
+      }
+
+
+      /*!
+       * @brief Add interpolation points.
+       *
+       * Performs \e this = \e scalar_a * \e interp_point_a + \e scalar_b * \e interp_point_b
+       *
+       */
+      static InterpolationPoint add_interpolation_points(const double scalar_a,
+          const InterpolationPoint& interp_point_a, const double scalar_b,
+          const InterpolationPoint& interp_point_b)
+      {
+        return InterpolationPoint{
+            .xi_lambda = {scalar_a * interp_point_a.xi_lambda[0] +
+                              scalar_b * interp_point_b.xi_lambda[0],
+                scalar_a * interp_point_a.xi_lambda[1] + scalar_b * interp_point_b.xi_lambda[1],
+                scalar_a * interp_point_a.xi_lambda[2] + scalar_b * interp_point_b.xi_lambda[2]},
+            .xi_rel_eigenvect_rot = {scalar_a * interp_point_a.xi_rel_eigenvect_rot[0] +
+                                         scalar_b * interp_point_b.xi_rel_eigenvect_rot[0],
+                scalar_a * interp_point_a.xi_rel_eigenvect_rot[1] +
+                    scalar_b * interp_point_b.xi_rel_eigenvect_rot[1],
+                scalar_a * interp_point_a.xi_rel_eigenvect_rot[2] +
+                    scalar_b * interp_point_b.xi_rel_eigenvect_rot[2]},
+            .xi_rel_rot = {scalar_a * interp_point_a.xi_rel_rot[0] +
+                               scalar_b * interp_point_b.xi_rel_rot[0],
+                scalar_a * interp_point_a.xi_rel_rot[1] + scalar_b * interp_point_b.xi_rel_rot[1],
+                scalar_a * interp_point_a.xi_rel_rot[2] + scalar_b * interp_point_b.xi_rel_rot[2]},
+        };
+      }
+
+
+      /*!
+       * @brief Interpolate elastic deformation gradient between the
+       * elastic and the plastic predictor, given the
+       * current several interpolation factors.
+       *
+       * @note The eigenvalues are interpolated using the logarithmic weighted average
+       * (see Satheesh et al. 2022, 10.1002/nme.7373) with linear weighting
+       * between the predictors.
+       *
+       * @param[in] interp_point Interpolation point to be used.
+       * @param[in] inv_defgrad Inverse of the current deformation gradient (current Local Newton
+       * iteration within \f$ \left[ t_n, t_{n+1} \right] \f$)
+       *
+       */
+      Core::LinAlg::Matrix<3, 3> interpolate_elastic_defgrad(
+          const InterpolationPoint& interp_point, const Core::LinAlg::Matrix<3, 3>& inv_defgrad);
+
+      /*!
+       * @brief Adapt interpolation interval \f$ \left[\xi_{\mathrm{E}}, \xi_{\mathrm{P} \right] \f$
+       * based on evaluation error
+       *
+       * @param[in] eval_err_type type of evaluation error necessitating
+       * an adaptation of the parameter and the interval
+       *
+       */
+      void adapt_interpolation_interval(const ErrorType eval_err_type);
+
+      /*!
+       * @brief Adapt current interpolation point \f$ \xi \f$ using the current interpolation
+       * interval
+       *
+       */
+      void adapt_current_interpolation_point();
+
+      [[nodiscard]] const std::vector<PredictorDefgradDecomposition>&
+      get_curr_pred_decomp_specific_defgrad() const
+      {
+        return curr_pred_decomp_specific_defgrad_;
+      }
+
+      [[nodiscard]] const std::vector<PredictorDefgradDecomposition>&
+      get_last_pred_decomp_specific_defgrad() const
+      {
+        return last_pred_decomp_specific_defgrad_;
+      }
+
+
+     private:
+      //! current Gauss point index
+      int gp_{-1};
+
+      //! current element id
+      int ele_gid_{-1};
+
+      //! type of elastic stretch eigenvalues within plastic predictor
+      PlasticPredictorElasticStretchEigenvalType plast_pred_elast_stretch_eigenval_type_;
+
+      //! type of elastic stretch eigenvector rotation within plastic predictor
+      PlasticPredictorElasticStretchEigenvectRotType plast_pred_elast_stretch_eigenvect_rot_type_;
+
+      //! type of rotation within plastic predictor
+      PlasticPredictorRotationType plast_pred_rot_type_;
+
+      //! interval scanning parameter for interpolation: we currently utilize bisection
+      const double scan_param_ = 1.0 / 2.0;
+
+      //! current number of re-estimations
+      unsigned int num_of_reestimations_;
+
+      //! maximum number of allowed re-estimations before the local integration is deemed infeasible
+      const unsigned int max_num_reestimations_;
+
+      //! minimum interpolation interval as a 2-norm \f$ \|  \mathbf{\xi}_{\text{upper}} -
+      //! \mathbf{\xi}_{\text{upper}} \| \f$
+      const double min_interp_interval_;
+
+      //! set maximum relative deviation between equivalent stress and yield stress: if
+      //! elastic predictor has a smaller stress deviation than this this value, then it is directly
+      //! used as the initial LNL guess without performing the LNGI; otherwise, the plastic
+      //! predictor is updated such that its relative stress deviation is smaller than this value
+      static constexpr double max_rel_stress_deviation_ = 1.0e-6;
+
+      // maximum number of interpolation iterations
+      static constexpr unsigned int max_num_interp_iters_ = 50;
+
+      // maximum number of plastic predictor construction iterations
+      static constexpr unsigned int max_plastic_pred_construct_iters_ = 50;
+
+      //! current estimate containing the inverse inelastic deformation
+      //! gradient (components 0-8) and the plastic strain (component 9)
+      Core::LinAlg::Matrix<10, 1> current_interp_estimate_;
+
+      //! current timestep predictor decompositions for each GP of deformation gradient (with
+      //! specified type: elastic, inverse plastic, ...) within elastic and plastic predictors
+      //!--> MOVE TO PRIVATE AFTER REMOVING CONSISTENCY CHECKS
+      std::vector<PredictorDefgradDecomposition> curr_pred_decomp_specific_defgrad_;
+
+      //! last timestep predictor decompositions for each GP of deformation gradient (with
+      //! specified type: elastic, inverse plastic, ...) within elastic and plastic predictors
+      //!--> MOVE TO PRIVATE AFTER REMOVING CONSISTENCY CHECKS
+      std::vector<PredictorDefgradDecomposition> last_pred_decomp_specific_defgrad_;
+
+      //! current interpolation points \f$ \xi \f$ at all Gauss points
+      std::vector<InterpolationPoint> current_interp_point_;
+
+      //! lower interpolation bounds \f$ \xi_{\text{E}} \f$ at all Gauss points
+      std::vector<InterpolationPoint> lower_interp_bound_;
+
+      //! upper interpolation bounds \f$ \xi_{\text{P}} \f$ at all Gauss points
+      std::vector<InterpolationPoint> upper_interp_bound_;
+
+
+      //! interpolation points \f$ \xi_{n} \f$ at all Gauss points, used in the last converged
+      //! global iteration of the previous time step
+      std::vector<InterpolationPoint> last_interp_point_;
+
+      //! control variable: should relative elastic rotations be interpolated (if
+      //! not, take the component from the elastic predictor)
+      const bool interpolate_rot_;
+
+      //! control variable: should relative elastic eigenvector rotations be interpolated (if
+      //! not, take the component from the elastic predictor)
+      const bool interpolate_eigenvect_rot_;
+    };
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
