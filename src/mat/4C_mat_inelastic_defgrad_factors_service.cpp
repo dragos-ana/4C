@@ -7,7 +7,9 @@
 
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 
+#include "4C_comm_pack_helpers.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
+#include "4C_linalg_utils_tensor_interpolation.hpp"
 #include "4C_utils_exceptions.hpp"
 
 
@@ -381,6 +383,377 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager:
   extract_from_pack(buffer, curr_num_iters_);
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    InterpolationPointContainer::InterpolationPointContainer()
+{
+  current_interp_points_.resize(1, 0.0);
+  lower_interp_bounds_.resize(1, 0.0);
+  upper_interp_bounds_.resize(1, 1.0);
+  last_interp_points_.resize(1, 0.0);
+}
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    InterpolationPointContainer::reset(const unsigned int gp)
+{
+  current_interp_points_[gp] = 0.0;
+  lower_interp_bounds_[gp] = 0.0;
+  upper_interp_bounds_[gp] = 1.0;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    InterpolationPointContainer::resize(const unsigned int numgp)
+{
+  FOUR_C_ASSERT_ALWAYS(!resize_called_,
+      "You already called resize for the interpolation point container! The number of "
+      "current GP is "
+      "{} and "
+      "you attempt to set it to {}",
+      current_interp_points_.size(), numgp);
+
+  current_interp_points_.resize(numgp, current_interp_points_[0]);
+  lower_interp_bounds_.resize(numgp, lower_interp_bounds_[0]);
+  upper_interp_bounds_.resize(numgp, upper_interp_bounds_[0]);
+  last_interp_points_.resize(numgp, last_interp_points_[0]);
+
+  resize_called_ = true;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    InterpolationPointContainer::update()
+{
+  for (unsigned int gp = 0; gp < last_interp_points_.size(); ++gp)
+  {
+    last_interp_points_[gp] = current_interp_points_[gp];
+  }
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    InterpolationPointContainer::pack(Core::Communication::PackBuffer& data) const
+{
+  Core::Communication::add_to_pack(data, current_interp_points_);
+  Core::Communication::add_to_pack(data, lower_interp_bounds_);
+  Core::Communication::add_to_pack(data, upper_interp_bounds_);
+  Core::Communication::add_to_pack(data, last_interp_points_);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    InterpolationPointContainer::unpack(Core::Communication::UnpackBuffer& buffer)
+{
+  Core::Communication::extract_from_pack(buffer, current_interp_points_);
+  Core::Communication::extract_from_pack(buffer, lower_interp_bounds_);
+  Core::Communication::extract_from_pack(buffer, upper_interp_bounds_);
+  Core::Communication::extract_from_pack(buffer, last_interp_points_);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    ElasticDefgradPredictorDecompositions::ElasticDefgradPredictorDecompositions()
+{
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    ElasticDefgradPredictorDecompositions::construct_prelim_plastic_pred(const unsigned int gp,
+        const Core::LinAlg::Matrix<3, 3>& elastic_defgrad_elastic_pred,
+        const AdaptiveEstimateInterpolationParams& aei_params,
+        const Core::LinAlg::Matrix<3, 3>& last_elastic_defgrad)
+{
+  //  perform polar-spectral decomposition of elastic defgrad within elastic predictor
+  Core::LinAlg::Matrix<3, 3> material_stretch_elast_pred{Core::LinAlg::Initialization::zero};
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred;
+  Core::LinAlg::matrix_3x3_polar_decomposition(elastic_defgrad_elastic_pred, rot_elast_pred_[gp],
+      material_stretch_elast_pred, eigenval_elast_pred_[gp], spectral_pairs_elast_pred);
+  for (int i = 0; i < 3; ++i)
+  {
+    FOUR_C_ASSERT_ALWAYS(eigenval_elast_pred_[gp](i, i) >= 1.0e-8,
+        "The eigenvalue {} of the elastic deformation gradient within the elastic predictor at GP "
+        "{} is {}, "
+        "such that its logarithm can not be computed!",
+        i, gp, eigenval_elast_pred_[gp](i, i));
+    log_eigenval_elast_pred_[gp][i] = std::log(eigenval_elast_pred_[gp](i, i));
+    for (int j = 0; j < 3; ++j)
+    {
+      eigenvect_rot_elast_pred_[gp](i, j) = spectral_pairs_elast_pred[i].second(j);
+    }
+  }
+
+  // -->  construct a preliminary plastic predictor based on the parameter specifications
+
+  // we currently only enable the transfer of rotation contributions from the elastic predictor; but
+  // make the approach of using different rotation contributions possible in the future
+  FOUR_C_ASSERT_ALWAYS(aei_params.plast_pred_elast_rot_type ==
+                           PlasticPredictorElasticRotationType::from_elastic_predictor,
+      "Elastic rotation type {} not yet enabled for the plastic predictor!",
+      EnumTools::enum_name(aei_params.plast_pred_elast_rot_type));
+  rel_eigenvect_rot_plast_pred_[gp].scale(0.0);
+  Core::LinAlg::Matrix<3, 3> rel_eigenvect_rot_plast_pred_matrix =
+      Core::LinAlg::calc_rot_matrix_from_rot_vect(rel_eigenvect_rot_plast_pred_[gp]);
+  Core::LinAlg::Matrix<3, 3> eigenvect_rot_plast_pred_matrix{Core::LinAlg::Initialization::zero};
+  eigenvect_rot_plast_pred_matrix.multiply(
+      1.0, eigenvect_rot_elast_pred_[gp], rel_eigenvect_rot_plast_pred_matrix, 0.0);
+
+  FOUR_C_ASSERT_ALWAYS(aei_params.plast_pred_elast_stretch_eigenvect_type ==
+                           PlasticPredictorElasticStretchEigenvectType::from_elastic_predictor,
+      "Elastic stretch eigenvector type {} not yet enabled for the plastic predictor!",
+      EnumTools::enum_name(aei_params.plast_pred_elast_stretch_eigenvect_type));
+  rel_rot_plast_pred_[gp].scale(0.0);
+  Core::LinAlg::Matrix<3, 3> rel_rot_plast_pred_matrix =
+      Core::LinAlg::calc_rot_matrix_from_rot_vect(rel_rot_plast_pred_[gp]);
+  Core::LinAlg::Matrix<3, 3> rot_plast_pred_matrix{Core::LinAlg::Initialization::zero};
+  rot_plast_pred_matrix.multiply(1.0, rot_elast_pred_[gp], rel_rot_plast_pred_matrix, 0.0);
+
+
+  // set elastic eigenvalues based on specification
+  const double detF = elastic_defgrad_elastic_pred.determinant();
+  switch (aei_params.plast_pred_elast_stretch_eigenval_type)
+  {
+    case PlasticPredictorElasticStretchEigenvalType::scale_unit:
+    {
+      const double scaled_detF = std::pow(detF, 1.0 / 3.0);
+      for (unsigned int i = 0; i < 3; ++i)
+      {
+        eigenval_plast_pred_[gp] = scaled_detF;
+      }
+
+      break;
+    }
+    case PlasticPredictorElasticStretchEigenvalType::scale_previous:
+    {
+      // compute scaling factor \f$\left[ \det(\mathbf{F}_{n+1}) / \det(\mathbf{F}_{\mathrm{e},n})
+      // \right]^{1/3} \f$
+      const double detF_detFen = detF / last_elastic_defgrad.determinant();
+      const double scaled_detF_detFen = std::pow(detF_detFen, 1.0 / 3.0);
+
+      // perform polar-spectral decomposition of the last elastic defgrad
+      Core::LinAlg::Matrix<3, 3> last_material_stretch{Core::LinAlg::Initialization::zero};
+      Core::LinAlg::Matrix<3, 3> last_rot{Core::LinAlg::Initialization::zero};
+      std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> last_spectral_pairs;
+      Core::LinAlg::matrix_3x3_polar_decomposition(last_elastic_defgrad, last_rot,
+          last_material_stretch, eigenval_plast_pred_[gp], last_spectral_pairs);
+      // scale the eigenvalues
+      eigenval_plast_pred_[gp].scale(scaled_detF_detFen);
+
+      break;
+    }
+    default:
+    {
+      FOUR_C_ASSERT_ALWAYS(
+          "Elastic stretch eigenvector type {} not yet enabled for the plastic predictor",
+          EnumTools::enum_name(aei_params.plast_pred_elast_stretch_eigenval_type));
+    }
+  }
+  for (int i = 0; i < 3; ++i)
+  {
+    FOUR_C_ASSERT_ALWAYS(eigenval_plast_pred_[gp](i, i) >= 1.0e-8,
+        "The eigenvalue {} of the elastic deformation gradient within the plastic predictor at GP "
+        "{} is {}, "
+        "such that its logarithm can not be computed!",
+        i, gp, eigenval_plast_pred_[gp](i, i));
+    log_eigenval_plast_pred_[gp][i] = std::log(eigenval_plast_pred_[gp](i, i));
+  }
+
+
+
+  defgrad_elast_pred_[gp] = elastic_defgrad_elastic_pred;
+  defgrad_plast_pred_[gp] = elastic_defgrad_pair.plastic_predictor_defgrad;
+
+
+
+  //  perform polar decomposition of defgrad within plastic predictor
+  Core::LinAlg::Matrix<3, 3> material_stretch_fatrix_plast_pred{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> rotation_matrix_plast_pred{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> eigenval_matrix_plast_pred{Core::LinAlg::Initialization::zero};
+  std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_plast_pred;
+  Core::LinAlg::matrix_3x3_polar_decomposition(defgrad_plast_pred, rotation_matrix_plast_pred,
+      material_stretch_matrix_plast_pred, eigenval_matrix_plast_pred, spectral_pairs_plast_pred);
+
+  // collect all spectral pairs (elastic and plastic predictors) and use
+  // this for ordering and alignment: we will rewrite them back to their
+  // original form afterwards
+  std::vector<std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3>> all_spectral_pairs{
+      spectral_pairs_elast_pred, spectral_pairs_plast_pred};
+
+  // set reference locations for interpolation
+  Core::LinAlg::Matrix<1, 1> ref_loc_elast_pred;
+  ref_loc_elast_pred(0, 0) = 0.0;
+  Core::LinAlg::Matrix<1, 1> ref_loc_plast_pred;
+  ref_loc_plast_pred(0, 0) = 1.0;
+  std::vector<Core::LinAlg::Matrix<1, 1>> all_ref_locs{ref_loc_elast_pred, ref_loc_plast_pred};
+
+  // align spectral pairs of reference (elastic predictor) suitably
+  Core::LinAlg::align_eigenpairs_of_base_matrix(all_spectral_pairs, all_ref_locs, 0);
+
+  // order eigenpairs (plastic predictor) with respect to the reference (elastic predictor)
+  if (spectral_pairs_ref.has_value())
+  {
+    Core::LinAlg::order_eigenpairs_wrt_reference(spectral_pairs_ref.value(), all_spectral_pairs[1]);
+    // save spectral pairs within designated objects
+    spectral_pairs_elast_pred_ = spectral_pairs_ref.value();
+  }
+  else
+  {
+    Core::LinAlg::order_eigenpairs_wrt_reference(all_spectral_pairs[0], all_spectral_pairs[1]);
+    // save spectral pairs within designated objects
+    spectral_pairs_elast_pred_ = all_spectral_pairs[0];
+  }
+  spectral_pairs_plast_pred_ = all_spectral_pairs[1];
+
+  // save eigenvalues
+  lambda_elast_pred_ = {spectral_pairs_elast_pred_[0].first, spectral_pairs_elast_pred_[1].first,
+      spectral_pairs_elast_pred_[2].first};
+  lambda_plast_pred_ = {spectral_pairs_plast_pred_[0].first, spectral_pairs_plast_pred_[1].first,
+      spectral_pairs_plast_pred_[2].first};
+  log_lambda_elast_pred_ = {std::log(spectral_pairs_elast_pred_[0].first),
+      std::log(spectral_pairs_elast_pred_[1].first), std::log(spectral_pairs_elast_pred_[2].first)};
+  log_lambda_plast_pred_ = {std::log(spectral_pairs_plast_pred_[0].first),
+      std::log(spectral_pairs_plast_pred_[1].first), std::log(spectral_pairs_plast_pred_[2].first)};
+
+  // save eigenvector rotation matrices and vectors
+  for (int i = 0; i < 3; ++i)
+  {
+    for (int j = 0; j < 3; ++j)
+    {
+      Qmat_elast_pred_(i, j) = spectral_pairs_elast_pred_[i].second(j);
+      Qmat_plast_pred_(i, j) = spectral_pairs_plast_pred_[i].second(j);
+    }
+  }
+  Qmat_plast_pred_rel_.multiply_tn(1.0, Qmat_elast_pred_, Qmat_plast_pred_, 0.0);
+  Qvec_plast_pred_rel_ = Core::LinAlg::calc_rot_vect_from_rot_matrix(Qmat_plast_pred_rel_);
+
+  // save rotation matrices and vectors
+  Rmat_elast_pred_ = rotation_matrix_elast_pred;
+  Rmat_plast_pred_ = rotation_matrix_plast_pred;
+  Rmat_plast_pred_rel_.multiply_tn(1.0, Rmat_elast_pred_, Rmat_plast_pred_, 0.0);
+  Rvec_plast_pred_rel_ = Core::LinAlg::calc_rot_vect_from_rot_matrix(Rmat_plast_pred_rel_);
+}
+
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    AdaptiveEstimateInterpolationManager(const AdaptiveEstimateInterpolationParams& aei_params)
+    : params_(aei_params), interp_point_container_(),
+{
+  // auxiliaries
+  Core::LinAlg::Matrix<3, 3> unit3x3{Core::LinAlg::Initialization::zero};
+  for (int i = 0; i < 3; ++i) unit3x3(i, i) = 1.0;
+
+
+  // initialize class variables (for a single Gauss point for now)
+  resize_called_ = false;
+  num_of_reestimations_ = 0;
+  InterpolationPointContainer default_interp_point_container = InterpolationPointContainer();
+  current_elastic_defgrad_decompositions_.resize(
+      1, AdaptiveEstimateInterpolationManager::ElasticDefgradDecomposition(PredictorDefgradPair{
+             .elastic_predictor_defgrad = unit3x3, .plastic_predictor_defgrad = unit3x3}));
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    resize(const unsigned int num_gp)
+{
+  FOUR_C_ASSERT_ALWAYS(!resize_called_,
+      "You already called resize for the adaptive estimate interpolation manager! You attempt to "
+      "set it to {}",
+      num_gp);
+
+  interp_point_container_.resize(num_gp);
+  current_elastic_defgrad_decompositions_.resize(
+      num_gp, current_elastic_defgrad_decompositions_[0]);
+
+  resize_called_ = true;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    is_interpolation_possible(const unsigned int num_interp_iters)
+{
+  // check interpolation interval
+  const double diff_bounds = interp_point_container_.upper_interp_bound(gp_) -
+                             interp_point_container_.lower_interp_bound(gp_);
+  bool check_min_interp_interval = (diff_bounds >= params_.min_interval_length);
+
+  // check number of interpolation iterations
+  bool check_interp_iters = (num_interp_iters <= params_.max_num_estimate_interpol_iters);
+
+  // check number of re-estimations
+  bool check_num_reestimations = (num_of_reestimations_ <= params_.max_num_reestimations);
+
+  return check_min_interp_interval && check_interp_iters && check_num_reestimations;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    pre_evaluate(const unsigned int gp, const PredictorDefgradPair& elastic_defgrad_pair)
+{
+  // set Gauss point index
+  gp_ = gp;
+
+  // reset certain variables
+  num_of_reestimations_ = 0;
+  interp_point_container_.reset(gp_);
+
+  // decompose the elastic deformation gradient pair
+  current_elastic_defgrad_decompositions_[gp_] = ElasticDefgradDecomposition(elastic_defgrad_pair);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    update()
+{
+  // update Gauss point values
+  interp_point_container_.update();
+
+  last_elastic_defgrad_decompositions_ = current_elastic_defgrad_decompositions_;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    pack(Core::Communication::PackBuffer& data) const
+{
+  interp_point_container_.pack(data);
+  for (unsigned int gp = 0; gp < last_elastic_defgrad_pred_decomp_.size(); ++gp)
+  {
+    last_elastic_defgrad_decompositions_[gp].pack(data);
+    current_elastic_defgrad_decompositions_[gp].pack(data);
+  }
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+    unpack(Core::Communication::UnpackBuffer& buffer)
+{
+  interp_point_container_.unpack(buffer);
+
+  for (unsigned int gp = 0; gp < numgp; ++gp)
+  {
+    interp_point_containers_[gp].unpack(buffer);
+    last_elastic_defgrad_decompositions_[gp].unpack(buffer);
+    current_elastic_defgrad_decompositions_[gp].unpack(buffer);
+  }
+}
 
 FOUR_C_NAMESPACE_CLOSE
