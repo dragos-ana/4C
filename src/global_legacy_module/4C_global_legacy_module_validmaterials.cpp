@@ -2952,7 +2952,93 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 },
                 {.description = "Parameters used in the Local Newton--Raphson procedure "
                                 "(viscoplastic corrector stage)",
+                    .required = false}),
+            group("ADAPTIVE_ESTIMATE_INTERP",
+                {
+                    parameter<bool>("USE_ADAPTIVE_ESTIMATE_INTERP",
+                        {.description = "use adaptive estimate interpolation?",
+                            .default_value = true}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            AdaptiveEstimateInterpolationStartingPointType>("STARTING_POINT_TYPE",
+                        {.description = "starting point type",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    AdaptiveEstimateInterpolationStartingPointType::
+                                        optimal_equiv_stress}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            PlasticPredictorElasticStretchEigenvalType>(
+                        "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+                        {.description = "elastic stretch eigenvalue specification for the plastic "
+                                        "predictor to be used within the AEI",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    PlasticPredictorElasticStretchEigenvalType::scale_unit}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            PlasticPredictorElasticStretchEigenvectType>(
+                        "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_TYPE",
+                        {.description = "elastic stretch eigenvector specification for the plastic "
+                                        "predictor to be used in the AEI",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    PlasticPredictorElasticStretchEigenvectType::
+                                        from_elastic_predictor}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            PlasticPredictorElasticRotationType>(
+                        "PLASTIC_PRED_ELASTIC_ROTATION_TYPE",
+                        {.description = "elastic rotation specification for the plastic "
+                                        "predictor to be used in the AEI",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    PlasticPredictorElasticRotationType::from_elastic_predictor}),
+                    parameter<int>("MAX_NUM_PLASTIC_PRED_CONSTRUCT_ITERS",
+                        {.description = "maximum number of plastic predictor construction "
+                                        "iterations $ i_{\\text{C, max}} $",
+                            .default_value = 50,
+                            .validator = positive_or_zero<int>()}),
+                    parameter<double>("MAX_RELATIVE_YIELD_STRESS_DEVIATION",
+                        {.description = "maximum relative deviation between the equivalent stress "
+                                        "and the yield stress expressed as $\\overline{\\sigma} / "
+                                        "\\sigma_{\\text{Y}} - 1$ used within the plastic "
+                                        "predictor construction",
+                            .default_value = 1.0e-6,
+                            .validator = positive<double>()}),
+                    parameter<int>("MAX_NUM_ESTIMATE_INTERP_ITERS",
+                        {.description = "maximum number of estimate interpolation iterations "
+                                        "$i_{\\text{EI,max}}$",
+                            .default_value = 50,
+                            .validator = positive<int>()}),
+                    parameter<double>("MIN_INTERP_INTERVAL",
+                        {.description = "minimum interval length $ ( \\xi_{\\text{P}} - "
+                                        "\\xi_{\\text{E}} )_{\\text{min}} $ "
+                                        "for estimate interpolation",
+                            .default_value = 1.0e-15,
+                            .validator = positive<double>()}),
+                    parameter<double>("INTERVAL_SCANNING_PARAM",
+                        {.description = "interval scanning parameter (bisection: 1/2), used for "
+                                        "plastic predictor construction, estimate interpolation, "
+                                        "re-estimation",
+                            .default_value = 0.5,
+                            .validator = positive<double>()}),
+                    parameter<int>("MAX_NUM_REESTIMATIONS",
+                        {.description = "maximum number of adaptive re-estimations allowed",
+                            .default_value = 10,
+                            .validator = positive_or_zero<int>()}),
+                    parameter<double>("MIN_RELATIVE_LOWER_BOUND_STRESS_DEVIATION",
+                        {.description = "minimum relative deviation between the equivalent "
+                                        "stressses associated with the lower bound $ "
+                                        "\\xi_{\\text{E}} $, and with the intermediate point $ "
+                                        "\\xi_{\\text{I}} $ within the re-estimation procedure",
+                            .default_value = 1.0e-3,
+                            .validator = positive<double>()}),
+
+                },
+                {.description = "Parameters used in the Adaptive Estimate Interpolation for Local "
+                                "Newton estimates presented "
+                                "in Ana, Schmidt, Wall: Adaptive Estimate Interpolation: "
+                                "Accelerating Local Newton--Raphson Schemes in Computational "
+                                "Plasticity/Viscoplasticity ",
                     .required = false})},
+
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
                         "viscoplasticity laws (flow rule + hardening model)"});

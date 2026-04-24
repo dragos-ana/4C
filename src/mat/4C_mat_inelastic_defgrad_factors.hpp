@@ -410,6 +410,19 @@ namespace Mat
       {
         return local_newton_params_;
       }
+      //! get Adaptive Estimate Interpolation parameters
+      [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::
+          AdaptiveEstimateInterpolationParams
+          adaptive_estimate_interp_params() const
+      {
+        return adaptive_estimate_interp_params_;
+      }
+
+      //! use Adaptive Estimate Interpolation for the Local Newton estimates?
+      [[nodiscard]] bool use_adaptive_estimate_interp() const
+      {
+        return use_adaptive_estimate_interp_;
+      }
 
      private:
       //! ID of the viscoplasticity law
@@ -465,6 +478,13 @@ namespace Mat
       //! Local Newton--Raphson parameters
       const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams
           local_newton_params_;
+
+      //! use Adaptive Estimate Interpolation for the Local Newton estimates
+      const bool use_adaptive_estimate_interp_;
+
+      //! Adaptive Estimate Interpolation parameters
+      const InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationParams
+          adaptive_estimate_interp_params_;
     };
   }  // namespace PAR
 
@@ -1659,6 +1679,11 @@ namespace Mat
 
     //! dedicated Local Newton manager containing settings and iteration data
     InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager_;
+
+    //! dedicated Adaptive Estimate Interpolation manager containing the fundamental logic of the
+    //! scheme
+    InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager
+        adaptive_estimate_interp_manager_;
 
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
