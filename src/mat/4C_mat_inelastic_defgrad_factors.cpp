@@ -443,6 +443,53 @@ namespace
     return local_newton_params;
   }
 
+
+  Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationParams
+  retrieve_aei_params(const Core::Mat::PAR::Parameter::Data& matdata)
+  {
+    const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+        AdaptiveEstimateInterpolationParams aei_params =
+            ViscoplastUtils::AdaptiveEstimateInterpolationParams{
+                .starting_point_type = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                    .get<ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType>(
+                        "STARTING_POINT_TYPE"),
+                .plastic_pred_elastic_stretch_eigenval_type =
+                    matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                        .get<ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType>(
+                            "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE"),
+                .plastic_pred_elastic_stretch_eigenvect_type =
+                    matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                        .get<ViscoplastUtils::PlasticPredictorElasticStretchEigenvectType>(
+                            "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVEC_TYPE"),
+                .plastic_pred_elastic_rotation_type =
+                    matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                        .get<ViscoplastUtils::PlasticPredictorElasticRotationType>(
+                            "PLASTIC_PRED_ELASTIC_ROTATION_TYPE"),
+                .max_num_plastic_pred_construct_iters =
+                    static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                            .get<int>("MAX_NUM_PLASTIC_PRED_CONSTRUCT_ITERS")),
+                .max_relative_yield_stress_deviation =
+                    matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                        .get<double>("MAX_RELATIVE_YIELD_STRESS_DEVIATION"),
+                .max_num_estimate_interp_iters =
+                    static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                            .get<int>("MAX_NUM_ESTIMATE_INTERP_ITERS")),
+                .min_interp_interval = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                    .get<double>("MIN_INTERP_INTERVAL"),
+                .interval_scanning_param = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                    .get<double>("INTERVAL_SCANNING_PARAM"),
+                .max_num_reestimations =
+                    static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                            .get<int>("MAX_NUM_REESTIMATIONS")),
+                .min_relative_lower_bound_stress_deviation =
+                    matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                        .get<double>("MIN_RELATIVE_LOWER_BOUND_STRESS_DEVIATION")};
+
+    return aei_params;
+  }
+
+
+
   bool show_warnings(const unsigned int ele_gid)
   {
     // get structure discretization
@@ -664,7 +711,10 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       mat_log_deriv_calc_method_(
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD")),
-      local_newton_params_(retrieve_local_newton_params(matdata))
+      local_newton_params_(retrieve_local_newton_params(matdata)),
+      use_adaptive_estimate_interp_(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+              .get<bool>("USE_ADAPTIVE_ESTIMATE_INTERP")),
+      adaptive_estimate_interp_params_(retrieve_aei_params(matdata))
 {
   // consistency check: yield parameters in case of transversely-isotropic behavior
   const bool all_yield_cond_param_specified =
@@ -1741,7 +1791,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
       state_quantity_derivatives_(),
       tensor_interpolator_(init_tensor_interpolator()),
       local_substepping_utils_(0.0),
-      local_newton_manager_(parameter()->local_newton_params())
+      local_newton_manager_(parameter()->local_newton_params()),
+      adaptive_estimate_interp_manager_(parameter()->adaptive_estimate_interp_params())
 {
   // set time step size to 0.0 (this is set to the correct and current value in the
   // preevaluate method)
