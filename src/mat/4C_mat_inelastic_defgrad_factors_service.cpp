@@ -346,10 +346,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimeStepQuantities:
   last_defgrad = current_defgrad;
   last_rightCG = current_rightCG;
   last_plastic_defgrad_inverse = current_plastic_defgrad_inverse;
-  last_substep_plastic_defgrad_inverse = current_plastic_defgrad_inverse;
   last_plastic_strain = current_plastic_strain;
   last_equiv_stress = current_equiv_stress;
-  last_substep_plastic_strain = current_plastic_strain;
 }
 
 
@@ -700,24 +698,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
 
       break;
     }
-    case PlasticPredictorElasticStretchEigenvalType::scale_previous:
-    {
-      // compute scaling factor \f$\left[ \det(\mathbf{F}_{n+1}) / \det(\mathbf{F}_{\mathrm{e},n})
-      // \right]^{1/3} \f$
-      const double detF_detFen = detF / aei_defgrads.last_elastic_defgrad.determinant();
-      const double scaled_detF_detFen = std::pow(detF_detFen, 1.0 / 3.0);
-
-      // perform polar-spectral decomposition of the last elastic defgrad
-      Core::LinAlg::Matrix<3, 3> last_material_stretch{Core::LinAlg::Initialization::zero};
-      Core::LinAlg::Matrix<3, 3> last_rot{Core::LinAlg::Initialization::zero};
-      std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> last_spectral_pairs;
-      Core::LinAlg::matrix_3x3_polar_decomposition(aei_defgrads.last_elastic_defgrad, last_rot,
-          last_material_stretch, eigenval_plast_pred_[gp], last_spectral_pairs);
-      // scale the eigenvalues
-      eigenval_plast_pred_[gp].scale(scaled_detF_detFen);
-
-      break;
-    }
     default:
     {
       FOUR_C_THROW("Elastic stretch eigenvalue type {} not yet enabled for the plastic predictor",
@@ -905,6 +885,22 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
   Core::LinAlg::Matrix<3, 3> interp_elastic_defgrad =
       predictor_interpolator_.interpolate_elastic_defgrad(
           gp_, interp_point_container_.current_interp_point(gp_));
+
+  Core::LinAlg::Matrix<3, 3> inv_inelastic_defgrad{Core::LinAlg::Initialization::zero};
+  inv_inelastic_defgrad.multiply(1.0, aei_defgrads.inv_defgrad, interp_elastic_defgrad);
+
+  return inv_inelastic_defgrad;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+    AdaptiveEstimateInterpolationManager::get_inverse_inelastic_defgrad_plastic_pred(
+        const AdaptiveEstimateInterpolationDefgrads& aei_defgrads)
+{
+  // the plastic predictor lies at the location 1.0
+  Core::LinAlg::Matrix<3, 3> interp_elastic_defgrad =
+      predictor_interpolator_.interpolate_elastic_defgrad(gp_, 1.0);
 
   Core::LinAlg::Matrix<3, 3> inv_inelastic_defgrad{Core::LinAlg::Initialization::zero};
   inv_inelastic_defgrad.multiply(1.0, aei_defgrads.inv_defgrad, interp_elastic_defgrad);
