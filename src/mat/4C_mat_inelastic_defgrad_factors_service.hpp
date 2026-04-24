@@ -152,7 +152,6 @@ namespace Mat
       //! equivalent stress at the previous time instant (for all Gauss points)
       std::vector<double> last_equiv_stress;
 
-
       //! last (reduced) deformation gradient (for all Gauss points)
       std::vector<Core::LinAlg::Matrix<3, 3>> last_defgrad;
 
@@ -173,7 +172,6 @@ namespace Mat
 
       //! current equivalent stress (for all Gauss points)
       std::vector<double> current_equiv_stress;
-
 
       //! inverse plastic deformation gradient at the last computed time instant (after the last
       //! converged substep)
@@ -643,22 +641,26 @@ namespace Mat
       bool resize_called_{false};
     };
 
-    //! adaptive estimate interpolation: deformation gradients and components required as input
+    //! deformation gradients (more generally: tensors associated
+    //! with the deformation) required as an input to the adaptive estimate interpolation procedures
     struct AdaptiveEstimateInterpolationDefgrads
     {
       //! elastic deformation gradient within the elastic predictor \f$
       //! \mathbf{F}_{\mathrm{e},n+1}^{(\mathrm{E})} \f$
       Core::LinAlg::Matrix<3, 3> elastic_predictor_elastic_defgrad;
 
-      //! elastic deformation gradient at the previous time instant \f$ \mathbf{F}_{\mathrm{e},n}
-      //! \f$
-      Core::LinAlg::Matrix<3, 3> last_elastic_defgrad;
+      //! inverse plastic deformation gradient within the elastic predictor \f$
+      //! \left[ \mathbf{F}_{\mathrm{p},n+1}^{(\mathrm{E})} \right]^{-1} \f$
+      Core::LinAlg::Matrix<3, 3> elastic_predictor_inverse_plastic_defgrad;
 
       //! deformation gradient \f$ \mathbf{F}_{n+1} \f$
       Core::LinAlg::Matrix<3, 3> defgrad;
 
       //! inverse deformation gradient \f$ \mathbf{F}_{n+1}^{-1} \f$
       Core::LinAlg::Matrix<3, 3> inv_defgrad;
+
+      //! right Cauchy-Green deformation tensor \f$ \mathbf{C}_{n+1} \f$
+      Core::LinAlg::Matrix<3, 3> right_cg;
     };
 
 
@@ -666,11 +668,8 @@ namespace Mat
     //! \boldsymbol{\Lambda} \f$
     enum class PlasticPredictorElasticStretchEigenvalType
     {
-      scale_previous,  ///< the elastic stretch eigenvalues from the previous time instant are
-                       ///< scaled with the deformation gradient determinant to maintain plastic
-                       ///< incompressibility
-      scale_unit,      ///< the unit tensor is scaled with the deformation gradient determinant to
-                       ///< maintain plastic incompressibility
+      scale_unit,  ///< the unit tensor is scaled with the deformation gradient determinant to
+                   ///< maintain plastic incompressibility
     };
 
 
@@ -850,11 +849,20 @@ namespace Mat
           const AdaptiveEstimateInterpolationDefgrads& aei_defgrads);
 
       /*!
+       * Retrieves the inverse inelastic deformation gradient associated with the plastic predictor,
+       * via interpolation at the value \f$ \xi = 1.0 \f$
+       *
+       * @param[in] aei_defgrads deformation gradients and components
+       * used within the AEI
+       */
+      Core::LinAlg::Matrix<3, 3> get_inverse_inelastic_defgrad_plastic_pred(
+          const AdaptiveEstimateInterpolationDefgrads& aei_defgrads);
+
+      /*!
        * @brief Sets the plastic predictor quantities based on the current interpolation point; then
        * resets the interpolation point container consistently
        *
        *
-       * @param[in] gp Gauss point index
        */
       void set_plastic_predictor_after_construction_algo();
 
@@ -890,6 +898,8 @@ namespace Mat
 
         //! unpack method
         void unpack(Core::Communication::UnpackBuffer& buffer);
+
+        // TODO: Do I really need setters and getters for all interpolation points?
 
         //! get current interpolation point at Gauss point
         [[nodiscard]] double current_interp_point(unsigned int gp) const
@@ -1042,6 +1052,8 @@ namespace Mat
             Core::LinAlg::Matrix<4, 1>& interp_rel_eigenvect_rot_quat,
             Core::LinAlg::Matrix<4, 1>& interp_rel_rot_quat) const;
 
+        // TODO: Do I need the eigenvalues as saved values? I already have the scalar ones to be
+        // used in the scalar interpolation
 
         //! elastic predictor: elastic eigenvalues \f$ \lambda_{\mathrm{elast}, i} \f$ for all Gauss
         //! points

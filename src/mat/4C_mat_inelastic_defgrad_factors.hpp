@@ -1933,6 +1933,43 @@ namespace Mat
      * with further information
      */
     [[nodiscard]] std::string get_error_info(const std::string& base_error_string) const;
+
+
+    /*!
+     * @brief Determines the initial estimate to be used within the Local Newton.
+     * If the Adaptive Estimate Interpolation is used, this method also prepares everything for the
+     * further re-estimations.
+     *
+     * @param[in] defgrad deformation gradient
+     * @param[in] last_equiv_plastic_strain equivalent plastic strain at the previously converged
+     * time instant
+     * @param[in] last_inverse_inelastic_defgrad inverse inelastic deformation gradient at the
+     * previously converged time instant
+     * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and the
+     * equivalent plastic strain (component 9) for the Local Newton within this time step / substep
+     */
+    Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(
+        const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_equiv_plastic_strain,
+        const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad);
+
+    /*!
+     * @brief Construct the plastic predictor for the Adaptive Estimate Interpolation, via the
+     dedicated manager which has already determined the preliminary plastic predictor.
+     *
+     * @param[in] aei_defgrads deformation gradients and components required for the adaptive
+     estimate interpolation
+     * @param[in] last_equiv_plastic_strain equivalent plastic strain at the previously converged
+     * time instant
+     */
+    void construct_plastic_predictor(const InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                         AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+        const double last_equiv_plastic_strain);
+
+
+    // TODO: Add estimate interpolation function to be used for the initial / updated estimates
+
+
+    // TODO: Add starting point function to be called during update
   };
 }  // namespace Mat
 
