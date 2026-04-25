@@ -2965,6 +2965,11 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                                     AdaptiveEstimateInterpolationStartingPointType::
                                         optimal_equiv_stress}),
+                    parameter<double>("USER_SET_STARTING_POINT",
+                        {.description = "user-set starting point (in case that the starting point "
+                                        "type is set to user_set)",
+                            .default_value = 0.5,
+                            .validator = in_range<double>(0.0, 1.0)}),
                     parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                             PlasticPredictorElasticStretchEigenvalType>(
                         "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",

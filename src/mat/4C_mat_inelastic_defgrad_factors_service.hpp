@@ -25,6 +25,7 @@
 
 #include <format>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -714,6 +715,9 @@ namespace Mat
       //! starting point type to be used for the adaptive estimate interpolation
       const AdaptiveEstimateInterpolationStartingPointType starting_point_type;
 
+      //! specified starting point in case that the starting point is user_set
+      const double user_set_starting_point;
+
       //! elastic stretch eigenvalue specification for the plastic predictor to be used in the AEI
       const PlasticPredictorElasticStretchEigenvalType plastic_pred_elastic_stretch_eigenval_type;
 
@@ -860,9 +864,7 @@ namespace Mat
 
       /*!
        * @brief Sets the plastic predictor quantities based on the current interpolation point; then
-       * resets the interpolation point container consistently
-       *
-       *
+       * resets the interpolation point container consistently.
        */
       void set_plastic_predictor_after_construction_algo();
 
@@ -876,13 +878,41 @@ namespace Mat
        */
       void adapt_interpolation_interval_and_point(const ErrorType& eval_err_type);
 
+      //! set current interpolation point as the specified starting point at specified Gauss point
+      void set_current_interp_point_as_starting_point()
+      {
+        interp_point_container_.set_current_interp_point(
+            gp_, interp_point_container_.starting_point(gp_));
+      }
+
+      //! set current interpolation point as the elastic predictor at specified Gauss point
+      void set_current_interp_point_as_elastic_predictor()
+      {
+        interp_point_container_.set_current_interp_point(gp_, 0.0);
+      }
+
+
+      //! set current interpolation point as the plastic predictor at specified Gauss point
+      void set_current_interp_point_as_plastic_predictor()
+      {
+        interp_point_container_.set_current_interp_point(gp_, 1.0);
+      }
+
+
      private:
       //! class: container of interpolation points / bounds for all Gauss points
       class InterpolationPointContainer
       {
        public:
-        //! constructor
-        InterpolationPointContainer();
+        /*!
+         * @brief Constructor
+         *
+         * @param[in] starting_point_type specified starting point type
+         * @param[in] starting_point_val user-set starting point
+         */
+        InterpolationPointContainer(
+            const AdaptiveEstimateInterpolationStartingPointType& starting_point_type,
+            const double starting_point_val);
 
         //! reset values at a given Gauss point
         void reset(const unsigned int gp);
@@ -940,17 +970,17 @@ namespace Mat
           upper_interp_bounds_[gp] = val;
         }
 
-        //! get last interpolation point at Gauss point
-        [[nodiscard]] double last_interp_point(unsigned int gp) const
+        //! get starting point at Gauss point
+        [[nodiscard]] double starting_point(unsigned int gp) const
         {
-          FOUR_C_ASSERT(gp < last_interp_points_.size(), "GP index out of range");
-          return last_interp_points_[gp];
+          FOUR_C_ASSERT(gp < starting_points_.size(), "GP index out of range");
+          return starting_points_[gp];
         }
-        //! set last interpolation point at Gauss point
-        void set_last_interp_point(unsigned int gp, double val)
+        //! set starting point at Gauss point
+        void set_starting_point(unsigned int gp, double val)
         {
           FOUR_C_ASSERT(gp < last_interp_points_.size(), "GP index out of range");
-          last_interp_points_[gp] = val;
+          starting_points_[gp] = val;
         }
 
 
@@ -964,9 +994,12 @@ namespace Mat
         //! upper interpolation bound \f$ \xi_{\text{P}} \f$ for all Gauss points
         std::vector<double> upper_interp_bounds_;
 
-        //! interpolation point \f$ \xi_{n} \f$ used in the last converged
-        //! global iteration of the previous time step for all Gauss points
-        std::vector<double> last_interp_points_;
+        //! starting points for interpolation \f$ \hat{\xi} \f$ for all Gauss points
+        std::vector<double> starting_points_;
+
+        //! constant user-set starting point (exists only if the starting point type is set
+        //! accordingly)
+        std::optional<double> user_set_starting_point_;
 
         //! tracks whether the resizing function has been called, to set the current number of Gauss
         //! points exactly once!
