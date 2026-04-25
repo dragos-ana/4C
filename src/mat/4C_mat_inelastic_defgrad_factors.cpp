@@ -445,6 +445,8 @@ namespace
                 .starting_point_type = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
                     .get<ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType>(
                         "STARTING_POINT_TYPE"),
+                .user_set_starting_point = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                    .get<double>("USER_SET_STARTING_POINT"),
                 .plastic_pred_elastic_stretch_eigenval_type =
                     matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
                         .get<ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType>(
@@ -4020,8 +4022,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_e
         .right_cg = right_cg,
     };
 
-    // pre-evaluate adaptive estimate interpolation; importantly, determine the preliminary plastic
-    // predictor
+    // pre-evaluate adaptive estimate interpolation; importantly, set the Gauss point and determine
+    // the preliminary plastic predictor
     adaptive_estimate_interp_manager_.pre_evaluate(gp_, aei_defgrads);
 
     // construct the plastic predictor such that its stress state lies on the yield surface (only
@@ -4050,10 +4052,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
 
   // evaluate the relative yield stress deviations associated with the elastic predictor
   double rel_stress_deviation_elastic_pred;
-  ViscoplastUtils::StateQuantities state_quantities_elastic_pred = evaluate_state_quantities(
-      aei_defgrads.right_cg, time_step_quantities_.last_plastic_defgrad_inverse[gp_],
-      time_step_quantities_.last_plastic_strain[gp_], err_status, time_step_tracker_.dt,
-      ViscoplastUtils::StateQuantityEvalType::full_eval);
+  ViscoplastUtils::StateQuantities state_quantities_elastic_pred =
+      evaluate_state_quantities(aei_defgrads.right_cg,
+          aei_defgrads.elastic_predictor_inverse_plastic_defgrad, last_equiv_plastic_strain,
+          err_status, time_step_tracker_.dt, ViscoplastUtils::StateQuantityEvalType::full_eval);
   if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
   {
     // we set the relative yield stress deviation higher than the maximum allowed tolerance
@@ -4063,9 +4065,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
   else
   {
     rel_stress_deviation_elastic_pred =
-        viscoplastic_law_->evaluate_stress_ratio(state_quantities_elastic_pred.curr_equiv_stress,
-            time_step_quantities_.last_plastic_strain[gp_]) -
+        viscoplastic_law_->evaluate_stress_ratio(
+            state_quantities_elastic_pred.curr_equiv_stress, last_equiv_plastic_strain) -
         1.0;
+    FOUR_C_ASSERT_ALWAYS(rel_stress_deviation_elastic_pred > 0.0,
+        "Your elastic predictor is under the yield surface, relative yield stress deviation: {}! "
+        "The plastic predictor construction method should not be called!",
+        rel_stress_deviation_elastic_pred);
   }
 
   // evaluate the relative yield stress deviations associated with the plastic predictor
@@ -4074,47 +4080,124 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
   ViscoplastUtils::StateQuantities state_quantities_plastic_pred = evaluate_state_quantities(
       aei_defgrads.right_cg,
       adaptive_estimate_interp_manager_.get_inverse_inelastic_defgrad_plastic_pred(aei_defgrads),
-      time_step_quantities_.last_plastic_strain[gp_], err_status, time_step_tracker_.dt,
+      last_equiv_plastic_strain, err_status, time_step_tracker_.dt,
       ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
   FOUR_C_ASSERT_ALWAYS(
       err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors,
       "Inconsistent preliminary plastic predictor stress! This should always be computable for "
       "the interpolation to work");
-  rel_stress_deviation_plastic_pred =
-      viscoplastic_law_->evaluate_stress_ratio(state_quantities_plastic_pred.curr_equiv_stress,
-          time_step_quantities_.last_plastic_strain[gp_]) -
-      1.0;
-
-  // preliminary verification: if the stress state of the elastic predictor is already within the
-  // set yield stress tolerance, we can directly exit and use the elastic predictor as our initial
-  // estimate; the preliminary plastic predictor
-  if (rel_stress_deviation_elastic_pred <=
-      parameter()->adaptive_estimate_interp_params().max_relative_yield_stress_deviation)
+  // for isotropic materials, we use the von Mises equivalent stress; hence, we already know that
+  // the preliminary plastic predictor with scale_unit eigenvalues must have 0.0 equivalent stress!
+  if (parameter()->mat_behavior() == ViscoplastUtils::MatBehavior::isotropic &&
+      parameter()->adaptive_estimate_interp_params().plastic_pred_elastic_stretch_eigenval_type ==
+          ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType::scale_unit)
   {
-    use_elastic_predictor_ = true;
-    return;
-  }
-
-
-
-  // determine whether to update the plastic predictor, or to
-  // directly use the elastic predictor (if its equivalent stress is already close to the yield
-  // surface)
-  if (rel_stress_deviation_elastic_pred <=
-      parameter()->adaptive_estimate_interp_params().max_relative_yield_stress_deviation)
-  {
-    use_elastic_predictor_ = true;
-    return;
+    FOUR_C_ASSERT_ALWAYS(state_quantities_plastic_pred.curr_equiv_stress <= 1.0e-8,
+        "You have specified isotropic material behavior and a unit scaling for the eigenvalues, "
+        "but have received a von Mises equivalent stress of {}! This is inconsistent since the "
+        "stress has to be 0 in this case!",
+        state_quantities_plastic_pred.curr_equiv_stress);
+    rel_stress_deviation_plastic_pred = -1.0;
   }
   else
   {
-    // determine an updated plastic predictor (only if the preliminary plastic predictor leads to
-    // a stress below the yield surface; otherwise, preliminary plastic predictor = plastic
-    // predictor)
-    if (rel_stress_deviation_plastic_pred <= 0.0)
+    rel_stress_deviation_plastic_pred =
+        viscoplastic_law_->evaluate_stress_ratio(state_quantities_plastic_pred.curr_equiv_stress,
+            time_step_quantities_.last_plastic_strain[gp_]) -
+        1.0;
+  }
+
+  // preliminary verification: if the stress state of the elastic predictor is already within the
+  // set yield stress tolerance, we can directly exit and use the elastic predictor as our initial
+  // estimate; the most reliable approach for the subsequent re-estimation approach is to keep the
+  // preliminary plastic predictor as the plastic predictor, because we know that it is under the
+  // yield surface in contrast to the elastic predictor!
+  if (rel_stress_deviation_elastic_pred <=
+      parameter()->adaptive_estimate_interp_params().max_relative_yield_stress_deviation)
+  {
+    adaptive_estimate_interp_manager_.set_current_interp_point_as_elastic_predictor();
+    return;
+  }
+  // determine an updated plastic predictor (only if the preliminary plastic predictor leads to
+  // a stress below the yield surface; otherwise, preliminary plastic predictor = plastic
+  // predictor and nothing else to do...)
+  else if (rel_stress_deviation_plastic_pred <= 0.0)
+  {
+    // --> iterative procedure to determine the updated plastic predictor
+
+    // declare interpolated inverse inelastic defgrad
+    Core::LinAlg::Matrix<3, 3> interp_inverse_inelastic_defgrad{Core::LinAlg::Initialization::zero};
+
+    // procedure starts with the preliminary plastic predictor (which is currently the plastic
+    // predictor for the interpolation manager, internally)
+    adaptive_estimate_interp_manager_.set_current_interp_point_as_plastic_predictor();
+
+    // set iteration counter for the plastic predictor construction
+    unsigned int iter = 0;
+
+    // iterative procedure to determine the plastic predictor based on the preliminary plastic
+    // predictor
+    while (true)
     {
-      determine_updated_plastic_predictor_lngi(defgrad);
-      use_elastic_predictor_ = false;
+      ++iter;
+      err_status = ViscoplastUtils::ErrorType::no_errors;
+
+      // check whether iterative procedure is still possible based on the number of iterations
+      if (iter >
+          parameter()->adaptive_estimate_interp_params().max_num_plastic_pred_construct_iters)
+      {
+        // output error and then throw (in order to display the error on
+        // the right processor)
+        const std::string extended_message =
+            get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    get_detailed_error_message_for_error_type(err_status));
+        FOUR_C_THROW("Error in the plastic predictor construction: {}", extended_message);
+      }
+
+      // interpolate inverse inelastic defgrad and compute the associated stress state
+      interp_inverse_inelastic_defgrad =
+          adaptive_estimate_interp_manager_.interpolate_inverse_inelastic_defgrad(aei_defgrads);
+      ViscoplastUtils::StateQuantities interp_state_quantities = evaluate_state_quantities(
+          aei_defgrads.right_cg, interp_inverse_inelastic_defgrad, -1.0, err_status,
+          time_step_tracker_.dt, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+      {
+        // compute and verify relative yield stress deviation
+        const double rel_yield_stress_deviation_interp =
+            viscoplastic_law_->evaluate_stress_ratio(
+                interp_state_quantities.curr_equiv_stress, last_equiv_plastic_strain) -
+            1.0;
+        // we only break out if we are under the yield surface and the stress state is in its
+        // (specified) neighborhood
+        if (rel_yield_stress_deviation_interp < 0.0 &&
+            std::abs(rel_yield_stress_deviation_interp) <=
+                parameter()->adaptive_estimate_interp_params().max_relative_yield_stress_deviation)
+        {
+          // we set the plastic predictor now
+          adaptive_estimate_interp_manager_.set_plastic_predictor_after_construction_algo();
+
+          break;
+        }
+        else if (rel_yield_stress_deviation_interp < 0.0)
+        {
+          // we set an "under_yield_surface" error to make sure that the construction interval is
+          // shifted towards the elastic predictor
+          err_status = ViscoplastUtils::ErrorType::under_yield_surface;
+          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+        }
+        else
+        {
+          // we set an "overflow_error" error to make sure that the construction interval is
+          // shifted towards the plastic predictor
+          err_status = ViscoplastUtils::ErrorType::overflow_error;
+          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+        }
+      }
+      else
+      {
+        // adapt interpolation interval and point based on the evaluation error
+        adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+      }
     }
   }
 }
