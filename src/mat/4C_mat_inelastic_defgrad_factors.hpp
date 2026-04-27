@@ -1828,15 +1828,11 @@ namespace Mat
      * problematic numerical states, marked with an error status, are encountered
      *
      * @param[in] defgrad deformation gradient \f$ \boldsymbol{F} \f$ in matrix form
-     * @param[in] x initial guess of Local Newton Loop, composed of the components of the
-     *              inverse inelastic deformation gradient \f$ \boldsymbol{F}_{\text{in}}^{-1} \f$
-     *              and plastic strain \f$ \varepsilon_{\text{p}} \f$
      * @param[out] err_status error status
      * @return solution vector of the Local Newton Loop, structured analogously to the initial guess
      * x
      */
     Core::LinAlg::Matrix<10, 1> viscoplastic_correction(const Core::LinAlg::Matrix<3, 3>& defgrad,
-        const Core::LinAlg::Matrix<10, 1>& x,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
@@ -1846,17 +1842,16 @@ namespace Mat
      * @note The method does not perform local substepping internally, but only determines the
      * solution of a single substep in the substep loop.
      *
-     * @param[in] CM right Cauchy-Green deformation tensor at current time instant
+     * @param[in] FM deformation gradient at current time instant
      * @param[in] last_plastic_strain plastic strain at the previous time instant
      * @param[in] last_iFinM inverse inelastic deformation gradient at the previous time instant
      * @param[in] dt time step size to use for evaluation
-     * @param[in,out] sol current (in) / updated (out) solution of the Local Newton Loop
-     * @param[in,out] err_status error status
+     * @param[out] err_status error status
+     * @return solution of the Local Newton Loop
      */
-    void local_newton_loop(const Core::LinAlg::Matrix<3, 3>& CM, const double last_plastic_strain,
-        const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
-        Core::LinAlg::Matrix<10, 1>& sol,
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+    Core::LinAlg::Matrix<10, 1> local_newton_loop(const Core::LinAlg::Matrix<3, 3>& FM,
+        const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
+        const double dt, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
 
     /*!
@@ -1952,16 +1947,19 @@ namespace Mat
      * further re-estimations.
      *
      * @param[in] defgrad deformation gradient
-     * @param[in] last_equiv_plastic_strain equivalent plastic strain at the previously converged
+     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
      * @param[in] last_inverse_inelastic_defgrad inverse inelastic deformation gradient at the
      * previously converged time instant
+     * @param[in] dt time step / substep size
+     * @param[out] err_status error status after the procedure
      * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and the
      * equivalent plastic strain (component 9) for the Local Newton within this time step / substep
      */
     Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(
-        const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_equiv_plastic_strain,
-        const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad);
+        const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
+        const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
      * @brief Construct the plastic predictor for the Adaptive Estimate Interpolation, via the
@@ -1969,15 +1967,72 @@ namespace Mat
      *
      * @param[in] aei_defgrads deformation gradients and components required for the adaptive
      estimate interpolation
-     * @param[in] last_equiv_plastic_strain equivalent plastic strain at the previously converged
+     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
+     * @param[in] dt time step / substep size
+     * @param[out] err_status error status after the procedure
      * time instant
      */
     void construct_plastic_predictor(const InelasticDefgradTransvIsotropElastViscoplastUtils::
                                          AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
-        const double last_equiv_plastic_strain);
+        const double last_plastic_strain, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+
+    /*!
+     * @brief Interpolates initial / updated estimates to be used within the local Newton loop
+     * according to the Adaptive Estimate Interpolation algorithm
+     *
+     * @param[in] aei_defgrads deformation gradients and components required for the adaptive
+     * estimate interpolation
+     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
+     * time instant
+     * @param[in] dt time step / substep size
+     * @param[out] err_status error status after the procedure
+     * @return initial / updated estimate to be used within the local Newton
+     */
+    Core::LinAlg::Matrix<10, 1> interpolate_estimate(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::
+            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+        const double last_plastic_strain, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
 
-    // TODO: Add estimate interpolation function to be used for the initial / updated estimates
+
+    /*!
+     * @brief Integrates the equivalent plastic strain based on its evolution equations; relevant
+     * for the strain update in the Adaptive Estimate Interpolation algorithm
+     *
+     * @param[in] equiv_stress equivalent stress serving as input for the intgration
+     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
+     * time instant
+     * @param[in] dt time step / substep size
+     * @param[out] err_status error status
+     */
+    double integrate_plastic_strain(const double equiv_stress, const double last_plastic_strain,
+        const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const;
+
+
+
+    /*!
+     * @brief Verifies whether the specified estimate candidate is a valid local Newton guess, i.e.
+     * whether it fulfills the following two conditions:
+     * 1. It is numerically admissible, i.e., local Newton residual and Jacobian can be evaluated
+     * without errors such as overflow
+     * 2. It exhibits plastic flow, i.e, the resulting stress state resides "above" the yield
+     * surface
+     *
+     * @param[in] aei_defgrads deformation gradients and components used within the AEI
+     * @param[in] iFin_candidate estimate candidate: inverse plastic deformation gradient
+     * @param[in] plastic_strain_candidate estimate candidate: equivalent plastic strain
+     * @param[in] dt time step / substep size
+     * @return error status; no_errors means that this is a valid estimate for the local Newton
+     */
+    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType verify_estimate_candidate(
+        const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+        const Core::LinAlg::Matrix<3, 3>& iFin_candidate, const double plastic_strain_candidate,
+        const double dt) const;
+
 
 
     // TODO: Add starting point function to be called during update

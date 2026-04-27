@@ -704,6 +704,40 @@ namespace Mat
       ///< components are set to this one factor.
     };
 
+    //! enum class: method to be used for handling hardening variables within the adaptive estimate
+    //! interpolation algorithm
+    enum class AdaptiveEstimateInterpolationHardeningMethod
+    {
+      use_previous,            ///< use hardening variables from the previously converged time step
+      integrate_via_evol_eqs,  ///< integrate the hardening variables via their dedicated evolution
+                               ///< equations, using the interpolated elastic deformation gradient
+                               ///< as input --> "smaller local Newton"
+    };
+
+
+    //! struct containing parameters dedicated to the handling of the hardening variables within the
+    //! adaptive estimate interpolation
+    struct AdaptiveEstimateInterpolationHardeningParams
+    {
+      //! method to use
+      const AdaptiveEstimateInterpolationHardeningMethod method;
+
+      //! should hardening integration (via evolution equations) be bypassed when it cannot be
+      //! performed, i.e, the local hardening integration does not converge; alternatively, an error
+      //! is thrown
+      const bool bypass_integration;
+
+      //! maximum relative yield stress deviation, deciding whether
+      //! the state is too elastic (i.e., shifted towards the elastic predictor) or too plastic
+      //! within the bypass strategy
+      const double bypass_rel_yield_stress_deviation;
+
+      //! maximum number of iterations for hardening integration
+      const unsigned int max_iter_integration;
+
+      //! tolerance for hardening integration
+      const double tol_integration;
+    };
 
 
     //! struct: parameters used for the adaptive estimate interpolation (AEI)
@@ -752,6 +786,9 @@ namespace Mat
       //! bound \f$ \xi_{\text{E}} \f$, and with the intermediate point \f$ \xi_{\text{I}} \f$
       //! within the re-estimation procedure
       const double min_relative_lower_bound_stress_deviation;
+
+      //! hardening parameters
+      const AdaptiveEstimateInterpolationHardeningParams hardening_params;
     };
 
 
@@ -875,25 +912,43 @@ namespace Mat
        */
       void adapt_interpolation_interval_and_point(const ErrorType& eval_err_type);
 
-      //! set current interpolation point as the specified starting point at specified Gauss point
+      //! set current interpolation point as the specified starting point at the set Gauss point
       void set_current_interp_point_as_starting_point()
       {
         interp_point_container_.set_current_interp_point(
             gp_, interp_point_container_.starting_point(gp_));
       }
 
-      //! set current interpolation point as the elastic predictor at specified Gauss point
+      //! set current interpolation point as the elastic predictor at the set Gauss point
       void set_current_interp_point_as_elastic_predictor()
       {
         interp_point_container_.set_current_interp_point(gp_, 0.0);
       }
 
-
-      //! set current interpolation point as the plastic predictor at specified Gauss point
+      //! set current interpolation point as the plastic predictor at the set Gauss point
       void set_current_interp_point_as_plastic_predictor()
       {
         interp_point_container_.set_current_interp_point(gp_, 1.0);
       }
+
+      //! get lower interpolation bound at the set Gauss point
+      [[nodiscard]] double lower_interp_bound() const
+      {
+        return interp_point_container_.lower_interp_bound(gp_);
+      }
+
+      //! get upper interpolation bound at the set Gauss point
+      [[nodiscard]] double upper_interp_bound() const
+      {
+        return interp_point_container_.upper_interp_bound(gp_);
+      }
+
+      //! increment number of re-estimations at the set Gauss point
+      void increment_num_reestimations() { ++num_reestimations_; }
+
+      //! disable further re-estimations at the set Gauss point, by setting the specific counter at
+      //! its maximum
+      void disable_further_reestimations() { num_reestimations_ = params_.max_num_reestimations; }
 
 
      private:
@@ -1133,7 +1188,7 @@ namespace Mat
       int gp_{-1};
 
       //! current number of re-estimations
-      unsigned int num_of_reestimations_;
+      unsigned int num_reestimations_;
 
       //! container of interpolation points / bounds for all Gauss points
       InterpolationPointContainer interp_point_container_;
