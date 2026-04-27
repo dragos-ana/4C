@@ -2954,10 +2954,9 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "(viscoplastic corrector stage)",
                     .required = false}),
             group("ADAPTIVE_ESTIMATE_INTERP",
-                {
-                    parameter<bool>("USE_ADAPTIVE_ESTIMATE_INTERP",
-                        {.description = "use adaptive estimate interpolation?",
-                            .default_value = true}),
+                {parameter<bool>("USE_ADAPTIVE_ESTIMATE_INTERP",
+                     {.description = "use adaptive estimate interpolation?",
+                         .default_value = true}),
                     parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                             AdaptiveEstimateInterpolationStartingPointType>("STARTING_POINT_TYPE",
                         {.description = "starting point type",
@@ -3035,6 +3034,42 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                         "\\xi_{\\text{I}} $ within the re-estimation procedure",
                             .default_value = 1.0e-3,
                             .validator = positive<double>()}),
+                    group("HARDENING_PARAMS",
+                        {
+                            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    AdaptiveEstimateInterpolationHardeningMethod>("METHOD",
+                                {.description =
+                                        "method to be used for handling hardening variables "
+                                        "within the "
+                                        "adaptive estimate interpolation algorithm",
+                                    .default_value =
+                                        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                            AdaptiveEstimateInterpolationHardeningMethod::
+                                                integrate_via_evol_eqs}),
+                            parameter<bool>("BYPASS_INTEGRATION",
+                                {.description = "should hardening integration (via evolution "
+                                                "equations) be bypassed when it cannot be "
+                                                "performed; alternatively, an error is thrown",
+                                    .default_value = false}),
+                            parameter<double>("BYPASS_REL_YIELD_STRESS_DEVIATION",
+                                {.description = "maximum relative yield stress deviation, deciding "
+                                                "whether the state is too elastic (i.e., shifted "
+                                                "towards the elastic predictor) or too plastic "
+                                                "within the bypass strategy",
+                                    .default_value = 1.0e-3}),
+                            parameter<int>("MAX_ITER_INTEGRATION",
+                                {.description =
+                                        "maximum number of iterations for hardening integration",
+                                    .default_value = 50,
+                                    .validator = positive_or_zero<int>()}),
+                            parameter<double>("TOL_INTEGRATION",
+                                {.description = "tolerance for hardening integration",
+                                    .default_value = 1.0e-8,
+                                    .validator = positive<double>()}),
+                        },
+                        {.description = "Hardening parameters to be used within the Adaptive "
+                                        "Estimate Interpolation",
+                            .required = false})
 
                 },
                 {.description = "Parameters used in the Adaptive Estimate Interpolation for Local "
