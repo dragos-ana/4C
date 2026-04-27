@@ -849,7 +849,7 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
   bool check_interp_iters = (num_interp_iters <= params_.max_num_estimate_interp_iters);
 
   // check number of re-estimations
-  bool check_num_reestimations = (num_of_reestimations_ <= params_.max_num_reestimations);
+  bool check_num_reestimations = (num_reestimations_ <= params_.max_num_reestimations);
 
   return check_min_interp_interval && check_interp_iters && check_num_reestimations;
 }
