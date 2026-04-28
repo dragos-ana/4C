@@ -495,9 +495,8 @@ namespace
             .max_num_reestimations =
                 static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
                         .get<int>("MAX_NUM_REESTIMATIONS")),
-            .min_relative_lower_bound_stress_deviation =
-                matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
-                    .get<double>("MIN_RELATIVE_LOWER_BOUND_STRESS_DEVIATION"),
+            .min_reestimation_interval = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .get<double>("MIN_REESTIMATION_INTERVAL"),
             .hardening_params = hardening_params};
 
     return aei_params;
@@ -2788,7 +2787,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplast::re
   {
     // perform local time integration
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
-    Core::LinAlg::Matrix<10, 1> sol = viscoplastic_correction(FredM, x, err_status);
+    Core::LinAlg::Matrix<10, 1> sol = viscoplastic_correction(FredM, err_status);
     // throw error if the Local Newton Loop cannot be evaluated with the given substepping
     // settings
     if (err_status != ViscoplastUtils::ErrorType::no_errors)
@@ -2798,7 +2797,7 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplast::re
       const std::string extended_message =
           get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                   get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW("{}", extended_message);
+      FOUR_C_THROW("Viscoplastic correction was not successful! \n {}", extended_message);
     }
 
     // update inverse inelastic defgrad and plastic strain
@@ -2846,6 +2845,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
 {
   // auxiliaries
   Core::LinAlg::Matrix<6, 1> temp_6x1(Core::LinAlg::Initialization::zero);
+
+  // set number of Gauss points
+  num_gp_ = numgp;
 
   // resize time step quantities according to the number of Gauss points
   time_step_quantities_.resize(numgp);
@@ -2917,6 +2919,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::unpack_inelastic(
     // unpack the Local Newton manager
     local_newton_manager_.unpack(buffer);
   }
+
+  // set number of Gauss points manually, since the setup method is not called
+  num_gp_ = time_step_quantities_.last_defgrad.size();
 
   // now that the fiber direction is available, we set the material-dependent constant tensors
   // with it
@@ -3165,15 +3170,12 @@ Core::LinAlg::Matrix<10, 1>
 Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
     const Core::LinAlg::Matrix<3, 3>& defgrad, ViscoplastUtils::ErrorType& err_status)
 {
-  // calculate right Cauchy-Green deformation tensor
-  Core::LinAlg::Matrix<3, 3> CM(Core::LinAlg::Initialization::zero);
-  CM.multiply_tn(1.0, defgrad, defgrad, 0.0);
-
   // declare solution vector
   Core::LinAlg::Matrix<10, 1> sol{Core::LinAlg::Initialization::zero};
 
-  // declare current right CG (tensor interpolated later on in each substep)
-  Core::LinAlg::Matrix<3, 3> curr_CM(Core::LinAlg::Initialization::zero);
+  // declare current defgrad (tensor interpolated later on in each substep) and right CG
+  Core::LinAlg::Matrix<3, 3> curr_FM{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Matrix<3, 3> curr_CM{Core::LinAlg::Initialization::zero};
 
   // reset substep parameters
   if (parameter()->use_local_substepping())
@@ -3190,18 +3192,20 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
   {
     while (!local_substepping_utils_.end_substepping())
     {
-      // interpolate right Cauchy-Green tensor if we use local substepping
-      curr_CM = tensor_interpolator_.get_interpolated_matrix(
-          {time_step_quantities_.last_rightCG[gp_], CM}, {0.0, 1.0},
+      // interpolate deformation gradient if we use local substepping, and calculate the right
+      // Cauchy-Green deformation tensor accordingly
+      curr_FM = tensor_interpolator_.get_interpolated_matrix(
+          {time_step_quantities_.last_defgrad[gp_], defgrad}, {0.0, 1.0},
           local_substepping_utils_.get_normalized_next_time_param(time_step_tracker_.dt),
           tensor_interp_err_status);
       FOUR_C_ASSERT_ALWAYS(
           tensor_interp_err_status == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
           "Tensor interpolation failed with err: {}",
           Core::LinAlg::make_error_message(tensor_interp_err_status));
+      curr_CM.multiply_tn(1.0, curr_FM, curr_FM, 0.0);
 
       // perform substep local Newton loop
-      sol = local_newton_loop(defgrad, time_step_quantities_.last_substep_plastic_strain[gp_],
+      sol = local_newton_loop(curr_FM, time_step_quantities_.last_substep_plastic_strain[gp_],
           time_step_quantities_.last_substep_plastic_defgrad_inverse[gp_],
           local_substepping_utils_.get_substep_size(), err_status);
       // update Local Newton quantities
@@ -3224,7 +3228,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
       else
       {
         // halve and prepare a new substep
-        bool halving_success = halve_and_prepare_new_substep(sol, CM);
+        bool halving_success = halve_and_prepare_new_substep(sol, curr_CM);
         // if the halving number was exceeded --> return with error
         if (!halving_success)
         {
@@ -3240,7 +3244,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
   else
   {
     // perform local Newton loop
-    sol = local_newton_loop(CM, time_step_quantities_.last_plastic_strain[gp_],
+    sol = local_newton_loop(defgrad, time_step_quantities_.last_plastic_strain[gp_],
         time_step_quantities_.last_plastic_defgrad_inverse[gp_], time_step_tracker_.dt, err_status);
     if (err_status != ViscoplastUtils::ErrorType::no_errors)
     {
@@ -3291,10 +3295,25 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // reset Local Newton iteration count
   local_newton_manager_.set_iteration_count(0);
 
-
   // get initial estimate
   Core::LinAlg::Matrix<10, 1> sol =
       determine_local_newton_init_estimate(FM, last_plastic_strain, last_iFinM, dt, err_status);
+  // handle eventual error in the initial estimate determination
+  if (err_status != ViscoplastUtils::ErrorType::no_errors)
+  {
+    // for substepping, we exit with the set error status and retry the computation with a smaller
+    // substep (eventually)
+    if (parameter()->use_local_substepping())
+    {
+      return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
+    }
+    // without substepping, we throw directly
+    else
+    {
+      FOUR_C_THROW("Could not compute initial estimate for the local Newton!");
+    }
+  }
+
 
   // local Newton-Raphson loop
   while (true)
@@ -3311,7 +3330,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
     // error management after residual evaluation
     temp10x1.update(1.0, sol, 0.0);
-    manage_evaluation(err_status, eval_action);
+    manage_evaluation(err_status, FM, last_plastic_strain, last_iFinM, dt, sol, eval_action);
     switch (eval_action)
     {
       case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3331,7 +3350,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       case (ViscoplastUtils::EvaluationAction::exit_with_error):
       {
         // exit with the set error status
-        return;
+        return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
       }
       default:
       {
@@ -3350,7 +3369,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     // exit in case of convergence
     if (is_converged)
     {
-      return;
+      return sol;
     }
 
     // check if maximum iteration is exceeded
@@ -3365,13 +3384,14 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // for a smaller substep size; hence, we return with the set error status
       if (parameter()->use_local_substepping())
       {
-        return;
+        return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero},
+            0.0);  // exit with the set error status
       }
       // for one-step processes, we account for the set divergence continuation strategy
       else
       {
         verify_local_newton_exit(conv_quantities, err_status);
-        return;
+        return sol;
       }
     }
     else
@@ -3383,7 +3403,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::
             no_convergence_local_newton;
         temp10x1.update(1.0, sol, 0.0);
-        manage_evaluation(err_status, eval_action);
+        manage_evaluation(err_status, FM, last_plastic_strain, last_iFinM, dt, sol, eval_action);
         switch (eval_action)
         {
           case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3403,7 +3423,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           case (ViscoplastUtils::EvaluationAction::exit_with_error):
           {
             // exit with the set error status
-            return;
+            return wrap_unknowns(
+                Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
           }
           default:
           {
@@ -3420,7 +3441,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     jacMat =
         evaluate_local_newton_jacobian(CM, sol, last_plastic_strain, last_iFinM, dt, err_status);
     // error management after Jacobian evaluation
-    manage_evaluation(err_status, eval_action);
+    manage_evaluation(err_status, FM, last_plastic_strain, last_iFinM, dt, sol, eval_action);
     switch (eval_action)
     {
       case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3437,7 +3458,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       case (ViscoplastUtils::EvaluationAction::exit_with_error):
       {
         // exit with the set error status
-        return;
+        return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
       }
       default:
       {
@@ -3453,7 +3474,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     {
       err_status = ViscoplastUtils::ErrorType::failed_solution_linear_system_lnl;
       // error management after linear system solution
-      manage_evaluation(err_status, eval_action);
+      manage_evaluation(err_status, FM, last_plastic_strain, last_iFinM, dt, sol, eval_action);
       switch (eval_action)
       {
         case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3470,8 +3491,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         case (ViscoplastUtils::EvaluationAction::exit_with_error):
         {
           // exit with the set error status
-          return;
+          return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
         }
+
         default:
         {
           FOUR_C_THROW(
@@ -3805,7 +3827,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
     const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action) const
+    const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
+    const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt, Core::LinAlg::Matrix<10, 1>& sol,
+    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action)
 {
   // default evaluation action: continue iteration
   eval_action = InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction::
@@ -3818,20 +3842,40 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
   }
   else
   {
-    // ERROR MANAGEMENT STRATEGY 1: substepping -> just exit, and see if a new halved
-    // substep size is feasible
-    if (parameter()->use_local_substepping())
+    // default strategy: re-estimation (for both one-step and substepping integration)
+    if (parameter()->use_adaptive_estimate_interp())
+    {
+      const ViscoplastUtils::AdaptiveEstimateInterpolationDefgrads aei_defgrads(
+          defgrad, last_iFinM);
+      sol = reestimate_to_restart_local_newton(aei_defgrads, last_plastic_strain, dt, eval_action);
+      if (eval_action == ViscoplastUtils::EvaluationAction::exit_with_error &&
+          !parameter()->use_local_substepping())
+      {
+        // output error and then throw
+        const std::string extended_message =
+            get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                    get_detailed_error_message_for_error_type(err_status));
+        FOUR_C_THROW("The re-estimation procedure has failed! \n: {}", extended_message);
+      }
+      return;
+    }
+    // in case of substepping without AEI: exit with error, and halve the substep is possible
+    else if (parameter()->use_local_substepping())
     {
       eval_action = ViscoplastUtils::EvaluationAction::exit_with_error;
       return;
     }
+    // without evaluation management strategy, we can throw directly
     else
     {
+      const std::string extended_message =
+          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                  get_detailed_error_message_for_error_type(err_status));
       FOUR_C_THROW(
-          "The Local Newton evaluation has failed with err status {} and there is no evaluation "
+          "The Local Newton evaluation has failed and there is no evaluation "
           "management strategy "
-          "selected!",
-          err_status);
+          "selected! \n: {}",
+          extended_message);
     }
   }
 }
@@ -4028,22 +4072,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_e
   if (parameter()->use_adaptive_estimate_interp())
   {
     // construct deformation gradient object required for the adaptive estimate interpolation
-    Core::LinAlg::Matrix<3, 3> elastic_predictor_elastic_defgrad{
-        Core::LinAlg::Initialization::zero};
-    elastic_predictor_elastic_defgrad.multiply(1.0, defgrad, last_inverse_inelastic_defgrad, 0.0);
-    Core::LinAlg::Matrix<3, 3> last_elastic_defgrad{Core::LinAlg::Initialization::zero};
-    Core::LinAlg::Matrix<3, 3> inv_defgrad{Core::LinAlg::Initialization::zero};
-    inv_defgrad.invert(defgrad);
-    Core::LinAlg::Matrix<3, 3> right_cg{Core::LinAlg::Initialization::zero};
-    right_cg.multiply_tn(1.0, defgrad, defgrad, 0.0);
-
-    ViscoplastUtils::AdaptiveEstimateInterpolationDefgrads aei_defgrads{
-        .elastic_predictor_elastic_defgrad = elastic_predictor_elastic_defgrad,
-        .elastic_predictor_inverse_plastic_defgrad = last_inverse_inelastic_defgrad,
-        .defgrad = defgrad,
-        .inv_defgrad = inv_defgrad,
-        .right_cg = right_cg,
-    };
+    const ViscoplastUtils::AdaptiveEstimateInterpolationDefgrads aei_defgrads(
+        defgrad, last_inverse_inelastic_defgrad);
 
     // pre-evaluate adaptive estimate interpolation; importantly, set the Gauss point and determine
     // the preliminary plastic predictor
@@ -4082,12 +4112,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
       "This method should not be called if there was an evaluation error previously!");
 
 
-
   // evaluate the relative yield stress deviations associated with the elastic predictor
   double rel_stress_deviation_elastic_pred;
-  ViscoplastUtils::StateQuantities state_quantities_elastic_pred = evaluate_state_quantities(
-      aei_defgrads.right_cg, aei_defgrads.elastic_predictor_inverse_plastic_defgrad,
-      last_plastic_strain, err_status, dt, ViscoplastUtils::StateQuantityEvalType::full_eval);
+  ViscoplastUtils::StateQuantities state_quantities_elastic_pred =
+      evaluate_state_quantities(aei_defgrads.right_cg,
+          aei_defgrads.elastic_predictor_inverse_plastic_defgrad, last_plastic_strain, err_status,
+          dt, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
   if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
   {
     // we set the relative yield stress deviation higher than the maximum allowed tolerance
@@ -4109,11 +4139,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
   // evaluate the relative yield stress deviations associated with the plastic predictor
   double rel_stress_deviation_plastic_pred;
   err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
-  ViscoplastUtils::StateQuantities state_quantities_plastic_pred = evaluate_state_quantities(
-      aei_defgrads.right_cg,
-      adaptive_estimate_interp_manager_.get_inverse_inelastic_defgrad_plastic_pred(aei_defgrads),
-      last_plastic_strain, err_status, dt,
-      ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+  ViscoplastUtils::StateQuantities state_quantities_plastic_pred =
+      evaluate_state_quantities(aei_defgrads.right_cg,
+          adaptive_estimate_interp_manager_.get_inverse_inelastic_defgrad_plastic_pred(
+              gp_, aei_defgrads),
+          last_plastic_strain, err_status, dt,
+          ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
   FOUR_C_ASSERT_ALWAYS(
       err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors,
       "Inconsistent preliminary plastic predictor stress! This should always be computable for "
@@ -4147,7 +4178,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
   if (rel_stress_deviation_elastic_pred <=
       parameter()->adaptive_estimate_interp_params().max_relative_yield_stress_deviation)
   {
-    adaptive_estimate_interp_manager_.set_current_interp_point_as_elastic_predictor();
+    adaptive_estimate_interp_manager_.set_current_interp_point_to_elastic_predictor(gp_);
     return;
   }
   // determine an updated plastic predictor (only if the preliminary plastic predictor leads to
@@ -4162,7 +4193,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
 
     // procedure starts with the preliminary plastic predictor (which is currently the plastic
     // predictor for the interpolation manager, internally)
-    adaptive_estimate_interp_manager_.set_current_interp_point_as_plastic_predictor();
+    adaptive_estimate_interp_manager_.set_current_interp_point_to_plastic_predictor(gp_);
 
     // set iteration counter for the plastic predictor construction
     unsigned int iter = 0;
@@ -4179,15 +4210,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
           parameter()->adaptive_estimate_interp_params().max_num_plastic_pred_construct_iters)
       {
         // output error and then throw
-        const std::string extended_message =
-            get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    get_detailed_error_message_for_error_type(err_status));
-        FOUR_C_THROW("Error in the plastic predictor construction: {}", extended_message);
+        FOUR_C_THROW("Plastic predictor construction has failed after {} iterations",
+            parameter()->adaptive_estimate_interp_params().max_num_plastic_pred_construct_iters);
       }
 
       // interpolate inverse inelastic defgrad and compute the associated stress state
       interp_inverse_inelastic_defgrad =
-          adaptive_estimate_interp_manager_.interpolate_inverse_inelastic_defgrad(aei_defgrads);
+          adaptive_estimate_interp_manager_.interpolate_inverse_inelastic_defgrad(
+              gp_, aei_defgrads);
       ViscoplastUtils::StateQuantities interp_state_quantities =
           evaluate_state_quantities(aei_defgrads.right_cg, interp_inverse_inelastic_defgrad, -1.0,
               err_status, dt, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
@@ -4205,7 +4235,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
                 parameter()->adaptive_estimate_interp_params().max_relative_yield_stress_deviation)
         {
           // we set the plastic predictor now
-          adaptive_estimate_interp_manager_.set_plastic_predictor_after_construction_algo();
+          adaptive_estimate_interp_manager_.set_plastic_predictor_after_construction_algo(gp_);
 
           break;
         }
@@ -4214,20 +4244,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
           // we set an "under_yield_surface" error to make sure that the construction interval is
           // shifted towards the elastic predictor
           err_status = ViscoplastUtils::ErrorType::under_yield_surface;
-          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
         }
         else
         {
           // we set an "overflow_error" error to make sure that the construction interval is
           // shifted towards the plastic predictor
           err_status = ViscoplastUtils::ErrorType::overflow_error;
-          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
         }
       }
       else
       {
         // adapt interpolation interval and point based on the evaluation error
-        adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+        adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
       }
     }
   }
@@ -4417,7 +4447,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
     ++iter;
 
     // check whether interpolation is still possible
-    if (!adaptive_estimate_interp_manager_.is_interpolation_possible(iter))
+    if (!adaptive_estimate_interp_manager_.is_interpolation_possible(gp_, iter))
     {
       const std::string extended_message =
           get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
@@ -4431,7 +4461,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
     // interpolate inverse plastic deformation gradient with the current interpolation points saved
     // within the dedicated manager
     interp_iFin =
-        adaptive_estimate_interp_manager_.interpolate_inverse_inelastic_defgrad(aei_defgrads);
+        adaptive_estimate_interp_manager_.interpolate_inverse_inelastic_defgrad(gp_, aei_defgrads);
 
     // compute equivalent stress related to the interpolated inverse plastic deformation
     // gradient
@@ -4442,7 +4472,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
     // update interpolation interval and point if error was encountered
     if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
-      adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+      adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
       continue;
     }
 
@@ -4462,7 +4492,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
         // update interpolation interval and point if error was encountered
         if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
         {
-          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+          adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
           continue;
         }
 
@@ -4482,13 +4512,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
       return wrap_unknowns(interp_iFin, interp_plastic_strain);
     else
     {
-      adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(err_status);
+      adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
 
 
       // if the interpolation interval has narrowed down to essentially [0, 0] -> try evaluating the
       // standard elastic predictor as a last resort, i.e., return it directly, and do not allow for
       // re-estimations which are anyway not possible anymore based on the given interval
-      if (adaptive_estimate_interp_manager_.upper_interp_bound() <= 1.0e-8)
+      if (adaptive_estimate_interp_manager_.upper_interp_bound(gp_) <= 1.0e-8)
       {
         adaptive_estimate_interp_manager_.disable_further_reestimations();
         return wrap_unknowns(
@@ -4501,6 +4531,231 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
   FOUR_C_THROW(
       "You should not be here! We should have either returned or thrown before reaching this point "
       "in the estimate interpolation!");
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Core::LinAlg::Matrix<10, 1>
+Mat::InelasticDefgradTransvIsotropElastViscoplast::update_lower_interp_bound_and_reinterpolate(
+    const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+        AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+    const double last_plastic_strain, const double dt,
+    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action)
+{
+  // set lower <- current, and interpolate with these updated bounds
+  adaptive_estimate_interp_manager_.set_lower_interp_bound_to_current_interp_point(gp_);
+  ViscoplastUtils::ErrorType err_status{ViscoplastUtils::ErrorType::no_errors};
+  Core::LinAlg::Matrix<10, 1> updated_estimate =
+      interpolate_estimate(aei_defgrads, last_plastic_strain, dt, err_status);
+
+  // decide based on the evaluation error status whether to continue with the Local Newton or
+  // exit with error
+  if (err_status == ViscoplastUtils::ErrorType::no_errors)
+  {
+    eval_action = ViscoplastUtils::EvaluationAction::continue_with_next_iteration;
+    return updated_estimate;
+  }
+  else
+  {
+    eval_action = ViscoplastUtils::EvaluationAction::exit_with_error;
+    return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
+  }
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Core::LinAlg::Matrix<10, 1>
+Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_newton(
+    const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+        AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+    const double last_plastic_strain, const double dt,
+    ViscoplastUtils::EvaluationAction& eval_action)
+{
+  // increment number of re-estimations
+  adaptive_estimate_interp_manager_.increment_num_reestimations();
+
+  // check whether interpolation is still possible
+  if (!adaptive_estimate_interp_manager_.is_interpolation_possible(gp_, 0))
+  {
+    // exit with error, since nothing else can be done here
+    eval_action = ViscoplastUtils::EvaluationAction::exit_with_error;
+    return wrap_unknowns(Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero}, 0.0);
+  }
+
+  // verify whether we need to verify the intermediate point as a viable updated estimate; we do
+  // this based on the current interval
+  // \f$ \xi - \xi_{\text{E}} \f$
+  const double reestimation_interval = adaptive_estimate_interp_manager_.current_interp_point(gp_) -
+                                       adaptive_estimate_interp_manager_.lower_interp_bound(gp_);
+  if (reestimation_interval <
+      parameter()->adaptive_estimate_interp_params().min_reestimation_interval)
+  {
+    // set lower <- current, and return re-interpolated estimate using these updated bounds
+    return update_lower_interp_bound_and_reinterpolate(
+        aei_defgrads, last_plastic_strain, dt, eval_action);
+  }
+  else
+  {
+    // verify whether the intermediate point is a viable updated estimate
+    adaptive_estimate_interp_manager_.set_current_interp_point_to_intermediate_point(gp_);
+    Core::LinAlg::Matrix<3, 3> interp_iFin =
+        adaptive_estimate_interp_manager_.interpolate_inverse_inelastic_defgrad(gp_, aei_defgrads);
+
+    ViscoplastUtils::ErrorType err_status{ViscoplastUtils::ErrorType::no_errors};
+    ViscoplastUtils::StateQuantities interp_state_quantities =
+        evaluate_state_quantities(aei_defgrads.right_cg, interp_iFin, 0.0, err_status, dt,
+            ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+    if (err_status != ViscoplastUtils::ErrorType::no_errors)
+    {
+      // set lower <- current (=intermediate!), and return re-interpolated estimate using these
+      // updated bounds
+      return update_lower_interp_bound_and_reinterpolate(
+          aei_defgrads, last_plastic_strain, dt, eval_action);
+    }
+    else
+    {
+      // "interpolate" plastic strain
+      double interp_plastic_strain = -1.0;
+      switch (parameter()->adaptive_estimate_interp_params().hardening_params.method)
+      {
+        case ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::use_previous:
+        {
+          interp_plastic_strain = last_plastic_strain;
+          break;
+        }
+        case ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::integrate_via_evol_eqs:
+        {
+          interp_plastic_strain = integrate_plastic_strain(
+              interp_state_quantities.curr_equiv_stress, last_plastic_strain, dt, err_status);
+
+          // update interpolation interval and point if error was encountered
+          if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+          {
+            return update_lower_interp_bound_and_reinterpolate(
+                aei_defgrads, last_plastic_strain, dt, eval_action);
+          }
+          break;
+        }
+        default:
+        {
+          FOUR_C_THROW("Unsupported hardening method {} for adaptive estimate interpolation!",
+              EnumTools::enum_name(
+                  parameter()->adaptive_estimate_interp_params().hardening_params.method));
+        }
+      }
+      // if we have reached this point, then we have a viable estimate candidate; we now verify it
+      err_status = verify_estimate_candidate(aei_defgrads, interp_iFin, interp_plastic_strain, dt);
+      if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+      {
+        eval_action = ViscoplastUtils::EvaluationAction::continue_with_next_iteration;
+        return wrap_unknowns(interp_iFin, interp_plastic_strain);
+      }
+      else
+      {
+        return update_lower_interp_bound_and_reinterpolate(
+            aei_defgrads, last_plastic_strain, dt, eval_action);
+      }
+    }
+  }
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::
+    update_adaptive_estimate_interp_starting_points()
+{
+  FOUR_C_ASSERT_ALWAYS(parameter()->use_adaptive_estimate_interp(),
+      "This method should not be called without enabling adaptive estimate interpolation!");
+
+
+  const ViscoplastUtils::AdaptiveEstimateInterpolationParams& aei_params =
+      parameter()->adaptive_estimate_interp_params();
+
+  // loop through Gauss points
+  for (unsigned int gp = 0; gp < num_gp_; ++gp)
+  {
+    // starting points are set based on the specified method
+    switch (aei_params.starting_point_type)
+    {
+      case ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::user_set:
+      {
+        adaptive_estimate_interp_manager_.set_starting_point(
+            gp, aei_params.user_set_starting_point);
+        return;
+      }
+      case ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::
+          last_interpolation_point:
+      {
+        adaptive_estimate_interp_manager_.set_starting_point(
+            gp, adaptive_estimate_interp_manager_.current_interp_point(gp));
+        return;
+      }
+      case ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::optimal_equiv_stress:
+      {
+        // get deformation gradient components; note that this also works for substepping, since the
+        // inverse plastic defgrad is not used below
+        ViscoplastUtils::AdaptiveEstimateInterpolationDefgrads aei_defgrads(
+            time_step_quantities_.current_defgrad[gp],
+            time_step_quantities_.last_plastic_defgrad_inverse[gp]);
+
+        ViscoplastUtils::ErrorType err_status{ViscoplastUtils::ErrorType::no_errors};
+
+        // compute solution stress at the considered Gauss point
+        ViscoplastUtils::StateQuantities state_quantities_sol =
+            evaluate_state_quantities(aei_defgrads.right_cg,
+                time_step_quantities_.current_plastic_defgrad_inverse[gp], -1.0, err_status, -1.0,
+                ViscoplastUtils::StateQuantityEvalType::
+                    equiv_stress_only);  // we use only dummy values for quantities that are not
+                                         // required in this partial computation
+        FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
+            "Could not evaluate solution stress! This is definitely impossible! Error status: {}",
+            EnumTools::enum_name(err_status));
+
+
+
+        // compute stress related to the elastic and plastic predictors at the considered Gauss
+        // point
+        ViscoplastUtils::StateQuantities state_quantities_elast_pred =
+            evaluate_state_quantities(aei_defgrads.right_cg,
+                time_step_quantities_.last_plastic_defgrad_inverse[gp], -1.0, err_status, -1.0,
+                ViscoplastUtils::StateQuantityEvalType::
+                    equiv_stress_only);  // we use only dummy values for quantities that are not
+                                         // required in this partial computation
+        FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
+            "Could not even evaluate the stress of the elastic predictor when attempting to update "
+            "the starting points of the adaptive estimate interpolation using the "
+            "optimal_equiv_stress strategy! Error status: {}",
+            EnumTools::enum_name(err_status));
+        Core::LinAlg::Matrix<3, 3> iFin_plastic_pred =
+            adaptive_estimate_interp_manager_.get_inverse_inelastic_defgrad_plastic_pred(
+                gp, aei_defgrads);
+        ViscoplastUtils::StateQuantities state_quantities_plast_pred = evaluate_state_quantities(
+            aei_defgrads.right_cg, iFin_plastic_pred, -1.0, err_status, -1.0,
+            ViscoplastUtils::StateQuantityEvalType::
+                equiv_stress_only);  // we use only dummy values for quantities that are not
+                                     // required in this partial computation
+        FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
+            "Could not even evaluate the stress of the plastic predictor when attempting to update "
+            "the starting points of the adaptive estimate interpolation using the "
+            "optimal_equiv_stress strategy! Error status: {}",
+            EnumTools::enum_name(err_status));
+
+        // compute starting point
+        const double starting_point = (state_quantities_sol.curr_equiv_stress -
+                                          state_quantities_plast_pred.curr_equiv_stress) /
+                                      (state_quantities_elast_pred.curr_equiv_stress -
+                                          state_quantities_plast_pred.curr_equiv_stress);
+
+        adaptive_estimate_interp_manager_.set_starting_point(gp, starting_point);
+        return;
+      }
+      default:
+        FOUR_C_THROW("Starting point type {} unsupported!",
+            EnumTools::enum_name(aei_params.starting_point_type));
+    }
+  }
 }
 
 FOUR_C_NAMESPACE_CLOSE

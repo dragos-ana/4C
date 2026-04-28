@@ -1620,10 +1620,13 @@ namespace Mat
     //! tensors associated with the director vector)
     InelasticDefgradTransvIsotropElastViscoplastUtils::ConstMatTensors const_mat_tensors_;
 
-    //! current Gauss Point
-    int gp_{-1};
+    //! current Gauss point
+    unsigned int gp_{0};
+    //! total number of Gauss points
+    unsigned int num_gp_{0};
+
     //! current element ID
-    int ele_gid_{-1};
+    unsigned int ele_gid_{0};
 
     //! parameter list
     Teuchos::ParameterList params_;
@@ -1887,11 +1890,19 @@ namespace Mat
      *
      *
      * @param[in] err_status error status
-     * @param[out] eval_action action to be performed subsequently in the Local Newton Loop
+     * @param[in] defgrad deformation gradient
+     * @param[in] last_plastic_strain plastic strain at the previous time instant
+     * @param[in] last_iFinM inverse inelastic deformation gradient at the previous time instant
+     * @param[in] dt time step / substep size
+     * @param[in,out] sol current[in] / updated solution vector for the local Newton
+     * @param[out] eval_action action to be performed subsequently in the local Newton Loop
      */
     void manage_evaluation(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action) const;
+        const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
+        const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
+        Core::LinAlg::Matrix<10, 1>& sol,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
     /*!
      * @brief Evaluate the additional cmat stiffness tensor using a perturbation-based approach, if
@@ -2023,8 +2034,51 @@ namespace Mat
         const double dt) const;
 
 
+    /*!
+     * @brief Perform the re-estimation procedure of the Adaptive Estimate Interpolation algorithm,
+     * to restart the local Newton
+     *
+     * @param[in] aei_defgrads deformation gradients and components used within the AEI
+     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
+     * time instant
+     * @param[in] dt time step / substep size
+     * @param[out] eval_action action to be performed subsequently in the local Newton
+     * @return updated estimate for the local Newton
+     */
+    Core::LinAlg::Matrix<10, 1> reestimate_to_restart_local_newton(
+        const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+        const double last_plastic_strain, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
-    // TODO: Add starting point function to be called during update
+
+    /*!
+     * @brief Updates the lower interpolation bound to the current interpolation point, and
+     * reinterpolates an updated estimate
+     *
+     * @note Helper function to be called within the re-estimation procedure
+     *
+     * @param[in] aei_defgrads deformation gradients and components used within the AEI
+     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
+     * time instant
+     * @param[in] dt time step / substep size
+     * @param[out] eval_action action to be performed subsequently in the local Newton
+     * @return updated estimate for the local Newton
+     */
+    Core::LinAlg::Matrix<10, 1> update_lower_interp_bound_and_reinterpolate(
+        const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
+        const double last_plastic_strain, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
+
+
+    /*!
+     * @brief Updates the starting points used within the adaptive estimate interpolation for the
+     * next time step
+     *
+     *
+     */
+    void update_adaptive_estimate_interp_starting_points();
   };
 }  // namespace Mat
 
