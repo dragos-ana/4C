@@ -3018,21 +3018,21 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                             .default_value = 1.0e-15,
                             .validator = positive<double>()}),
                     parameter<double>("INTERVAL_SCANNING_PARAM",
-                        {.description = "interval scanning parameter (bisection: 1/2), used for "
-                                        "plastic predictor construction, estimate interpolation, "
-                                        "re-estimation",
+                        {.description =
+                                "interval scanning parameter (bisection: 1/2), used for "
+                                "plastic predictor construction and estimate interpolation ",
                             .default_value = 0.5,
                             .validator = positive<double>()}),
                     parameter<int>("MAX_NUM_REESTIMATIONS",
                         {.description = "maximum number of adaptive re-estimations allowed",
                             .default_value = 10,
                             .validator = positive_or_zero<int>()}),
-                    parameter<double>("MIN_RELATIVE_LOWER_BOUND_STRESS_DEVIATION",
-                        {.description = "minimum relative deviation between the equivalent "
-                                        "stressses associated with the lower bound $ "
-                                        "\\xi_{\\text{E}} $, and with the intermediate point $ "
-                                        "\\xi_{\\text{I}} $ within the re-estimation procedure",
-                            .default_value = 1.0e-3,
+                    parameter<double>("MIN_REESTIMATION_INTERVAL",
+                        {.description = "minimum interval $ \\xi -  \\xi_{\\text{E}} $ required "
+                                        "for verifying the intermediate point $ \\xi_{\\text{I}} = "
+                                        "1 / 2 (\\xi + \\xi_{\\text{E}}) $ as an updated estimate "
+                                        "candidate within the re-estimation procedure",
+                            .default_value = 1.0e-5,
                             .validator = positive<double>()}),
                     group("HARDENING_PARAMS",
                         {

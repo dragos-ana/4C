@@ -98,6 +98,7 @@ namespace
     return out;
   }
 
+
 }  // namespace
 
 
@@ -490,6 +491,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpol
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
     InterpolationPointContainer::reset(const unsigned int gp)
 {
+  // consistency checks
+  FOUR_C_ASSERT_ALWAYS(gp < current_interp_points_.size(),
+      "Inconsistent Gauss point index {}, with set Gauss point size {}", gp,
+      current_interp_points_.size());
+
   current_interp_points_[gp] = starting_points_[gp];
   lower_interp_bounds_[gp] = 0.0;
   upper_interp_bounds_[gp] = 1.0;
@@ -635,6 +641,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
   Core::Communication::extract_from_pack(buffer, resize_called_);
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationDefgrads::
+    AdaptiveEstimateInterpolationDefgrads(
+        const Core::LinAlg::Matrix<3, 3>& F, const Core::LinAlg::Matrix<3, 3>& iFp)
+{
+  defgrad = F;
+  inv_defgrad.invert(defgrad);
+  right_cg.multiply_tn(1.0, defgrad, defgrad, 0.0);
+  elastic_predictor_inverse_plastic_defgrad = iFp;
+  elastic_predictor_elastic_defgrad.multiply(
+      1.0, defgrad, elastic_predictor_inverse_plastic_defgrad, 0.0);
+}
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -643,6 +663,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
         const AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
         const AdaptiveEstimateInterpolationParams& aei_params)
 {
+  // consistency checks
+  FOUR_C_ASSERT_ALWAYS(gp < eigenval_elast_pred_.size(),
+      "Inconsistent Gauss point index {}, with set Gauss point size {}", gp,
+      eigenval_elast_pred_.size());
+
+
+
   //  perform polar-spectral decomposition of elastic defgrad within elastic predictor
   Core::LinAlg::Matrix<3, 3> material_stretch_elast_pred{Core::LinAlg::Initialization::zero};
   std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred;
@@ -736,6 +763,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
         Core::LinAlg::Matrix<4, 1>& interp_rel_eigenvect_rot_quat,
         Core::LinAlg::Matrix<4, 1>& interp_rel_rot_quat) const
 {
+  // consistency checks
+  FOUR_C_ASSERT_ALWAYS(0.0 <= interp_loc && interp_loc <= 1.0,
+      "Interpolation is constrained to the [0, 1] interval, with 0 specifying the elastic "
+      "predictor and 1 specifying the plastic predictor! The current plastic predictor location is "
+      "{}",
+      interp_loc);
+  FOUR_C_ASSERT_ALWAYS(gp < eigenval_elast_pred_.size(),
+      "Inconsistent Gauss point index {}, with set Gauss point size {}", gp,
+      eigenval_elast_pred_.size());
+
+
+
   // auxiliaries
   Core::LinAlg::Matrix<4, 1> unit_quaternion{Core::LinAlg::Initialization::zero};
   unit_quaternion(0) = 1.0;
@@ -762,11 +801,15 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
     AdaptiveEstimateInterpolationManager::PredictorInterpolator::interpolate_elastic_defgrad(
         const unsigned int gp, const double interp_loc) const
 {
-  // consistency check
+  // consistency checks
   FOUR_C_ASSERT_ALWAYS(0.0 <= interp_loc && interp_loc <= 1.0,
       "Interpolation is constrained to the [0, 1] interval, with 0 specifying the elastic "
       "predictor and 1 specifying the plastic predictor! The current interpolation location is {}",
       interp_loc);
+  FOUR_C_ASSERT_ALWAYS(gp < eigenval_elast_pred_.size(),
+      "Inconsistent Gauss point index {}, with set Gauss point size {}", gp,
+      eigenval_elast_pred_.size());
+
 
   // interpolate contributions
   std::vector<double> interp_eigenval;
@@ -786,6 +829,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
     PredictorInterpolator::set_plastic_predictor_after_construction_algo(
         const unsigned int gp, const double plastic_pred_loc)
 {
+  // consistency checks
+  FOUR_C_ASSERT_ALWAYS(0.0 <= plastic_pred_loc && plastic_pred_loc <= 1.0,
+      "Interpolation is constrained to the [0, 1] interval, with 0 specifying the elastic "
+      "predictor and 1 specifying the plastic predictor! The current plastic predictor location is "
+      "{}",
+      plastic_pred_loc);
+  FOUR_C_ASSERT_ALWAYS(gp < eigenval_elast_pred_.size(),
+      "Inconsistent Gauss point index {}, with set Gauss point size {}", gp,
+      eigenval_elast_pred_.size());
+
   // set all quantities relevant for the plastic predictor
   std::vector<double> interp_eigenval;
   interpolate_elastic_defgrad_contributions(gp, plastic_pred_loc, interp_eigenval,
@@ -816,7 +869,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpol
 
 
   // initialize class variables (for a single Gauss point for now)
-  num_of_reestimations_ = 0;
+  num_reestimations_ = 0;
 }
 
 /*--------------------------------------------------------------------*
@@ -838,11 +891,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
-    is_interpolation_possible(const unsigned int num_interp_iters)
+    is_interpolation_possible(const unsigned int gp, const unsigned int num_interp_iters)
 {
   // check interpolation interval
-  const double diff_bounds = interp_point_container_.upper_interp_bound(gp_) -
-                             interp_point_container_.lower_interp_bound(gp_);
+  const double diff_bounds = interp_point_container_.upper_interp_bound(gp) -
+                             interp_point_container_.lower_interp_bound(gp);
   bool check_min_interp_interval = (diff_bounds >= params_.min_interp_interval);
 
   // check number of interpolation iterations
@@ -859,12 +912,9 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
     pre_evaluate(const unsigned int gp, const AdaptiveEstimateInterpolationDefgrads& aei_defgrads)
 {
-  // set Gauss point index
-  gp_ = gp;
-
   // reset certain variables
-  num_of_reestimations_ = 0;
-  interp_point_container_.reset(gp_);
+  num_reestimations_ = 0;
+  interp_point_container_.reset(gp);
 
   // construct the preliminary predictor
   predictor_interpolator_.construct_prelim_plastic_pred(gp, aei_defgrads, params_);
@@ -903,11 +953,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
     AdaptiveEstimateInterpolationManager::interpolate_inverse_inelastic_defgrad(
-        const AdaptiveEstimateInterpolationDefgrads& aei_defgrads)
+        const unsigned int gp, const AdaptiveEstimateInterpolationDefgrads& aei_defgrads)
 {
   Core::LinAlg::Matrix<3, 3> interp_elastic_defgrad =
       predictor_interpolator_.interpolate_elastic_defgrad(
-          gp_, interp_point_container_.current_interp_point(gp_));
+          gp, interp_point_container_.current_interp_point(gp));
 
   Core::LinAlg::Matrix<3, 3> inv_inelastic_defgrad{Core::LinAlg::Initialization::zero};
   inv_inelastic_defgrad.multiply(1.0, aei_defgrads.inv_defgrad, interp_elastic_defgrad);
@@ -919,11 +969,11 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
     AdaptiveEstimateInterpolationManager::get_inverse_inelastic_defgrad_plastic_pred(
-        const AdaptiveEstimateInterpolationDefgrads& aei_defgrads)
+        const unsigned int gp, const AdaptiveEstimateInterpolationDefgrads& aei_defgrads)
 {
   // the plastic predictor lies at the location 1.0
   Core::LinAlg::Matrix<3, 3> interp_elastic_defgrad =
-      predictor_interpolator_.interpolate_elastic_defgrad(gp_, 1.0);
+      predictor_interpolator_.interpolate_elastic_defgrad(gp, 1.0);
 
   Core::LinAlg::Matrix<3, 3> inv_inelastic_defgrad{Core::LinAlg::Initialization::zero};
   inv_inelastic_defgrad.multiply(1.0, aei_defgrads.inv_defgrad, interp_elastic_defgrad);
@@ -934,20 +984,20 @@ Core::LinAlg::Matrix<3, 3> Mat::InelasticDefgradTransvIsotropElastViscoplastUtil
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
-    set_plastic_predictor_after_construction_algo()
+    set_plastic_predictor_after_construction_algo(const unsigned int gp)
 {
   // set the plastic predictor quantities
   predictor_interpolator_.set_plastic_predictor_after_construction_algo(
-      gp_, interp_point_container_.current_interp_point(gp_));
+      gp, interp_point_container_.current_interp_point(gp));
 
   // reset the interpolation point container
-  interp_point_container_.reset(gp_);
+  interp_point_container_.reset(gp);
 }
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
-    adapt_interpolation_interval_and_point(const ErrorType& eval_err_type)
+    adapt_interpolation_interval_and_point(const unsigned int gp, const ErrorType& eval_err_type)
 {
   FOUR_C_ASSERT_ALWAYS(eval_err_type != ErrorType::no_errors,
       "You should not call this adaptation routine for error_type {}",
@@ -960,12 +1010,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
     case InterpolationShiftAction::shift_towards_elastic_pred:
     {
       interp_point_container_.set_upper_interp_bound(
-          gp_, interp_point_container_.current_interp_point(gp_));
+          gp, interp_point_container_.current_interp_point(gp));
     }
     case InterpolationShiftAction::shift_towards_plastic_pred:
     {
       interp_point_container_.set_lower_interp_bound(
-          gp_, interp_point_container_.current_interp_point(gp_));
+          gp, interp_point_container_.current_interp_point(gp));
     }
     default:
     {
@@ -977,10 +1027,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
   }
 
   // reset interpolation point
-  const double new_lower_bound = interp_point_container_.lower_interp_bound(gp_);
-  const double new_upper_bound = interp_point_container_.upper_interp_bound(gp_);
+  const double new_lower_bound = interp_point_container_.lower_interp_bound(gp);
+  const double new_upper_bound = interp_point_container_.upper_interp_bound(gp);
   interp_point_container_.set_current_interp_point(
-      gp_, new_lower_bound + params_.interval_scanning_param * (new_upper_bound - new_lower_bound));
+      gp, new_lower_bound + params_.interval_scanning_param * (new_upper_bound - new_lower_bound));
 }
 
 
