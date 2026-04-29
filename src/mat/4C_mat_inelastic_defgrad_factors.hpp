@@ -1956,141 +1956,136 @@ namespace Mat
 
     /*!
      * @brief Determines the initial estimate to be used within the Local Newton.
-     * If the Adaptive Estimate Interpolation is used, this method also prepares everything for the
+     * If adaptive estimate interpolation is used, this method also prepares everything for the
      * further re-estimations.
      *
+     * @param[in] dt time step / substep size
      * @param[in] defgrad deformation gradient
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
      * @param[in] last_inverse_inelastic_defgrad inverse inelastic deformation gradient at the
      * previously converged time instant
-     * @param[in] dt time step / substep size
      * @param[out] err_status error status after the procedure
      * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and the
      * equivalent plastic strain (component 9) for the Local Newton within this time step / substep
      */
-    Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(
+    Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(const double dt,
         const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
-        const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad, const double dt,
+        const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
-     * @brief Construct the plastic predictor for the Adaptive Estimate Interpolation, via the
-     dedicated manager which has already determined the preliminary plastic predictor.
+     * @brief Construct the plastic predictor for the adaptive estimate interpolation algorithm, via
+     the dedicated manager which has already determined the preliminary plastic predictor.
      *
-     * @param[in] aei_defgrads deformation gradients and components required for the adaptive
+     * @param[in] dt time step / substep size
+     * @param[in] aei_deftensors deformation tensors required for the adaptive
      estimate interpolation
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
-     * @param[in] dt time step / substep size
      * @param[out] err_status error status after the procedure
      * time instant
      */
-    void construct_plastic_predictor(const InelasticDefgradTransvIsotropElastViscoplastUtils::
-                                         AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
-        const double last_plastic_strain, const double dt,
+    void construct_plastic_predictor(const double dt,
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::
+            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
      * @brief Interpolates initial / updated estimates to be used within the local Newton loop
-     * according to the Adaptive Estimate Interpolation algorithm
+     * according to the adaptive estimate interpolation algorithm
      *
-     * @param[in] aei_defgrads deformation gradients and components required for the adaptive
+     * @param[in] dt time step / substep size
+     * @param[in] aei_deftensors deformation tensors required for the adaptive
      * estimate interpolation
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
-     * @param[in] dt time step / substep size
      * @param[out] err_status error status after the procedure
      * @return initial / updated estimate to be used within the local Newton
      */
-    Core::LinAlg::Matrix<10, 1> interpolate_estimate(
+    Core::LinAlg::Matrix<10, 1> interpolate_estimate(const double dt,
         const InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
-        const double last_plastic_strain, const double dt,
+            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
-
-
 
     /*!
      * @brief Integrates the equivalent plastic strain based on its evolution equations; relevant
-     * for the strain update in the Adaptive Estimate Interpolation algorithm
+     * for the plastic strain update / "interpolation" in the adaptive estimate interpolation
+     * algorithm
      *
+     * @param[in] dt time step / substep size
      * @param[in] equiv_stress equivalent stress serving as input for the intgration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
-     * @param[in] dt time step / substep size
      * @param[out] err_status error status
      */
-    double integrate_plastic_strain(const double equiv_stress, const double last_plastic_strain,
-        const double dt,
+    double integrate_plastic_strain(const double dt, const double equiv_stress,
+        const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const;
-
-
 
     /*!
      * @brief Verifies whether the specified estimate candidate is a valid local Newton guess, i.e.
      * whether it fulfills the following two conditions:
      * 1. It is numerically admissible, i.e., local Newton residual and Jacobian can be evaluated
-     * without errors such as overflow
+     * without errors such as overflow.
      * 2. It exhibits plastic flow, i.e, the resulting stress state resides "above" the yield
-     * surface
+     * surface.
      *
-     * @param[in] aei_defgrads deformation gradients and components used within the AEI
+     * @param[in] dt time step / substep size
+     * @param[in] aei_deftensors deformation tensors used within the AEI
      * @param[in] iFin_candidate estimate candidate: inverse plastic deformation gradient
      * @param[in] plastic_strain_candidate estimate candidate: equivalent plastic strain
-     * @param[in] dt time step / substep size
      * @return error status; no_errors means that this is a valid estimate for the local Newton
      */
     InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType verify_estimate_candidate(
+        const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
-        const Core::LinAlg::Matrix<3, 3>& iFin_candidate, const double plastic_strain_candidate,
-        const double dt) const;
+            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const Core::LinAlg::Matrix<3, 3>& iFin_candidate,
+        const double plastic_strain_candidate) const;
 
 
     /*!
-     * @brief Perform the re-estimation procedure of the Adaptive Estimate Interpolation algorithm,
-     * to restart the local Newton
+     * @brief Perform the re-estimation procedure of the adaptive estimate interpolation algorithm,
+     * to effectively restart the local Newton loop
      *
-     * @param[in] aei_defgrads deformation gradients and components used within the AEI
+     * @param[in] dt time step / substep size
+     * @param[in] aei_deftensors deformation gradients and components used within the adaptive
+     * estimate interpolation
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
-     * @param[in] dt time step / substep size
      * @param[out] eval_action action to be performed subsequently in the local Newton
      * @return updated estimate for the local Newton
      */
-    Core::LinAlg::Matrix<10, 1> reestimate_to_restart_local_newton(
+    Core::LinAlg::Matrix<10, 1> reestimate_to_restart_local_newton(const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
-        const double last_plastic_strain, const double dt,
+            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
 
     /*!
-     * @brief Updates the lower interpolation bound to the current interpolation point, and
-     * reinterpolates an updated estimate
+     * @brief Updates the lower interpolation bound to the current interpolation point (increase and
+     * shift towards the plastic predictor!), and reinterpolates an updated estimate
      *
      * @note Helper function to be called within the re-estimation procedure
      *
-     * @param[in] aei_defgrads deformation gradients and components used within the AEI
+     * @param[in] dt time step / substep size
+     * @param[in] aei_deftensors deformation tensors used within the AEI
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
-     * @param[in] dt time step / substep size
      * @param[out] eval_action action to be performed subsequently in the local Newton
      * @return updated estimate for the local Newton
      */
-    Core::LinAlg::Matrix<10, 1> update_lower_interp_bound_and_reinterpolate(
+    Core::LinAlg::Matrix<10, 1> increase_lower_interp_bound_and_reinterpolate(const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDefgrads& aei_defgrads,
-        const double last_plastic_strain, const double dt,
+            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
-
-    /*!
-     * @brief Updates the starting points used within the adaptive estimate interpolation for the
-     * next time step
-     *
-     *
-     */
+    //! updates the starting points used within the adaptive estimate interpolation algorithm for
+    //! the next time step
     void update_adaptive_estimate_interp_starting_points();
   };
 }  // namespace Mat
