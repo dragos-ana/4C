@@ -1076,6 +1076,7 @@ namespace
       material_data.group("LOCAL_NEWTON")
           .add("MAX_EXCEEDANCE_FACT_INCR_TOL",
               setup.local_newton_params.max_exceedance_fact_incr_tol);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP").add("USE_ADAPTIVE_ESTIMATE_INTERP", false);
 
       auto material_params =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
@@ -2206,7 +2207,8 @@ namespace
     // the one-step formulation fails to converge
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material_one_step->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
-        Core::Exception, "Local Newton evaluation has failed with err status overflow_error");
+        Core::Exception,
+        "Local Newton evaluation has failed and there is no evaluation management strategy");
 
 
     // the local substepping formulation converges

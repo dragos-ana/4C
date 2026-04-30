@@ -946,25 +946,41 @@ namespace Mat
       void resize(const unsigned int num_gp);
 
       /*!
-       * @brief Verify whether interpolation is still possible, based on the
-       * set minimum interpolation interval, the set maximum number of interpolation
-       * iterations, and the set maximum number of reinterpolations
+       * @brief Verify whether plastic predictor construction is still possible, based on the set
+       * maximum number of iterations
        *
        * @param[in] gp Gauss point index
-       * @param[in] num_interp_iters current counter for the estimate interpolation iterations
-       * (within a single interpolation scheme)
        *
        */
-      bool is_interpolation_possible(const unsigned int gp, const unsigned int num_interp_iters);
+      bool is_plastic_pred_construct_possible(const unsigned int gp);
 
       /*!
-       * @brief Pre-evaluation tasks and construction of the preliminary plastic
+       * @brief Verify whether estimate interpolation is still possible, based on the
+       * set minimum interpolation interval and the set maximum number of interpolation
+       * iterations
+       *
+       * @param[in] gp Gauss point index
+       *
+       */
+      bool is_estimate_interp_possible(const unsigned int gp);
+
+      /*!
+       * @brief Verify whether re-estimations are still possible, based on the
+       * set maximum number of re-estimations
+       *
+       * @param[in] gp Gauss point index
+       *
+       */
+      bool is_reestimation_possible(const unsigned int gp);
+
+      /*!
+       * @brief Reset tasks and construction of the preliminary plastic
        * predictor at a given Gauss point
        *
        * @param[in] gp Gauss point index
        * @param[in] aei_deftensors deformation tensors used within the AEI
        */
-      void pre_evaluate(const unsigned int gp,
+      void reset_and_construct_plastic_pred(const unsigned int gp,
           const AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors);
 
       //! pack method
@@ -1023,6 +1039,18 @@ namespace Mat
       void adapt_interpolation_interval_and_point(
           const unsigned int gp, const ErrorType& eval_err_type);
 
+      /// enum class: types of interpolation points which can be used to set the current
+      /// interpolation point
+      enum class CurrentInterpPointPreset
+      {
+        standard,  ///< standard current interpolation point between the lower and upper bound (\f$
+                   ///< \xi \gets \xi_{\text{E}} k_{scan} \left( \xi_{\text{P}} - \xi_{\text{P}}
+                   ///< \right) \f$)
+        elastic_predictor,  ///< elastic predictor (\f$ \xi \gets 0.0 \f$)
+        plastic_predictor,  ///< plastic predictor (\f$ \xi \gets 1.0 \f$)
+        starting_point,     ///< starting point (\f$ \xi \gets \hat{\xi} \f$)
+        intermediate_point  ///<  midpoint between lower bound and current interpolation point
+      };
 
       //! get current interpolation point at a specified Gauss point
       double current_interp_point(const unsigned int gp) const
@@ -1031,34 +1059,11 @@ namespace Mat
       }
 
 
-      //! set current interpolation point to the specified starting point at the specified Gauss
+      //! set current interpolation point at the specified Gauss
       //! point
-      void set_current_interp_point_to_starting_point(const unsigned int gp)
+      void set_current_interp_point(const unsigned int gp, const CurrentInterpPointPreset preset)
       {
-        interp_point_container_.set_current_interp_point(
-            gp, interp_point_container_.starting_point(gp));
-      }
-
-      //! set current interpolation point to the elastic predictor at the specified Gauss point
-      void set_current_interp_point_to_elastic_predictor(const unsigned int gp)
-      {
-        interp_point_container_.set_current_interp_point(gp, 0.0);
-      }
-
-      //! set current interpolation point to the plastic predictor at the specified Gauss point
-      void set_current_interp_point_to_plastic_predictor(const unsigned int gp)
-      {
-        interp_point_container_.set_current_interp_point(gp, 1.0);
-      }
-
-      //! set current interpolation point to the intermediate point (in the middle between the lower
-      //! bound and the current interpolation point) at the specified Gauss point
-      void set_current_interp_point_to_intermediate_point(const unsigned int gp)
-      {
-        const double intermediate_point = (interp_point_container_.lower_interp_bound(gp) +
-                                              interp_point_container_.current_interp_point(gp)) *
-                                          0.5;  // we use explicitly half here
-        interp_point_container_.set_current_interp_point(gp, intermediate_point);
+        interp_point_container_.set_current_interp_point(gp, preset);
       }
 
       //! get lower interpolation bound at the specified Gauss point
@@ -1080,19 +1085,35 @@ namespace Mat
         return interp_point_container_.upper_interp_bound(gp);
       }
 
-      //! increment number of re-estimations at the set Gauss point
-      void increment_num_reestimations() { ++num_reestimations_; }
-
-      //! disable further re-estimations at the set Gauss point, by setting the specific counter at
-      //! its maximum
-      void disable_further_reestimations() { num_reestimations_ = params_.max_num_reestimations; }
-
-
       //! set starting point at a specified Gauss point
       void set_starting_point(const unsigned gp, const double val)
       {
         interp_point_container_.set_starting_point(gp, val);
       }
+
+
+
+      //! increment number of re-estimations
+      void increment_num_reestimations() { ++num_reestimations_; }
+
+      //! disable further re-estimations, by setting the specific counter at
+      //! its maximum
+      void disable_further_reestimations()
+      {
+        num_reestimations_ = params_.max_num_reestimations + 1;
+      }
+
+      //! reset number of estimate interpolation iterations
+      void reset_num_estimate_interp_iters() { num_estimate_interp_iters_ = 0; }
+
+      //! increment number of estimate interpolation iterations
+      void increment_num_estimate_interp_iters() { ++num_estimate_interp_iters_; }
+
+      //! increment number of plastic predictor construction iterations
+      void increment_num_plastic_pred_construct_iters() { ++num_plastic_pred_construct_iters_; }
+
+      //! reset number of plastic predictor construction iterations
+      void reset_num_plastic_pred_construct_iters() { num_plastic_pred_construct_iters_ = 0; }
 
      private:
       //! enum class: shift direction for the interpolation
@@ -1133,10 +1154,12 @@ namespace Mat
          *
          * @param[in] starting_point_type specified starting point type
          * @param[in] starting_point_val user-set starting point
+         * @param[in] interval_scan_param interval scanning parameter for setting the current
+         * interpolation point between the bounds
          */
         InterpolationPointContainer(
             const AdaptiveEstimateInterpolationStartingPointType& starting_point_type,
-            const double starting_point_val);
+            const double starting_point_val, const double interval_scan_param);
 
         //! reset values at a given Gauss point
         void reset(const unsigned int gp);
@@ -1151,54 +1174,102 @@ namespace Mat
         void unpack(Core::Communication::UnpackBuffer& buffer);
 
         //! get current interpolation point at Gauss point
-        [[nodiscard]] double current_interp_point(unsigned int gp) const
+        [[nodiscard]] double current_interp_point(const unsigned int gp) const
         {
           FOUR_C_ASSERT(gp < current_interp_points_.size(), "GP index out of range");
           return current_interp_points_[gp];
         }
         //! set current interpolation point at Gauss point
-        void set_current_interp_point(unsigned int gp, double val)
+        void set_current_interp_point(const unsigned int gp, const CurrentInterpPointPreset preset)
         {
           FOUR_C_ASSERT(gp < current_interp_points_.size(), "GP index out of range");
-          current_interp_points_[gp] = val;
+          switch (preset)
+          {
+            case CurrentInterpPointPreset::standard:
+            {
+              current_interp_points_[gp] =
+                  lower_interp_bounds_[gp] +
+                  interval_scan_param_ * (upper_interp_bounds_[gp] - lower_interp_bounds_[gp]);
+              return;
+            }
+            case CurrentInterpPointPreset::elastic_predictor:
+            {
+              current_interp_points_[gp] = 0.0;
+              return;
+            }
+            case CurrentInterpPointPreset::plastic_predictor:
+            {
+              current_interp_points_[gp] = 1.0;
+              return;
+            }
+            case CurrentInterpPointPreset::starting_point:
+            {
+              current_interp_points_[gp] = starting_points_[gp];
+              return;
+            }
+            case CurrentInterpPointPreset::intermediate_point:
+            {
+              current_interp_points_[gp] =
+                  0.5 * (current_interp_points_[gp] + lower_interp_bounds_[gp]);
+              return;
+            }
+            default:
+              FOUR_C_THROW("Unsupported current interpolation point preset {}",
+                  EnumTools::enum_name(preset));
+          }
         }
 
         //! get lower interpolation bound at Gauss point
-        [[nodiscard]] double lower_interp_bound(unsigned int gp) const
+        [[nodiscard]] double lower_interp_bound(const unsigned int gp) const
         {
           FOUR_C_ASSERT(gp < lower_interp_bounds_.size(), "GP index out of range");
           return lower_interp_bounds_[gp];
         }
         //! set lower interpolation bound at Gauss point
-        void set_lower_interp_bound(unsigned int gp, double val)
+        void set_lower_interp_bound(const unsigned int gp, const double val)
         {
           FOUR_C_ASSERT(gp < lower_interp_bounds_.size(), "GP index out of range");
+          FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
+              "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set an "
+              "interpolation point to {}",
+              val);
+
           lower_interp_bounds_[gp] = val;
         }
 
         //! get upper interpolation bound at Gauss point
-        [[nodiscard]] double upper_interp_bound(unsigned int gp) const
+        [[nodiscard]] double upper_interp_bound(const unsigned int gp) const
         {
           FOUR_C_ASSERT(gp < upper_interp_bounds_.size(), "GP index out of range");
           return upper_interp_bounds_[gp];
         }
         //! set upper interpolation bound at Gauss point
-        void set_upper_interp_bound(unsigned int gp, double val)
+        void set_upper_interp_bound(const unsigned int gp, const double val)
         {
           FOUR_C_ASSERT(gp < upper_interp_bounds_.size(), "GP index out of range");
+          FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
+              "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set an "
+              "interpolation point to {}",
+              val);
+
           upper_interp_bounds_[gp] = val;
         }
 
         //! get starting point at Gauss point
-        [[nodiscard]] double starting_point(unsigned int gp) const
+        [[nodiscard]] double starting_point(const unsigned int gp) const
         {
           FOUR_C_ASSERT(gp < starting_points_.size(), "GP index out of range");
           return starting_points_[gp];
         }
         //! set starting point at Gauss point
-        void set_starting_point(unsigned int gp, double val)
+        void set_starting_point(const unsigned int gp, const double val)
         {
           FOUR_C_ASSERT(gp < last_interp_points_.size(), "GP index out of range");
+          FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
+              "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set an "
+              "interpolation point to {}",
+              val);
+
           starting_points_[gp] = val;
         }
 
@@ -1220,6 +1291,10 @@ namespace Mat
         //! accordingly)
         std::optional<double> user_set_starting_point_;
 
+        //! interval scanning parameter for setting the current interpolation point between its
+        //! bounds
+        const double interval_scan_param_;
+
         //! tracks whether the resizing function has been called, to set the current number of Gauss
         //! points exactly once!
         bool resize_called_{false};
@@ -1231,6 +1306,12 @@ namespace Mat
       //! tracks whether the resizing function has been called, to set the current number of
       //! Gauss points exactly once!
       bool resize_called_{false};
+
+      //! current number of plastic predictor construction iterations
+      unsigned int num_plastic_pred_construct_iters_;
+
+      //! current number of estimation interpolation iterations
+      unsigned int num_estimate_interp_iters_;
 
       //! current number of re-estimations
       unsigned int num_reestimations_;
