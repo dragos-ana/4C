@@ -1055,7 +1055,9 @@ namespace Mat
       //! get current interpolation point at a specified Gauss point
       double current_interp_point(const unsigned int gp) const
       {
-        return interp_point_container_.current_interp_point(gp);
+        FOUR_C_ASSERT(
+            gp < interp_point_container_.current_interp_points_.size(), "GP index out of range");
+        return interp_point_container_.current_interp_points[gp];
       }
 
 
@@ -1063,34 +1065,92 @@ namespace Mat
       //! point
       void set_current_interp_point(const unsigned int gp, const CurrentInterpPointPreset preset)
       {
-        interp_point_container_.set_current_interp_point(gp, preset);
+        FOUR_C_ASSERT(
+            gp < interp_point_container_.current_interp_points.size(), "GP index out of range");
+        switch (preset)
+        {
+          case CurrentInterpPointPreset::standard:
+          {
+            interp_point_container_.current_interp_points[gp] =
+                interp_point_container_.lower_interp_bounds[gp] +
+                params_.interval_scanning_param *
+                    (interp_point_container_.upper_interp_bounds[gp] -
+                        interp_point_container_.lower_interp_bounds[gp]);
+            return;
+          }
+          case CurrentInterpPointPreset::elastic_predictor:
+          {
+            interp_point_container_.current_interp_points[gp] = 0.0;
+            return;
+          }
+          case CurrentInterpPointPreset::plastic_predictor:
+          {
+            interp_point_container_.current_interp_points[gp] = 1.0;
+            return;
+          }
+          case CurrentInterpPointPreset::starting_point:
+          {
+            interp_point_container_.current_interp_points[gp] =
+                interp_point_container_.starting_points[gp];
+            return;
+          }
+          case CurrentInterpPointPreset::intermediate_point:
+          {
+            interp_point_container_.current_interp_points[gp] =
+                0.5 * (interp_point_container_.current_interp_points[gp] +
+                          interp_point_container_.lower_interp_bounds[gp]);
+            return;
+          }
+          default:
+            FOUR_C_THROW(
+                "Unsupported current interpolation point preset {}", EnumTools::enum_name(preset));
+        }
       }
 
       //! get lower interpolation bound at the specified Gauss point
       [[nodiscard]] double lower_interp_bound(const unsigned int gp) const
       {
-        return interp_point_container_.lower_interp_bound(gp);
+        FOUR_C_ASSERT(
+            gp < interp_point_container_.lower_interp_bounds.size(), "GP index out of range");
+        return interp_point_container_.lower_interp_bounds[gp];
       }
 
       //! set lower interpolation bound to current interpolation point at the specified Gauss point
       void set_lower_interp_bound_to_current_interp_point(const unsigned int gp)
       {
-        interp_point_container_.set_lower_interp_bound(
-            gp, interp_point_container_.current_interp_point(gp));
+        FOUR_C_ASSERT(
+            gp < interp_point_container_.lower_interp_bounds.size(), "GP index out of range");
+
+        interp_point_container_.lower_interp_bounds[gp] =
+            interp_point_container_.current_interp_points[gp];
       }
 
       //! get upper interpolation bound at the specified Gauss point
       [[nodiscard]] double upper_interp_bound(const unsigned int gp) const
       {
-        return interp_point_container_.upper_interp_bound(gp);
+        FOUR_C_ASSERT(
+            gp < interp_point_container_.upper_interp_bounds.size(), "GP index out of range");
+        return interp_point_container_.upper_interp_bounds[gp];
+      }
+
+      //! get starting point at the specified Gauss point
+      [[nodiscard]] double starting_point(const unsigned int gp) const
+      {
+        FOUR_C_ASSERT(gp < interp_point_container_.starting_points.size(), "GP index out of range");
+        return interp_point_container_.starting_points[gp];
       }
 
       //! set starting point at a specified Gauss point
       void set_starting_point(const unsigned gp, const double val)
       {
-        interp_point_container_.set_starting_point(gp, val);
-      }
+        FOUR_C_ASSERT(gp < interp_point_container_.starting_points.size(), "GP index out of range");
+        FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
+            "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set the "
+            "starting point to {}",
+            val);
 
+        interp_point_container_.starting_points[gp] = val;
+      }
 
 
       //! increment number of re-estimations
@@ -1145,8 +1205,8 @@ namespace Mat
         }
       }
 
-      //! class: container of interpolation points / bounds for all Gauss points
-      class InterpolationPointContainer
+      //! struct: container of interpolation points / bounds for all Gauss points
+      struct InterpolationPointContainer
       {
        public:
         /*!
@@ -1159,7 +1219,7 @@ namespace Mat
          */
         InterpolationPointContainer(
             const AdaptiveEstimateInterpolationStartingPointType& starting_point_type,
-            const double starting_point_val, const double interval_scan_param);
+            const double starting_point_val);
 
         //! reset values at a given Gauss point
         void reset(const unsigned int gp);
@@ -1173,131 +1233,25 @@ namespace Mat
         //! unpack method
         void unpack(Core::Communication::UnpackBuffer& buffer);
 
-        //! get current interpolation point at Gauss point
-        [[nodiscard]] double current_interp_point(const unsigned int gp) const
-        {
-          FOUR_C_ASSERT(gp < current_interp_points_.size(), "GP index out of range");
-          return current_interp_points_[gp];
-        }
-        //! set current interpolation point at Gauss point
-        void set_current_interp_point(const unsigned int gp, const CurrentInterpPointPreset preset)
-        {
-          FOUR_C_ASSERT(gp < current_interp_points_.size(), "GP index out of range");
-          switch (preset)
-          {
-            case CurrentInterpPointPreset::standard:
-            {
-              current_interp_points_[gp] =
-                  lower_interp_bounds_[gp] +
-                  interval_scan_param_ * (upper_interp_bounds_[gp] - lower_interp_bounds_[gp]);
-              return;
-            }
-            case CurrentInterpPointPreset::elastic_predictor:
-            {
-              current_interp_points_[gp] = 0.0;
-              return;
-            }
-            case CurrentInterpPointPreset::plastic_predictor:
-            {
-              current_interp_points_[gp] = 1.0;
-              return;
-            }
-            case CurrentInterpPointPreset::starting_point:
-            {
-              current_interp_points_[gp] = starting_points_[gp];
-              return;
-            }
-            case CurrentInterpPointPreset::intermediate_point:
-            {
-              current_interp_points_[gp] =
-                  0.5 * (current_interp_points_[gp] + lower_interp_bounds_[gp]);
-              return;
-            }
-            default:
-              FOUR_C_THROW("Unsupported current interpolation point preset {}",
-                  EnumTools::enum_name(preset));
-          }
-        }
-
-        //! get lower interpolation bound at Gauss point
-        [[nodiscard]] double lower_interp_bound(const unsigned int gp) const
-        {
-          FOUR_C_ASSERT(gp < lower_interp_bounds_.size(), "GP index out of range");
-          return lower_interp_bounds_[gp];
-        }
-        //! set lower interpolation bound at Gauss point
-        void set_lower_interp_bound(const unsigned int gp, const double val)
-        {
-          FOUR_C_ASSERT(gp < lower_interp_bounds_.size(), "GP index out of range");
-          FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
-              "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set an "
-              "interpolation point to {}",
-              val);
-
-          lower_interp_bounds_[gp] = val;
-        }
-
-        //! get upper interpolation bound at Gauss point
-        [[nodiscard]] double upper_interp_bound(const unsigned int gp) const
-        {
-          FOUR_C_ASSERT(gp < upper_interp_bounds_.size(), "GP index out of range");
-          return upper_interp_bounds_[gp];
-        }
-        //! set upper interpolation bound at Gauss point
-        void set_upper_interp_bound(const unsigned int gp, const double val)
-        {
-          FOUR_C_ASSERT(gp < upper_interp_bounds_.size(), "GP index out of range");
-          FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
-              "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set an "
-              "interpolation point to {}",
-              val);
-
-          upper_interp_bounds_[gp] = val;
-        }
-
-        //! get starting point at Gauss point
-        [[nodiscard]] double starting_point(const unsigned int gp) const
-        {
-          FOUR_C_ASSERT(gp < starting_points_.size(), "GP index out of range");
-          return starting_points_[gp];
-        }
-        //! set starting point at Gauss point
-        void set_starting_point(const unsigned int gp, const double val)
-        {
-          FOUR_C_ASSERT(gp < last_interp_points_.size(), "GP index out of range");
-          FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
-              "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set an "
-              "interpolation point to {}",
-              val);
-
-          starting_points_[gp] = val;
-        }
-
-
-       private:
         //! current interpolation point \f$ \xi \f$ for all Gauss points
-        std::vector<double> current_interp_points_;
+        std::vector<double> current_interp_points;
 
         //! lower interpolation bound \f$ \xi_{\text{E}} \f$ for all Gauss points
-        std::vector<double> lower_interp_bounds_;
+        std::vector<double> lower_interp_bounds;
 
         //! upper interpolation bound \f$ \xi_{\text{P}} \f$ for all Gauss points
-        std::vector<double> upper_interp_bounds_;
+        std::vector<double> upper_interp_bounds;
 
         //! starting points for interpolation \f$ \hat{\xi} \f$ for all Gauss points
-        std::vector<double> starting_points_;
+        std::vector<double> starting_points;
 
         //! constant user-set starting point (exists only if the starting point type is set
         //! accordingly)
-        std::optional<double> user_set_starting_point_;
+        std::optional<double> user_set_starting_point;
 
-        //! interval scanning parameter for setting the current interpolation point between its
-        //! bounds
-        const double interval_scan_param_;
-
-        //! tracks whether the resizing function has been called, to set the current number of Gauss
-        //! points exactly once!
-        bool resize_called_{false};
+        //! tracks whether the resizing function has been called, to set the current number of
+        //! Gauss points exactly once!
+        bool resize_called{false};
       };
 
       //! Adaptive Estimate Interpolation parameters
