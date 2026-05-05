@@ -3093,7 +3093,7 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                                 "error is "
                                                 "thrown",
                                     .default_value = false}),
-                            parameter<double>("FAILURE_REL_YIELD_STRESS_DEVIATION",
+                            parameter<double>("FAILURE_RELATIVE_YIELD_STRESS_DEVIATION",
                                 {.description = "maximum relative yield stress deviation, "
                                                 "deciding whether the state is too elastic (i.e., "
                                                 "shifted towards the elastic predictor) or too "

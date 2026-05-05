@@ -23,6 +23,8 @@
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
+#include <algorithm>
+#include <array>
 #include <format>
 #include <map>
 #include <optional>
@@ -75,8 +77,9 @@ namespace Mat
       failed_matrix_exp_evaluation,   ///< failed evaluation of the matrix exponential or its
                                       ///< derivative
       failed_right_cg_interpolation,  ///< failed interpolation of the right Cauchy-Green tensor
-      under_yield_surface  ///< mechanical state is "under" the yield surface, i.e., the evaluated
-                           ///< stress is smaller than the yield stress
+      under_yield_surface,  ///< mechanical state is "under" the yield surface, i.e., the evaluated
+                            ///< stress is smaller than the yield stress
+      failed_estimate_interpolation  ///< failed adaptive estimate interpolation
     };
 
 
@@ -319,7 +322,7 @@ namespace Mat
       [[nodiscard]] std::string get_info() const
       {
         std::string out;
-        out += "Substepping info: \n";
+        out += "\nSubstepping info: \n";
         out += std::format(
             "t: {}, substep_counter: {}, curr_dt: {}, time_step_halving_counter: {}, "
             "total_num_of_substeps: {} \n",
@@ -745,7 +748,7 @@ namespace Mat
       //! maximum relative yield stress deviation within the integration failure strategy, deciding
       //! whether the state is too elastic (i.e., shifted too much towards the elastic predictor) or
       //! too plastic
-      const double failure_rel_yield_stress_deviation;
+      const double failure_relative_yield_stress_deviation;
 
       //! maximum number of iterations for hardening integration
       const unsigned int max_iter_integration;
@@ -945,6 +948,25 @@ namespace Mat
       //! resize method: set the correct number of Gauss Points
       void resize(const unsigned int num_gp);
 
+      //! get info as string
+      [[nodiscard]] std::string get_info(const unsigned int gp) const
+      {
+        std::string out;
+        out += "\nAdaptive estimate interpolation info: \n";
+        out += std::format(
+            "number of plastic predictor construction iterations: {} / {}, number of estimate "
+            "interpolation iterations: {} / {}, number of re-estimations: {} / {}, interpolation "
+            "interval: [{}, {}] / {}, "
+            "current interpolation point: {} \n",
+            num_plastic_pred_construct_iters_, params_.max_num_plastic_pred_construct_iters,
+            num_estimate_interp_iters_, params_.max_num_estimate_interp_iters, num_reestimations_,
+            params_.max_num_reestimations, lower_interp_bound(gp), upper_interp_bound(gp),
+            params_.min_interp_interval, current_interp_point(gp));
+        return out;
+      };
+
+
+
       /*!
        * @brief Verify whether plastic predictor construction is still possible, based on the set
        * maximum number of iterations
@@ -980,7 +1002,7 @@ namespace Mat
        * @param[in] gp Gauss point index
        * @param[in] aei_deftensors deformation tensors used within the AEI
        */
-      void reset_and_construct_plastic_pred(const unsigned int gp,
+      void reset_and_construct_prelim_plastic_pred(const unsigned int gp,
           const AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors);
 
       //! pack method
@@ -1140,16 +1162,50 @@ namespace Mat
         return interp_point_container_.starting_points[gp];
       }
 
-      //! set starting point at a specified Gauss point
-      void set_starting_point(const unsigned gp, const double val)
+      //! set starting point at a specified Gauss point, based on the set starting point type
+      void set_starting_point(const unsigned gp, std::optional<double> val)
       {
         FOUR_C_ASSERT(gp < interp_point_container_.starting_points.size(), "GP index out of range");
-        FOUR_C_ASSERT(0.0 <= val && val <= 1.0,
-            "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set the "
-            "starting point to {}",
-            val);
+        switch (params_.starting_point_type)
+        {
+          case AdaptiveEstimateInterpolationStartingPointType::user_set:
+          {
+            FOUR_C_ASSERT_ALWAYS(!val.has_value(),
+                "The starting point should not be set by value for the starting point type {}",
+                EnumTools::enum_name(params_.starting_point_type));
 
-        interp_point_container_.starting_points[gp] = val;
+            interp_point_container_.starting_points[gp] = params_.user_set_starting_point;
+            return;
+          }
+          case AdaptiveEstimateInterpolationStartingPointType::last_interpolation_point:
+          {
+            FOUR_C_ASSERT_ALWAYS(!val.has_value(),
+                "The starting point should not be set by value for the starting point type {}",
+                EnumTools::enum_name(params_.starting_point_type));
+
+
+            interp_point_container_.starting_points[gp] =
+                interp_point_container_.current_interp_points[gp];
+            return;
+          }
+          case AdaptiveEstimateInterpolationStartingPointType::optimal_equiv_stress:
+          {
+            FOUR_C_ASSERT_ALWAYS(val.has_value(),
+                "No value has been provided for the starting point value for the starting point "
+                "type {}",
+                EnumTools::enum_name(params_.starting_point_type));
+            FOUR_C_ASSERT_ALWAYS(0.0 <= val.value() && val.value() <= 1.0,
+                "Interpolation is restricted to the interval [0.0, 1.0]! You attempt to set the "
+                "starting point to {}",
+                val.value());
+
+            interp_point_container_.starting_points[gp] = val.value();
+            return;
+          }
+          default:
+            FOUR_C_THROW("Starting point type {} not yet supported!",
+                EnumTools::enum_name(params_.starting_point_type));
+        }
       }
 
 
@@ -1212,17 +1268,13 @@ namespace Mat
         /*!
          * @brief Constructor
          *
-         * @param[in] starting_point_type specified starting point type
-         * @param[in] starting_point_val user-set starting point
-         * @param[in] interval_scan_param interval scanning parameter for setting the current
-         * interpolation point between the bounds
+         * @param[in] aei_params parameters for adaptive estimate interpolation
          */
-        InterpolationPointContainer(
-            const AdaptiveEstimateInterpolationStartingPointType& starting_point_type,
-            const double starting_point_val);
+        InterpolationPointContainer(const AdaptiveEstimateInterpolationParams& aei_params);
 
-        //! reset values at a given Gauss point
-        void reset(const unsigned int gp);
+        //! reset interpolation interval and set the current interpolation point to its saved
+        //! starting point at a given Gauss point
+        void reset_bounds_and_current_interp_point(const unsigned int gp);
 
         //! resizing based on a given number of Gauss points
         void resize(const unsigned int numgp);
@@ -1244,10 +1296,6 @@ namespace Mat
 
         //! starting points for interpolation \f$ \hat{\xi} \f$ for all Gauss points
         std::vector<double> starting_points;
-
-        //! constant user-set starting point (exists only if the starting point type is set
-        //! accordingly)
-        std::optional<double> user_set_starting_point;
 
         //! tracks whether the resizing function has been called, to set the current number of
         //! Gauss points exactly once!
