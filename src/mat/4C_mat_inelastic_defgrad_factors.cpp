@@ -468,6 +468,8 @@ namespace
           .interval_scanning_param = 0.0,
           .max_num_reestimations = 0,
           .min_reestimation_interval = 0.0,
+          .precondition_elastic_pred = false,
+          .tol_precondition_elastic_pred = 0.0,
           .hardening_params = dummy_hardening_params};
     }
 
@@ -525,6 +527,10 @@ namespace
             matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP").get<int>("MAX_NUM_REESTIMATIONS")),
         .min_reestimation_interval = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
             .get<double>("MIN_REESTIMATION_INTERVAL"),
+        .precondition_elastic_pred = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<bool>("PRECONDITION_ELASTIC_PRED"),
+        .tol_precondition_elastic_pred = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<double>("TOL_PRECONDITION_ELASTIC_PRED"),
         .hardening_params = hardening_params};
   }
 

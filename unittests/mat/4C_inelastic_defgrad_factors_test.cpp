@@ -1320,6 +1320,10 @@ namespace
             .add("MAX_NUM_REESTIMATIONS", static_cast<int>(aei_params->max_num_reestimations));
         material_data.group("ADAPTIVE_ESTIMATE_INTERP")
             .add("MIN_REESTIMATION_INTERVAL", aei_params->min_reestimation_interval);
+        material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+            .add("PRECONDITION_ELASTIC_PRED", aei_params->precondition_elastic_pred);
+        material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+            .add("TOL_PRECONDITION_ELASTIC_PRED", aei_params->tol_precondition_elastic_pred);
       }
       else
       {
@@ -2561,6 +2565,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 10,
         .min_reestimation_interval = 1.0e-5,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
         .hardening_params = hardening_params};
     std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material_aei;
     set_up_local_newton_material(
@@ -2603,6 +2609,8 @@ namespace
         .interval_scanning_param = aei_params.interval_scanning_param,
         .max_num_reestimations = aei_params.max_num_reestimations,
         .min_reestimation_interval = aei_params.min_reestimation_interval,
+        .precondition_elastic_pred = aei_params.precondition_elastic_pred,
+        .tol_precondition_elastic_pred = aei_params.tol_precondition_elastic_pred,
         .hardening_params = hardening_params_no_hardening};
     std::shared_ptr<Mat::InelasticDefgradTransvIsotropElastViscoplast> material_aei_no_hardening;
     set_up_local_newton_material(local_newton_params, material_params_aei_no_hardening,

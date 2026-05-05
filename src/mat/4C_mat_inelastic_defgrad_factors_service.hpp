@@ -808,9 +808,20 @@ namespace Mat
       //! candidate within the re-estimation procedure
       const double min_reestimation_interval;
 
+      //! precondition the elastic deformation gradient within the elastic predictor to
+      //! stabilize interpolation, i.e., components smaller than a set tolerance are set to 0.0 to
+      //! avoid unnecessary, "numerical" rotations
+      const bool precondition_elastic_pred;
+
+      //! tolerance for preconditioning the elastic deformation gradient within the elastic
+      //! predictor to stabilize interpolation
+      const double tol_precondition_elastic_pred;
+
+
       //! hardening parameters
       const AdaptiveEstimateInterpolationHardeningParams hardening_params;
     };
+
 
     //! class: interpolator of elastic deformation gradients between the elastic and plastic
     //! predictors as presented in Ana, Schmidt, Wall: Adaptive
@@ -840,14 +851,15 @@ namespace Mat
        *
        *
        * @param[in] gp Gauss point index
-       * @param[in] aei_deftensors deformation tensors used within the AEI
+       * @param[in] elastic_defgrad_elastic_pred elastic deformation gradient within the elastic
+       * predictor
        * @param[in] aei_params parameters for the AEI procedure (containing plastic predictor
        * specifications)
        * @param[in] last_elastic_defgrad elastic deformation gradient at the previous time instant
        * \f$ t_{n} \f$
        */
       void construct_prelim_plastic_pred(const unsigned int gp,
-          const AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+          const Core::LinAlg::Matrix<3, 3>& elastic_defgrad_elastic_pred,
           const AdaptiveEstimateInterpolationParams& aei_params);
 
 

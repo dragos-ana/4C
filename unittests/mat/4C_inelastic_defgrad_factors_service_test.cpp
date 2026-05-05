@@ -78,6 +78,8 @@ namespace
         .interval_scanning_param = 0.0,
         .max_num_reestimations = 0,
         .min_reestimation_interval = 0.0,
+        .precondition_elastic_pred = false,
+        .tol_precondition_elastic_pred = 0.0,
         .hardening_params = hardening_params};
 
 
@@ -158,7 +160,8 @@ namespace
     FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
-    pred_interpolator.construct_prelim_plastic_pred(gp, aei_deftensors, aei_params);
+    pred_interpolator.construct_prelim_plastic_pred(
+        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params);
 
     // verify whether both predictors are initialized consistently
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
@@ -202,7 +205,8 @@ namespace
     FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
-    pred_interpolator.construct_prelim_plastic_pred(gp, aei_deftensors, aei_params);
+    pred_interpolator.construct_prelim_plastic_pred(
+        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params);
 
     // verify whether both predictors are initialized consistently
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
@@ -238,7 +242,8 @@ namespace
     FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
-    pred_interpolator.construct_prelim_plastic_pred(gp, aei_deftensors, aei_params);
+    pred_interpolator.construct_prelim_plastic_pred(
+        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params);
 
     // verify whether both predictors are initialized consistently
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
@@ -252,6 +257,101 @@ namespace
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 1.0),
         compute_full_defgrad(R, Q, lambda_plastic_pred_ref), 1.0e-8);
   }
+
+
+  /// tests the preconditioning procedure for the elastic deformation gradient within the predictor
+  /// interpolator used for the adaptive estimate interpolation
+  TEST_F(InelasticDefgradFactorsServiceTest, TestPredictorInterpolatorPreconditioning)
+  {
+    // construct predictor interpolator with a single Gauss point
+    ViscoplastUtils::PredictorInterpolator pred_interpolator{};
+    const unsigned int gp = 0;
+
+
+    // setup adaptive estimate interpolation parameters
+    ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams hardening_params{
+        .method = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::use_previous,
+        .allow_integration_failure = false,
+        .failure_relative_yield_stress_deviation = 0.0,
+        .max_iter_integration = 0,
+        .tol_integration = 0.0,
+    };
+    ViscoplastUtils::AdaptiveEstimateInterpolationParams aei_params_no_precondition{
+        .starting_point_type =
+            ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::user_set,
+        .user_set_starting_point = 0.0,
+        .plastic_pred_elastic_stretch_eigenval_type =
+            ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType::scale_unit,
+        .plastic_pred_elastic_stretch_eigenvect_type =
+            ViscoplastUtils::PlasticPredictorElasticStretchEigenvectType::from_elastic_predictor,
+        .plastic_pred_elastic_rotation_type =
+            ViscoplastUtils::PlasticPredictorElasticRotationType::from_elastic_predictor,
+        .max_num_plastic_pred_construct_iters = 0,
+        .max_relative_yield_stress_deviation = 0.0,
+        .max_num_estimate_interp_iters = 0,
+        .min_interp_interval = 0.0,
+        .interval_scanning_param = 0.0,
+        .max_num_reestimations = 0,
+        .min_reestimation_interval = 0.0,
+        .precondition_elastic_pred = false,
+        .tol_precondition_elastic_pred = 0.0,
+        .hardening_params = hardening_params};
+    ViscoplastUtils::AdaptiveEstimateInterpolationParams aei_params_precondition{
+        .starting_point_type = aei_params_no_precondition.starting_point_type,
+        .user_set_starting_point = aei_params_no_precondition.user_set_starting_point,
+        .plastic_pred_elastic_stretch_eigenval_type =
+            aei_params_no_precondition.plastic_pred_elastic_stretch_eigenval_type,
+        .plastic_pred_elastic_stretch_eigenvect_type =
+            aei_params_no_precondition.plastic_pred_elastic_stretch_eigenvect_type,
+        .plastic_pred_elastic_rotation_type =
+            aei_params_no_precondition.plastic_pred_elastic_rotation_type,
+        .max_num_plastic_pred_construct_iters =
+            aei_params_no_precondition.max_num_plastic_pred_construct_iters,
+        .max_relative_yield_stress_deviation =
+            aei_params_no_precondition.max_relative_yield_stress_deviation,
+        .max_num_estimate_interp_iters = aei_params_no_precondition.max_num_estimate_interp_iters,
+        .min_interp_interval = aei_params_no_precondition.min_interp_interval,
+        .interval_scanning_param = aei_params_no_precondition.interval_scanning_param,
+        .max_num_reestimations = aei_params_no_precondition.max_num_reestimations,
+        .min_reestimation_interval = aei_params_no_precondition.min_reestimation_interval,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
+        .hardening_params = aei_params_no_precondition.hardening_params};
+
+    // auxiliaries
+    Core::LinAlg::Matrix<3, 3> unit_3x3{Core::LinAlg::Initialization::zero};
+    unit_3x3(0, 0) = unit_3x3(1, 1) = unit_3x3(2, 2) = 1.0;
+
+    // setup previous inelastic defgrad, and deformation gradient
+    Core::LinAlg::Matrix<3, 3> last_inv_inelastic_defgrad{unit_3x3};
+    Core::LinAlg::Matrix<3, 3> defgrad{Core::LinAlg::Initialization::zero};
+    defgrad(0, 0) = 2.0;
+    defgrad(1, 1) = defgrad(2, 2) = 1.0;
+    defgrad(0, 1) = defgrad(1, 0) = 1.0e-14;
+
+
+    // check the elastic predictor
+    ViscoplastUtils::AdaptiveEstimateInterpolationDeformationTensors aei_deftensors(
+        defgrad, last_inv_inelastic_defgrad);
+    FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
+
+    // construct preliminary plastic predictor and verify interpolated matrix at point 0.0 (=elastic
+    // predictor)
+    pred_interpolator.construct_prelim_plastic_pred(
+        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params_no_precondition);
+    FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
+        aei_deftensors.elastic_predictor_elastic_defgrad, 1.0e-15);
+    Core::LinAlg::Matrix<3, 3> preconditioned_elastic_defgrad_elastic_predictor{
+        aei_deftensors.elastic_predictor_elastic_defgrad};
+
+    pred_interpolator.construct_prelim_plastic_pred(
+        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params_precondition);
+    preconditioned_elastic_defgrad_elastic_predictor(0, 1) =
+        preconditioned_elastic_defgrad_elastic_predictor(1, 0) = 0.0;
+    FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
+        preconditioned_elastic_defgrad_elastic_predictor, 1.0e-15);
+  }
+
 
 
   /// tests the bookkeeping of iterations / intervals / re-estimations within the adaptive estimate
@@ -286,6 +386,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 1,
         .min_reestimation_interval = 1.0e-5,
+        .precondition_elastic_pred = false,
+        .tol_precondition_elastic_pred = 0.0,
         .hardening_params = hardening_params};
 
 
@@ -397,6 +499,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 0,
         .min_reestimation_interval = 0.0,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
         .hardening_params = hardening_params};
 
 
@@ -599,6 +703,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 0,
         .min_reestimation_interval = 0.0,
+        .precondition_elastic_pred = false,
+        .tol_precondition_elastic_pred = 0.0,
         .hardening_params = hardening_params};
     ViscoplastUtils::AdaptiveEstimateInterpolationManager aei_manager_user_set(aei_params_user_set);
     construct_plastic_predictor_and_set_starting_point(aei_manager_user_set);
@@ -630,6 +736,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 0,
         .min_reestimation_interval = 0.0,
+        .precondition_elastic_pred = false,
+        .tol_precondition_elastic_pred = 0.0,
         .hardening_params = hardening_params};
     ViscoplastUtils::AdaptiveEstimateInterpolationManager aei_manager_last(aei_params_last);
     construct_plastic_predictor_and_set_starting_point(aei_manager_last);
@@ -662,6 +770,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 0,
         .min_reestimation_interval = 0.0,
+        .precondition_elastic_pred = false,
+        .tol_precondition_elastic_pred = 0.0,
         .hardening_params = hardening_params};
     ViscoplastUtils::AdaptiveEstimateInterpolationManager aei_manager_optimal_equiv_stress(
         aei_params_optimal_equiv_stress);

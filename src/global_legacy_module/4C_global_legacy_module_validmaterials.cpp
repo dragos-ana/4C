@@ -3067,6 +3067,18 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                                                      "procedure",
                                                          .default_value = 1.0e-5,
                                                          .validator = positive<double>()}),
+                    parameter<bool>("PRECONDITION_ELASTIC_PRED",
+                        {.description = "precondition the elastic deformation gradient within the "
+                                        "elastic predictor to stabilize interpolation, i.e., "
+                                        "components smaller than a set tolerance are set to 0.0 to "
+                                        "avoid unnecessary, 'numerical' rotations",
+                            .default_value = true}),
+                    parameter<double>("TOL_PRECONDITION_ELASTIC_PRED",
+                        {.description = "tolerance for preconditioning the elastic "
+                                        "deformation gradient within the elastic predictor "
+                                        "to stabilize interpolation",
+                            .default_value = 1.0e-13,
+                            .validator = positive<double>()}),
                     group("HARDENING_PARAMS",
                         {
                             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::

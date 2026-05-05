@@ -99,6 +99,21 @@ namespace
   }
 
 
+  // precondition matrix: values smaller than a set tolerance are set to 0.0
+  void precondition_matrix(Core::LinAlg::Matrix<3, 3>& input_matrix, const double tol)
+  {
+    for (unsigned i = 0; i < 3; ++i)
+    {
+      for (unsigned j = 0; j < 3; ++j)
+      {
+        if (std::abs(input_matrix(i, j)) < tol)
+        {
+          input_matrix(i, j) = 0.0;
+        }
+      }
+    }
+  }
+
 }  // namespace
 
 
@@ -652,7 +667,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorInterpolator::
     construct_prelim_plastic_pred(const unsigned int gp,
-        const AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const Core::LinAlg::Matrix<3, 3>& elastic_defgrad_elastic_pred,
         const AdaptiveEstimateInterpolationParams& aei_params)
 {
   // consistency checks
@@ -660,13 +675,19 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorInterpolat
       "Inconsistent Gauss point index {}, with set Gauss point size {}", gp,
       eigenval_elast_pred_.size());
 
-
+  // get elastic deformation gradient to be considered as elastic predictor
+  Core::LinAlg::Matrix<3, 3> precond_elastic_defgrad_elastic_pred{elastic_defgrad_elastic_pred};
+  if (aei_params.precondition_elastic_pred)
+  {
+    precondition_matrix(
+        precond_elastic_defgrad_elastic_pred, aei_params.tol_precondition_elastic_pred);
+  }
 
   //  perform polar-spectral decomposition of elastic defgrad within elastic predictor
   Core::LinAlg::Matrix<3, 3> material_stretch_elast_pred{Core::LinAlg::Initialization::zero};
   Core::LinAlg::Matrix<3, 3> eigenval_elast_pred_temp{Core::LinAlg::Initialization::zero};
   std::array<std::pair<double, Core::LinAlg::Matrix<3, 1>>, 3> spectral_pairs_elast_pred;
-  Core::LinAlg::matrix_3x3_polar_decomposition(aei_deftensors.elastic_predictor_elastic_defgrad,
+  Core::LinAlg::matrix_3x3_polar_decomposition(precond_elastic_defgrad_elastic_pred,
       rot_elast_pred_[gp], material_stretch_elast_pred, eigenval_elast_pred_temp,
       spectral_pairs_elast_pred);
   for (int i = 0; i < 3; ++i)
@@ -721,7 +742,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorInterpolat
   }
 
   // elastic stretch eigenvalues
-  const double detF = aei_deftensors.defgrad.determinant();
+  const double detF = precond_elastic_defgrad_elastic_pred.determinant();
   switch (aei_params.plastic_pred_elastic_stretch_eigenval_type)
   {
     case PlasticPredictorElasticStretchEigenvalType::scale_unit:
@@ -925,7 +946,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
 
 
   // construct the preliminary predictor
-  predictor_interpolator_.construct_prelim_plastic_pred(gp, aei_deftensors, params_);
+  predictor_interpolator_.construct_prelim_plastic_pred(
+      gp, aei_deftensors.elastic_predictor_elastic_defgrad, params_);
 }
 
 /*--------------------------------------------------------------------*
