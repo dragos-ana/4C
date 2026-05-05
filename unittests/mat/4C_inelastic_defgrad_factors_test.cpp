@@ -1811,7 +1811,7 @@ namespace
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
         material.params->local_newton_params());
 
-    EXPECT_EQ(local_newton_manager.iter(), 0);
+    EXPECT_EQ(local_newton_manager.iter(), 1);
     EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 1);
     EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
 
@@ -1821,13 +1821,21 @@ namespace
     EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
     EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
 
-    local_newton_manager.set_iteration_count(4);
+    Core::LinAlg::Matrix<10, 1> one_10x1{Core::LinAlg::Initialization::zero};
+    for (unsigned int i = 0; i < 10; ++i) one_10x1(i) = 1.0;
+
+    local_newton_manager.init_local_newton(one_10x1, true);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
     local_newton_manager.update_after_local_newton(1);
     EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 4);
 
-    local_newton_manager.set_iteration_count(2);
+
+    local_newton_manager.init_local_newton(one_10x1, false);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
     local_newton_manager.update_after_local_newton(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 6);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 9);
 
     local_newton_manager.reset();
     EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);

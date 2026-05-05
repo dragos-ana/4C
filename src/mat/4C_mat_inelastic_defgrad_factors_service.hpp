@@ -539,7 +539,7 @@ namespace Mat
       double residual_norm;
 
       //! ratio of solution increment to current solution: \f$ \frac{\left| \Delta
-      //! \boldsymbol{s}^{l+1} \right|}{\left| \boldsymbol{s}^{l} \right|}  \f$
+      //! \boldsymbol{s}^{l} \right|}{\left| \boldsymbol{s}^{l} \right|}  \f$
       double increment_norm;
     };
 
@@ -574,6 +574,7 @@ namespace Mat
       const double max_exceedance_fact_incr_tol;
     };
 
+
     //! class for managing the Local Newton loop, containing the utilized parameters and iteration
     //! data
     class LocalNewtonManager
@@ -594,9 +595,6 @@ namespace Mat
       /// getter for local iteration count
       [[nodiscard]] unsigned int iter() const { return iter_; }
 
-      /// setter for local iteration count
-      void set_iteration_count(const unsigned int iter) { iter_ = iter; }
-
       /// getter for total number of local iterations evaluated in this time step (vector over all
       /// Gauss points)
       [[nodiscard]] const std::vector<unsigned int>& curr_num_iters() const
@@ -604,15 +602,71 @@ namespace Mat
         return curr_num_iters_;
       }
 
-      /// increment iteration count by 1
-      void increment_iteration_count() { iter_++; }
-
       /*!
        * @brief Resizing based on a given number of Gauss points
        *
        * @param[in] numgp Number of Gauss points
        */
       void resize(const unsigned int numgp);
+
+      /*!
+       * @brief Initialize the solution vector, and the iteration counter (optional), for the
+       * subsequent Local Newton at the currently considered Gauss point
+       *
+       * @param[in] init_estimate initial estimate \f$ \boldsymbol{s}^{(0)} \f$
+       * @param[in] reset_iter_counter reset the iteration counter?
+       */
+      void init_local_newton(
+          const Core::LinAlg::Matrix<10, 1>& init_estimate, const bool reset_iter_counter);
+
+      /// sets the residual norm based on the given residual vector
+      void set_residual_norm(const Core::LinAlg::Matrix<10, 1>& residual)
+      {
+        convergence_quantities_.residual_norm = residual.norm2();
+      }
+
+      /*!
+       * @brief Determine whether the Local Newton Loop has converged, based on the saved
+       * convergence quantities and the specified convergence checks.
+       *
+       * @return boolean: true = converged
+       */
+      [[nodiscard]] bool is_local_newton_converged() const;
+
+
+      /*!
+       * @brief   After an unsuccessful convergence check: determine whether the Local Newton is
+       * stuck, i.e., the relative solution increment is nearly 0, but there is no convergence yet,
+       * based on the saved convergence quantities.
+       *
+       * @return boolean: true = stuck
+       */
+      [[nodiscard]] bool is_local_newton_stuck() const;
+
+
+      /*!
+       * @brief Increments the solution vector \f$ \boldsymbol{s}^{(l+1)} = \boldsymbol{s}^{(l)}
+       * +
+       * \Delta \boldsymbol{s}^{(l+1)} \f$ after the current iteration \f$ l \f$, along with the
+       * iteration counter
+       *
+       * @note Also updates the increment norm (ratio of increment to solution) internally based on
+       * the provided increment
+       *
+       * @param[in] delta_sol increment vector for the next iteration \f$\Delta
+       * \boldsymbol{s}^{(l+1)}\f$
+       */
+      void increment_solution_vector_and_iter(const Core::LinAlg::Matrix<10, 1>& delta_sol);
+
+      /// getter for the solution vector
+      [[nodiscard]] Core::LinAlg::Matrix<10, 1> sol() const { return sol_; }
+
+
+      /// getter for the convergence quantities
+      [[nodiscard]] LocalNewtonConvQuantities convergence_quantities() const
+      {
+        return convergence_quantities_;
+      }
 
       /*!
        * @brief Routine to be run after the Local Newton-Raphson at a given Gauss point
@@ -639,6 +693,13 @@ namespace Mat
 
       //! total number of local iterations for the current timestep; vector of Gauss point values
       std::vector<unsigned int> curr_num_iters_;
+
+      //! solution vector in the current iteration \f$ \boldsymbol{s}^{(l)} \f$ (used at the
+      //! currently considered Gauss point)
+      Core::LinAlg::Matrix<10, 1> sol_;
+
+      //! quantities used for convergence checks
+      LocalNewtonConvQuantities convergence_quantities_;
 
       //! tracks whether the resizing function has been called, to set the current number of
       //! Gauss points exactly once!

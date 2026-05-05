@@ -136,7 +136,7 @@ namespace
 
     // setup eigenvalues of the deformation gradient to be used within all subsequent tests, and
     // already scale them for the plastic predictor
-    lambda.scale(0.0);
+    lambda.clear();
     lambda(0, 0) = 2.0;
     lambda(1, 1) = 1.0;
     lambda(2, 2) = 1.0;
@@ -185,7 +185,7 @@ namespace
     // setup deformation gradient
     const double angle_Q = std::numbers::pi / 4.0;
     Q = get_rotation_matrix_from_rot_angle_around_z(angle_Q);
-    ref_rotation.scale(0.0);
+    ref_rotation.clear();
     ref_rotation(0, 0) = ref_rotation(1, 1) = ref_rotation(1, 0) = 0.5 * std::numbers::sqrt2;
     ref_rotation(0, 1) = -0.5 * std::numbers::sqrt2;
     ref_rotation(2, 2) = 1.0;
@@ -193,7 +193,7 @@ namespace
     R = get_rotation_matrix_from_rot_angle_around_z(0.0);
     FOUR_C_EXPECT_NEAR(R, unit_3x3, 1.0e-15);
     defgrad = compute_full_defgrad(R, Q, lambda);
-    ref_defgrad.scale(0.0);
+    ref_defgrad.clear();
     ref_defgrad(0, 0) = ref_defgrad(1, 1) = 1.5;
     ref_defgrad(0, 1) = ref_defgrad(1, 0) = -0.5;
     ref_defgrad(2, 2) = 1.0;
@@ -229,7 +229,7 @@ namespace
     R = get_rotation_matrix_from_rot_angle_around_z(angle_Q);
     FOUR_C_EXPECT_NEAR(R, ref_rotation, 1.0e-15);  // Q stays the same as above
     defgrad = compute_full_defgrad(R, Q, lambda);
-    ref_defgrad.scale(0.0);
+    ref_defgrad.clear();
     ref_defgrad(0, 0) = std::numbers::sqrt2;
     ref_defgrad(0, 1) = -std::numbers::sqrt2;
     ref_defgrad(1, 0) = ref_defgrad(1, 1) = 0.5 * std::numbers::sqrt2;
@@ -565,7 +565,7 @@ namespace
 
     aei_manager.set_current_interp_point(gp, ViscoplastUtils::AdaptiveEstimateInterpolationManager::
                                                  CurrentInterpPointPreset::plastic_predictor);
-    elastic_defgrad_plastic_pred.scale(0.0);
+    elastic_defgrad_plastic_pred.clear();
     elastic_defgrad_plastic_pred(0, 0) = 1.5874010519681996;
     elastic_defgrad_plastic_pred(1, 1) = 1.122462048309373;
     elastic_defgrad_plastic_pred(2, 2) = 1.122462048309373;
