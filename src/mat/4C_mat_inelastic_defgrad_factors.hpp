@@ -1735,28 +1735,6 @@ namespace Mat
         const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
-
-    /*!
-     * @brief   Determine whether the Local Newton Loop has converged.
-     *
-     * @param[in] conv_quantities quantities verified for convergence
-     * @return boolean: true = converged
-     */
-    bool is_local_newton_converged(
-        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
-            conv_quantities);
-
-    /*!
-     * @brief   After an unsuccessful convergence check: determine whether the Local Newton is
-     * stuck, i.e., the relative solution increment is nearly 0, but there is no convergence yet.
-     *
-     * @param[in] conv_quantities quantities verified for convergence
-     * @return boolean: true = stuck
-     */
-    bool is_local_newton_stuck(
-        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
-            conv_quantities);
-
     /*!
      * @brief   After an unsuccessful convergence check and after the maximum number of local
      * iterations has been exceeded: verifies whether the Local Newton scheme can be safely exited
@@ -1765,14 +1743,10 @@ namespace Mat
      * @note If no error is thrown in this verification routine, then the Local Newton scheme can be
      * safely exited. The error status is reset to no_errors to continue with the computation.
      *
-     * @param[in] conv_quantities quantities verified for convergence
-     * @param[in,out] err_status error status
+     * @param[in, out] err_status error status
      */
     void verify_local_newton_exit(
-        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
-            conv_quantities,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
-
 
     /*!
      * @brief   Solve local Newton linear system \f$ \boldsymbol{J} \mathrm{d}\boldsymbol{x} = -
@@ -1786,8 +1760,6 @@ namespace Mat
      */
     bool solve_local_newton_linear_system(const Core::LinAlg::Matrix<10, 1>& residual,
         const Core::LinAlg::Matrix<10, 10>& jacobian, Core::LinAlg::Matrix<10, 1>& dx);
-
-
 
     /*!
      * @brief For a given right Cauchy_Green tensor and the Local NR Loop unknown vector,
@@ -1849,7 +1821,6 @@ namespace Mat
         const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
         const double dt, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
-
     /*!
      * @brief Performs return mapping (elastic predictor - viscoplastic / plastic corrector
      * procedure) at each GP. It first evaluates whether the elastic predictor is a consistent
@@ -1862,8 +1833,6 @@ namespace Mat
      * @return inverse inelastic deformation gradient \boldsymbol{F}_{\text{in}}^{-1}
      */
     Core::LinAlg::Matrix<3, 3> return_mapping(const Core::LinAlg::Matrix<3, 3>& FredM);
-
-
 
     /*!
      * @brief Setup halved substep in case of an encountered evaluation error within the substep
@@ -1894,14 +1863,12 @@ namespace Mat
      * @param[in] last_plastic_strain plastic strain at the previous time instant
      * @param[in] last_iFinM inverse inelastic deformation gradient at the previous time instant
      * @param[in] dt time step / substep size
-     * @param[in,out] sol current[in] / updated solution vector for the local Newton
      * @param[out] eval_action action to be performed subsequently in the local Newton Loop
      */
     void manage_evaluation(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
         const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
         const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
-        Core::LinAlg::Matrix<10, 1>& sol,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
     /*!
@@ -1940,7 +1907,6 @@ namespace Mat
      */
     [[nodiscard]] std::string get_error_info(const std::string& base_error_string) const;
 
-
     /*!
      * @brief Determines the initial estimate to be used within the Local Newton.
      * If adaptive estimate interpolation is used, this method also prepares everything for the
@@ -1953,8 +1919,9 @@ namespace Mat
      * @param[in] last_inverse_inelastic_defgrad inverse inelastic deformation gradient at the
      * previously converged time instant
      * @param[out] err_status error status after the procedure
-     * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and the
-     * equivalent plastic strain (component 9) for the Local Newton within this time step / substep
+     * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and
+     * the equivalent plastic strain (component 9) for the Local Newton within this time step /
+     * substep
      */
     Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(const double dt,
         const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
@@ -2025,8 +1992,8 @@ namespace Mat
      * @param[in] plastic_strain_candidate estimate candidate: equivalent plastic strain
      * @return error status; no_errors means that this is a valid estimate for the local Newton
      */
-    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType verify_estimate_candidate(
-        const double dt,
+    [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType
+    verify_estimate_candidate(const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
             AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
         const Core::LinAlg::Matrix<3, 3>& iFin_candidate,
