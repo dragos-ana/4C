@@ -425,8 +425,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::Loca
   // know it at this point in time
   curr_num_iters_.resize(1, 0);
 
-  // set initial number of iterations to 0
-  iter_ = 0;
+  // set initial number of iterations
+  iter_ = 1;
+
+  // initialize solution vector and convergence quantities with dummy values; they will be set
+  // anyway to more meaningful values when starting the local Newton within the material model
+  sol_ = Core::LinAlg::Matrix<10, 1>(Core::LinAlg::Initialization::zero);
+  convergence_quantities_.residual_norm = 0.0;
+  convergence_quantities_.increment_norm = 0.0;
 }
 
 /*--------------------------------------------------------------------*
@@ -460,10 +466,123 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager:
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::reset()
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::
+    reset_curr_num_iters()
 {
   std::ranges::fill(curr_num_iters_, 0);
 }
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::init_local_newton(
+    const Core::LinAlg::Matrix<10, 1>& init_estimate, const bool reset_iter_counter)
+{
+  // --> set initial estimate
+  sol_ = init_estimate;
+
+  // --> set quantities used for convergence checks
+
+  // residual norm
+  convergence_quantities_.residual_norm = 0.0;
+  // if the convergence check requires verifying the residual norm, we must ensure that the value
+  // set here is larger than the tolerance, to perform the check at least once, in the next
+  // iteration
+  if (params_.conv_check == LocalNewtonConvCheck::residual ||
+      params_.conv_check == LocalNewtonConvCheck::residual_and_increment_ratio)
+  {
+    convergence_quantities_.residual_norm = 2.0 * params_.res_tol;
+  }
+
+  // increment norm: ratio of increment to current solution
+  convergence_quantities_.increment_norm = 0.0;
+  // if the convergence check requires verifying the increment norm, we must ensure that the value
+  // set here is larger than the tolerance, to perform the check at least once, in the next
+  // iteration
+  if (params_.conv_check == LocalNewtonConvCheck::increment_ratio ||
+      params_.conv_check == LocalNewtonConvCheck::residual_and_increment_ratio)
+  {
+    convergence_quantities_.increment_norm = 2.0 * params_.incr_tol;
+  }
+
+  // --> reset iteration counter if specified so
+  if (reset_iter_counter) iter_ = 1;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::
+    increment_solution_vector_and_iter(const Core::LinAlg::Matrix<10, 1>& delta_sol)
+{
+  sol_.update(1.0, delta_sol, 1.0);
+  iter_++;
+
+  const double sol_norm = sol_.norm2();
+  const double delta_sol_norm = delta_sol.norm2();
+  FOUR_C_ASSERT_ALWAYS(sol_norm >= 1.0e-8,
+      "The solution vector in local iteration {} is nearly 0, with 2-norm: {}! Something went "
+      "wrong, since such mechanical states are not expected!",
+      iter_, sol_norm);
+  convergence_quantities_.increment_norm = delta_sol_norm / sol_norm;
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::
+    is_local_newton_converged() const
+{
+  // check for convergence
+  switch (params_.conv_check)
+  {
+    case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::residual:
+      return (convergence_quantities_.residual_norm <= params_.res_tol);
+      break;
+    case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::increment_ratio:
+      return (convergence_quantities_.increment_norm <= params_.incr_tol);
+      break;
+    case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+        residual_and_increment_ratio:
+      return (convergence_quantities_.residual_norm <= params_.res_tol &&
+              convergence_quantities_.increment_norm <= params_.incr_tol);
+      break;
+    default:
+      FOUR_C_THROW("You should not be here (convergence checking of the Local Newton Loop)");
+  }
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::
+    is_local_newton_stuck() const
+{
+  // check for "stuck" Local Newton, i.e., the increment does not change much but there is not a
+  // converged state (check only feasible after the first iteration, since dx must be available)
+  if ((iter_ > 1) && (convergence_quantities_.increment_norm < 1.0e-15))
+  {
+    // only in the case that the residual is verified, we set an
+    // error status
+    switch (params_.conv_check)
+    {
+      case LocalNewtonConvCheck::residual:
+      case LocalNewtonConvCheck::residual_and_increment_ratio:
+      {
+        return (convergence_quantities_.residual_norm > params_.res_tol);
+      }
+      case LocalNewtonConvCheck::increment_ratio:
+      {
+        return false;
+      }
+      default:
+        FOUR_C_THROW(
+            "You should not be here with convergence check type {} (check: is Local Newton "
+            "stuck?)",
+            EnumTools::enum_name(params_.conv_check));
+    }
+  }
+
+  return false;
+}
+
 
 
 /*--------------------------------------------------------------------*

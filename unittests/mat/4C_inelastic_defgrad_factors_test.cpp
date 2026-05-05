@@ -1789,52 +1789,6 @@ namespace
         computed_state_quantities_isotrop.curr_lpM, 1.0e-10);
   }
 
-  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonParametersParsing)
-  {
-    const auto local_newton_params = set_up_viscoplastic_material().params->local_newton_params();
-
-    EXPECT_EQ(local_newton_params.conv_check,
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
-            residual_and_increment_ratio);
-    EXPECT_EQ(local_newton_params.diver_cont,
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop);
-    EXPECT_EQ(local_newton_params.max_iter, 100);
-    EXPECT_DOUBLE_EQ(local_newton_params.res_tol, 1.0e-8);
-    EXPECT_DOUBLE_EQ(local_newton_params.incr_tol, 1.0e-8);
-    EXPECT_DOUBLE_EQ(local_newton_params.max_exceedance_fact_res_tol, 1.0e1);
-    EXPECT_DOUBLE_EQ(local_newton_params.max_exceedance_fact_incr_tol, 1.0e1);
-  }
-
-  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonManagerBookkeeping)
-  {
-    const auto material = set_up_viscoplastic_material();
-    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
-        material.params->local_newton_params());
-
-    EXPECT_EQ(local_newton_manager.iter(), 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
-
-    local_newton_manager.resize(3);
-    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 3);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
-
-    local_newton_manager.set_iteration_count(4);
-    local_newton_manager.update_after_local_newton(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 4);
-
-    local_newton_manager.set_iteration_count(2);
-    local_newton_manager.update_after_local_newton(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 6);
-
-    local_newton_manager.reset();
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
-  }
-
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingStop)
   {
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{

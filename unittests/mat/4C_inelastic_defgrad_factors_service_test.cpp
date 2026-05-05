@@ -43,6 +43,277 @@ namespace
   };
 
 
+  /// tests the bookkeeping of iterations within the LocalNewtonManager of
+  /// InelasticDefgradTransvIsotropElastViscoplast
+  TEST_F(InelasticDefgradFactorsServiceTest, TestLocalNewtonManagerIterBookkeeping)
+  {
+    auto local_newton_params =
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams{
+            .res_tol = 1.0e-8,
+            .incr_tol = 1.0e-8,
+            .conv_check = ViscoplastUtils::LocalNewtonConvCheck::residual_and_increment_ratio,
+            .diver_cont = ViscoplastUtils::LocalNewtonDiverCont::stop,
+            .max_iter = 5,
+            .max_exceedance_fact_res_tol = 1.0e1,
+            .max_exceedance_fact_incr_tol = 1.0e1,
+
+        };
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
+        local_newton_params);
+
+    EXPECT_EQ(local_newton_manager.iter(), 1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
+
+    local_newton_manager.resize(3);
+    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 3);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
+
+    Core::LinAlg::Matrix<10, 1> one_10x1{Core::LinAlg::Initialization::zero};
+    for (unsigned int i = 0; i < 10; ++i) one_10x1(i) = 1.0;
+
+    local_newton_manager.init_local_newton(one_10x1, true);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    EXPECT_EQ(local_newton_manager.iter(), 4);
+    local_newton_manager.update_after_local_newton(1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 4);
+
+    local_newton_manager.init_local_newton(one_10x1, false);
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    EXPECT_EQ(local_newton_manager.iter(), 5);
+    local_newton_manager.update_after_local_newton(1);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 9);
+
+    local_newton_manager.reset_curr_num_iters();
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
+    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
+
+
+    // test whether the maximum number of iterations was exceeded
+    EXPECT_FALSE(local_newton_manager.is_max_iter_exceeded());
+    local_newton_manager.increment_solution_vector_and_iter(one_10x1);
+    EXPECT_TRUE(local_newton_manager.is_max_iter_exceeded());
+  }
+
+
+  /// tests the basic functionality of the LocalNewtonManager (initialization, incrementation,
+  /// convergence and "stuckness" verification) used within
+  /// InelasticDefgradTransvIsotropElastViscoplast
+  TEST_F(InelasticDefgradFactorsServiceTest, TestLocalNewtonManagerBasicFunctionality)
+  {
+    auto local_newton_params =
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams{
+            .res_tol = 1.0e-8,
+            .incr_tol = 1.0e-8,
+            .conv_check = ViscoplastUtils::LocalNewtonConvCheck::residual_and_increment_ratio,
+            .diver_cont = ViscoplastUtils::LocalNewtonDiverCont::stop,
+            .max_iter = 100,
+            .max_exceedance_fact_res_tol = 0.0,
+            .max_exceedance_fact_incr_tol = 0.0,
+        };
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
+        local_newton_params);
+
+    // auxiliaries
+    Core::LinAlg::Matrix<10, 1> one_10x1{Core::LinAlg::Initialization::zero};
+    for (unsigned int i = 0; i < 10; ++i) one_10x1(i) = 1.0;
+
+
+    // --> test initialization with and without iteration counter reset
+
+    // with iteration counter reset
+    local_newton_manager.init_local_newton(one_10x1, true);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), one_10x1, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.iter(), 1);
+
+    // without iteration counter reset
+    local_newton_manager.increment_solution_vector_and_iter(
+        one_10x1);  // increment the iteration counter
+    local_newton_manager.init_local_newton(one_10x1, false);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), one_10x1, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.iter(), 2);
+
+
+    // --> test workflow within the Local Newton: increment the solution vector (save the
+    // increment), then set the residual norm, and perform the convergence check
+    Core::LinAlg::Matrix<10, 1> vector_under_tol{
+        Core::LinAlg::Initialization::zero};  // the 2-norm of this vector is smaller than the set
+                                              // value for residual and increment tolerance
+    vector_under_tol(0) = 1.0e-9;
+    Core::LinAlg::Matrix<10, 1> vector_over_tol{Core::LinAlg::Initialization::zero};
+    vector_over_tol(0) = 1.0e-7;  // the 2-norm of this vector is smaller than the set value for
+                                  // residual and increment tolerance
+
+    Core::LinAlg::Matrix<10, 1> updated_sol_ref(
+        Core::LinAlg::Initialization::zero);  // reference: updated solution vector, used for the
+                                              // solution vector checks
+
+    // try out increment and residual vector exceeding the tolerance: no convergence!
+    local_newton_manager.init_local_newton(one_10x1, true);
+    local_newton_manager.increment_solution_vector_and_iter(vector_over_tol);
+    updated_sol_ref.update(1.0, one_10x1, 1.0, vector_over_tol, 0.0);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), updated_sol_ref, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().increment_norm,
+        vector_over_tol(0) / updated_sol_ref.norm2());
+    EXPECT_EQ(local_newton_manager.iter(), 2);
+    local_newton_manager.set_residual_norm(vector_over_tol);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().residual_norm, vector_over_tol(0));
+    EXPECT_FALSE(local_newton_manager.is_local_newton_converged());
+
+    // try out increment exceeding the tolerance, and residual vector under the tolerance: no
+    // convergence!
+    local_newton_manager.increment_solution_vector_and_iter(vector_over_tol);
+    updated_sol_ref.update(1.0, vector_over_tol, 1.0);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), updated_sol_ref, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().increment_norm,
+        vector_over_tol(0) / updated_sol_ref.norm2());
+    EXPECT_EQ(local_newton_manager.iter(), 3);
+    local_newton_manager.set_residual_norm(vector_under_tol);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().residual_norm, vector_under_tol(0));
+    EXPECT_FALSE(local_newton_manager.is_local_newton_converged());
+
+    // now the other way around: no convergence!
+    local_newton_manager.increment_solution_vector_and_iter(vector_under_tol);
+    updated_sol_ref.update(1.0, vector_under_tol, 1.0);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), updated_sol_ref, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().increment_norm,
+        vector_under_tol(0) / updated_sol_ref.norm2());
+    EXPECT_EQ(local_newton_manager.iter(), 4);
+    local_newton_manager.set_residual_norm(vector_over_tol);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().residual_norm, vector_over_tol(0));
+    EXPECT_FALSE(local_newton_manager.is_local_newton_converged());
+
+    // now, both increment and residual are under the tolerance: convergence!
+    local_newton_manager.increment_solution_vector_and_iter(vector_under_tol);
+    updated_sol_ref.update(1.0, vector_under_tol, 1.0);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), updated_sol_ref, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().increment_norm,
+        vector_under_tol(0) / updated_sol_ref.norm2());
+    EXPECT_EQ(local_newton_manager.iter(), 5);
+    local_newton_manager.set_residual_norm(vector_under_tol);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().residual_norm, vector_under_tol(0));
+    EXPECT_TRUE(local_newton_manager.is_local_newton_converged());
+
+    // --> test whether the Local Newton becomes stuck: increment is exactly 0.0, but the residual
+    // is still over the set tolerance
+    EXPECT_FALSE(local_newton_manager.is_local_newton_stuck());  // for the previous settings, the
+                                                                 // Local Newton should not be stuck
+    Core::LinAlg::Matrix<10, 1> zero_10x1{Core::LinAlg::Initialization::zero};
+    local_newton_manager.increment_solution_vector_and_iter(zero_10x1);
+    FOUR_C_EXPECT_NEAR(local_newton_manager.sol(), updated_sol_ref, 1.0e-15);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().increment_norm, 0.0);
+    EXPECT_EQ(local_newton_manager.iter(), 6);
+    local_newton_manager.set_residual_norm(vector_over_tol);
+    EXPECT_EQ(local_newton_manager.convergence_quantities().residual_norm, vector_over_tol(0));
+    EXPECT_TRUE(local_newton_manager.is_local_newton_stuck());
+  }
+
+
+  /// tests the convergence of the LocalNewtonManager (for various settings) used within
+  /// InelasticDefgradTransvIsotropElastViscoplast
+  TEST_F(InelasticDefgradFactorsServiceTest, TestLocalNewtonManagerConvergenceVerification)
+  {
+    // framework for setting up multiple LocalNewtonManager objects with varied parameters
+    auto local_newton_base_params =
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams{
+            .res_tol = 1.0e-8,
+            .incr_tol = 1.0e-10,
+            .conv_check = ViscoplastUtils::LocalNewtonConvCheck::residual_and_increment_ratio,
+            .diver_cont = ViscoplastUtils::LocalNewtonDiverCont::stop,
+            .max_iter = 100,
+            .max_exceedance_fact_res_tol = 0.0,
+            .max_exceedance_fact_incr_tol = 0.0,
+        };
+    auto set_up_local_newton_manager = [local_newton_base_params](
+                                           const ViscoplastUtils::LocalNewtonConvCheck conv_check)
+    {
+      Core::LinAlg::Matrix<10, 1> one_10x1{Core::LinAlg::Initialization::zero};
+      for (unsigned int i = 0; i < 10; ++i) one_10x1(i) = 1.0;
+
+      auto manager = ViscoplastUtils::LocalNewtonManager({
+          .res_tol = local_newton_base_params.res_tol,
+          .incr_tol = local_newton_base_params.incr_tol,
+          .conv_check = conv_check,  // override
+          .diver_cont = local_newton_base_params.diver_cont,
+          .max_iter = local_newton_base_params.max_iter,
+          .max_exceedance_fact_res_tol = local_newton_base_params.max_exceedance_fact_res_tol,
+          .max_exceedance_fact_incr_tol = local_newton_base_params.max_exceedance_fact_incr_tol,
+      });
+      manager.init_local_newton(one_10x1, true);
+
+      return manager;
+    };
+
+    // setup several Local Newton managers
+    ViscoplastUtils::LocalNewtonManager manager_res_and_incr = set_up_local_newton_manager(
+        ViscoplastUtils::LocalNewtonConvCheck::residual_and_increment_ratio);
+    ViscoplastUtils::LocalNewtonManager manager_res =
+        set_up_local_newton_manager(ViscoplastUtils::LocalNewtonConvCheck::residual);
+    ViscoplastUtils::LocalNewtonManager manager_incr =
+        set_up_local_newton_manager(ViscoplastUtils::LocalNewtonConvCheck::increment_ratio);
+
+    // setup vectors (residual / increment) to be used for convergence checks
+    auto vector_from_tol = [](const double first_value)
+    {
+      Core::LinAlg::Matrix<10, 1> out{
+          Core::LinAlg::Initialization::zero};  // the 2-norm of this vector is smaller than the set
+                                                // value for residual and increment tolerance
+      out(0) = first_value;
+
+      return out;
+    };
+
+    // setup numerical values smaller than, or exceeding the set tolerances
+    const double exceeds_incr_tol{1.0e-9};
+    const double exceeds_res_tol{1.0e-7};
+    const double smaller_than_incr_tol{1.0e-10};
+    const double smaller_than_res_tol{1.0e-9};
+
+
+    // try out residual and increment exceeding the set tolerances
+    manager_res_and_incr.increment_solution_vector_and_iter(vector_from_tol(exceeds_incr_tol));
+    manager_res.increment_solution_vector_and_iter(vector_from_tol(exceeds_incr_tol));
+    manager_incr.increment_solution_vector_and_iter(vector_from_tol(exceeds_incr_tol));
+
+    manager_res_and_incr.set_residual_norm(vector_from_tol(exceeds_res_tol));
+    manager_res.set_residual_norm(vector_from_tol(exceeds_res_tol));
+    manager_incr.set_residual_norm(vector_from_tol(exceeds_res_tol));
+
+    EXPECT_FALSE(manager_res_and_incr.is_local_newton_converged());
+    EXPECT_FALSE(manager_res.is_local_newton_converged());
+    EXPECT_FALSE(manager_incr.is_local_newton_converged());
+
+    // try out residual smaller than the set tolerance, with increment exceeding its set tolerance
+    manager_res_and_incr.increment_solution_vector_and_iter(vector_from_tol(exceeds_incr_tol));
+    manager_res.increment_solution_vector_and_iter(vector_from_tol(exceeds_incr_tol));
+    manager_incr.increment_solution_vector_and_iter(vector_from_tol(exceeds_incr_tol));
+
+    manager_res_and_incr.set_residual_norm(vector_from_tol(smaller_than_res_tol));
+    manager_res.set_residual_norm(vector_from_tol(smaller_than_res_tol));
+    manager_incr.set_residual_norm(vector_from_tol(smaller_than_res_tol));
+
+    EXPECT_FALSE(manager_res_and_incr.is_local_newton_converged());
+    EXPECT_TRUE(manager_res.is_local_newton_converged());
+    EXPECT_FALSE(manager_incr.is_local_newton_converged());
+
+    // try out residual exceeding its set tolerance, with increment smaller than its set tolerance
+    manager_res_and_incr.increment_solution_vector_and_iter(vector_from_tol(smaller_than_incr_tol));
+    manager_res.increment_solution_vector_and_iter(vector_from_tol(smaller_than_incr_tol));
+    manager_incr.increment_solution_vector_and_iter(vector_from_tol(smaller_than_incr_tol));
+
+    manager_res_and_incr.set_residual_norm(vector_from_tol(exceeds_res_tol));
+    manager_res.set_residual_norm(vector_from_tol(exceeds_res_tol));
+    manager_incr.set_residual_norm(vector_from_tol(exceeds_res_tol));
+
+    EXPECT_FALSE(manager_res_and_incr.is_local_newton_converged());
+    EXPECT_FALSE(manager_res.is_local_newton_converged());
+    EXPECT_TRUE(manager_incr.is_local_newton_converged());
+  }
 
   /// tests the plastic predictor construction, and the interpolation procedures associated with it,
   /// within the predictor interpolator used for the adaptive estimate interpolation
@@ -136,7 +407,7 @@ namespace
 
     // setup eigenvalues of the deformation gradient to be used within all subsequent tests, and
     // already scale them for the plastic predictor
-    lambda.scale(0.0);
+    lambda.clear();
     lambda(0, 0) = 2.0;
     lambda(1, 1) = 1.0;
     lambda(2, 2) = 1.0;
@@ -185,7 +456,7 @@ namespace
     // setup deformation gradient
     const double angle_Q = std::numbers::pi / 4.0;
     Q = get_rotation_matrix_from_rot_angle_around_z(angle_Q);
-    ref_rotation.scale(0.0);
+    ref_rotation.clear();
     ref_rotation(0, 0) = ref_rotation(1, 1) = ref_rotation(1, 0) = 0.5 * std::numbers::sqrt2;
     ref_rotation(0, 1) = -0.5 * std::numbers::sqrt2;
     ref_rotation(2, 2) = 1.0;
@@ -193,7 +464,7 @@ namespace
     R = get_rotation_matrix_from_rot_angle_around_z(0.0);
     FOUR_C_EXPECT_NEAR(R, unit_3x3, 1.0e-15);
     defgrad = compute_full_defgrad(R, Q, lambda);
-    ref_defgrad.scale(0.0);
+    ref_defgrad.clear();
     ref_defgrad(0, 0) = ref_defgrad(1, 1) = 1.5;
     ref_defgrad(0, 1) = ref_defgrad(1, 0) = -0.5;
     ref_defgrad(2, 2) = 1.0;
@@ -229,7 +500,7 @@ namespace
     R = get_rotation_matrix_from_rot_angle_around_z(angle_Q);
     FOUR_C_EXPECT_NEAR(R, ref_rotation, 1.0e-15);  // Q stays the same as above
     defgrad = compute_full_defgrad(R, Q, lambda);
-    ref_defgrad.scale(0.0);
+    ref_defgrad.clear();
     ref_defgrad(0, 0) = std::numbers::sqrt2;
     ref_defgrad(0, 1) = -std::numbers::sqrt2;
     ref_defgrad(1, 0) = ref_defgrad(1, 1) = 0.5 * std::numbers::sqrt2;
@@ -565,7 +836,7 @@ namespace
 
     aei_manager.set_current_interp_point(gp, ViscoplastUtils::AdaptiveEstimateInterpolationManager::
                                                  CurrentInterpPointPreset::plastic_predictor);
-    elastic_defgrad_plastic_pred.scale(0.0);
+    elastic_defgrad_plastic_pred.clear();
     elastic_defgrad_plastic_pred(0, 0) = 1.5874010519681996;
     elastic_defgrad_plastic_pred(1, 1) = 1.122462048309373;
     elastic_defgrad_plastic_pred(2, 2) = 1.122462048309373;
