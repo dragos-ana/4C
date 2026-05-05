@@ -79,6 +79,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 10,
         .min_reestimation_interval = 1.0e-5,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
         .hardening_params = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams{
             .method = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::
                 integrate_via_evol_eqs,
@@ -86,7 +88,6 @@ namespace
             .failure_relative_yield_stress_deviation = 0.0,
             .max_iter_integration = 50,
             .tol_integration = 1.0e-8,
-
         }};
 
     ViscoplastUtils::LinearizationType linearization_type =
@@ -1141,7 +1142,6 @@ namespace
           .group("HARDENING_PARAMS")
           .add("TOL_INTEGRATION",
               setup.adaptive_estimate_interp_params.hardening_params.tol_integration);
-
       material_data.group("ADAPTIVE_ESTIMATE_INTERP")
           .add("STARTING_POINT_TYPE", setup.adaptive_estimate_interp_params.starting_point_type);
       material_data.group("ADAPTIVE_ESTIMATE_INTERP")
@@ -1178,9 +1178,12 @@ namespace
       material_data.group("ADAPTIVE_ESTIMATE_INTERP")
           .add("MIN_REESTIMATION_INTERVAL",
               setup.adaptive_estimate_interp_params.min_reestimation_interval);
-
-
-      material_data.group("ADAPTIVE_ESTIMATE_INTERP").add("USE_ADAPTIVE_ESTIMATE_INTERP", false);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("PRECONDITION_ELASTIC_PRED",
+              setup.adaptive_estimate_interp_params.precondition_elastic_pred);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("TOL_PRECONDITION_ELASTIC_PRED",
+              setup.adaptive_estimate_interp_params.tol_precondition_elastic_pred);
 
       auto material_params =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
@@ -2401,6 +2404,8 @@ namespace
         .interval_scanning_param = 0.5,
         .max_num_reestimations = 10,
         .min_reestimation_interval = 1.0e-5,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
         .hardening_params = hardening_params};
 
     auto material_adaptive_estimate_interp =
@@ -2448,6 +2453,8 @@ namespace
         .interval_scanning_param = aei_params.interval_scanning_param,
         .max_num_reestimations = aei_params.max_num_reestimations,
         .min_reestimation_interval = aei_params.min_reestimation_interval,
+        .precondition_elastic_pred = aei_params.precondition_elastic_pred,
+        .tol_precondition_elastic_pred = aei_params.tol_precondition_elastic_pred,
         .hardening_params = hardening_params_no_hardening};
 
     auto material_adaptive_estimate_interp_no_hardening = set_up_viscoplastic_material(
