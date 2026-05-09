@@ -36,6 +36,7 @@
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
 #include <algorithm>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <optional>
@@ -576,7 +577,7 @@ namespace
 
   bool debug_mode(const unsigned int ele_gid, const unsigned int gp)
   {
-    return ele_gid == 0 && gp == 0;
+    return ele_gid == 0 && gp == 3;
   }
 
 }  // namespace
@@ -1882,9 +1883,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   ele_gid_ = eleGID;
 
   // set time step
-  FOUR_C_ASSERT(context.time_step_size, "Time step size not given in evaluation context.");
+  FOUR_C_ASSERT_ALWAYS(context.time_step_size, "Time step size not given in evaluation context.");
   time_step_tracker_.dt = *context.time_step_size;
-  FOUR_C_ASSERT(context.total_time, "Total time not given in evaluation context.");
+  FOUR_C_ASSERT_ALWAYS(context.total_time, "Total time not given in evaluation context.");
   time_step_tracker_.tnp = *context.total_time;
 
   // set minimum substep length
@@ -1948,10 +1949,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     const double plastic_strain, ViscoplastUtils::ErrorType& err_status, const double dt,
     const ViscoplastUtils::StateQuantityEvalType& eval_type) const
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
-
+  ensure_error_free_evaluation(err_status);
 
   ViscoplastUtils::StateQuantities state_quantities{};
   state_quantities.eval_type = eval_type;
@@ -2196,9 +2194,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
     const double plastic_strain, ViscoplastUtils::ErrorType& err_status, const double dt,
     const ViscoplastUtils::StateQuantityDerivEvalType& eval_type, const bool eval_state) const
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
+  ensure_error_free_evaluation(err_status);
 
 
   ViscoplastUtils::StateQuantityDerivatives state_quantity_derivatives{};
@@ -2823,6 +2819,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
   Core::LinAlg::Matrix<3, 3> CredM(Core::LinAlg::Initialization::zero);
   CredM.multiply_tn(1.0, FredM, FredM, 0.0);
 
+  // DEBUG
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::setprecision(16);
+    std::cout << "FredM: \n";
+    FredM.print(std::cout);
+    std::cout << "CredM: \n";
+    CredM.print(std::cout);
+  }
+
   // perform non-repeatable pre-evaluation tasks (non-repeatable: not
   // called in the redundant evaluate call, which is already handled -> direct return
   // without calling this function)
@@ -2858,10 +2864,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
     {
       // output error and then throw (in order to display the error on
       // the right processor)
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW("Viscoplastic correction was not successful! \n {}", extended_message);
+      throw_detailed_error(
+          std::format("Viscoplastic correction was not successful! Error status: {}", err_status));
     }
 
     // update inverse inelastic defgrad and plastic strain
@@ -3009,11 +3013,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_local_newton_residua
     const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
     ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
-
-
+  ensure_error_free_evaluation(err_status);
 
   // auxiliaries
   Core::LinAlg::Matrix<3, 3> temp3x3(Core::LinAlg::Initialization::zero);
@@ -3112,10 +3112,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_local_newton_jacobia
     const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
     ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
-
+  ensure_error_free_evaluation(err_status);
 
 
   // auxiliaries
@@ -3254,9 +3251,7 @@ Core::LinAlg::Matrix<10, 1>
 Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
     const Core::LinAlg::Matrix<3, 3>& defgrad, ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
+  ensure_error_free_evaluation(err_status);
 
 
   // declare solution vector
@@ -3287,10 +3282,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
           {time_step_quantities_.last_defgrad[gp_], defgrad}, {0.0, 1.0},
           local_substepping_utils_.get_normalized_next_time_param(time_step_tracker_.dt),
           tensor_interp_err_status);
-      FOUR_C_ASSERT_ALWAYS(
-          tensor_interp_err_status == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
-          "Tensor interpolation failed with err: {}",
-          Core::LinAlg::make_error_message(tensor_interp_err_status));
+      if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
+      {
+        throw_detailed_error(std::format("Tensor interpolation failed with err: {}",
+            Core::LinAlg::make_error_message(tensor_interp_err_status)));
+      }
       curr_CM.multiply_tn(1.0, curr_FM, curr_FM, 0.0);
 
       // perform substep local Newton loop
@@ -3322,10 +3318,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
         // if the halving number was exceeded --> return with error
         if (!halving_success)
         {
-          const std::string extended_message =
-              get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                      get_detailed_error_message_for_error_type(err_status));
-          FOUR_C_THROW("{}", extended_message);
+          throw_detailed_error(std::format(
+              "Maximum halving number for substepping was reached! Error status: {}", err_status));
         }
       }
     }
@@ -3338,10 +3332,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
         time_step_quantities_.last_plastic_defgrad_inverse[gp_], time_step_tracker_.dt, err_status);
     if (err_status != ViscoplastUtils::ErrorType::no_errors)
     {
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW("There was an error within the local Newton: \n {}", extended_message);
+      throw_detailed_error(
+          std::format("There was an error within the local Newton! Error status: {}", err_status));
     }
 
 
@@ -3361,10 +3353,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
     InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
-
+  ensure_error_free_evaluation(err_status);
 
   // auxiliaries
   Core::LinAlg::Matrix<10, 1> temp10x1(Core::LinAlg::Initialization::zero);
@@ -3386,8 +3375,11 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // initialize local Newton
   temp10x1 =
       determine_local_newton_init_estimate(dt, FM, last_plastic_strain, last_iFinM, err_status);
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Local Newton cannot even be initialized due to error: {}", err_status);
+  if (err_status != ViscoplastUtils::ErrorType::no_errors)
+  {
+    throw_detailed_error(
+        std::format("Local Newton cannot even be initialized due to error: {}", err_status));
+  }
   local_newton_manager_.init_local_newton(temp10x1, true);
 
   // handle eventual error in the initial estimate determination
@@ -3402,7 +3394,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     // without substepping, we throw directly
     else
     {
-      FOUR_C_THROW("Could not compute initial estimate for the local Newton!");
+      throw_detailed_error("Could not compute initial estimate for the local Newton!");
     }
   }
 
@@ -3461,8 +3453,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       }
       default:
       {
-        FOUR_C_THROW("Invalid evaluation action {} for error status {} after residual evaluation",
-            EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+        throw_detailed_error(std::format(
+            "Invalid evaluation action {} for error status {} after residual evaluation",
+            eval_action, err_status));
       }
     }
 
@@ -3543,10 +3536,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           }
           default:
           {
-            FOUR_C_THROW(
+            throw_detailed_error(std::format(
                 "Invalid evaluation action {} for error status {} after verification of stuck "
                 "Local Newton",
-                EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+                eval_action, err_status));
           }
         }
       }
@@ -3596,8 +3589,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       }
       default:
       {
-        FOUR_C_THROW("Invalid evaluation action {} for error status {} after Jacobian evaluation",
-            EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+        throw_detailed_error(std::format(
+            "Invalid evaluation action {} for error status {} after Jacobian evaluation",
+            EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status)));
       }
     }
 
@@ -3630,9 +3624,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
         default:
         {
-          FOUR_C_THROW(
+          throw_detailed_error(std::format(
               "Invalid evaluation action {} for error status {} after solving linear system",
-              EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+              EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status)));
         }
       }
     }
@@ -3661,10 +3655,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
     case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop:
     {
       // throw error: there is no convergence
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW("{}", extended_message);
+      throw_detailed_error(
+          std::format("There is no Local Newton convergence! Error status: {}", err_status));
+      return;
     }
     case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
         continue_sim:
@@ -3702,58 +3695,55 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
           case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               residual:
           {
-            const std::string extended_message =
-                get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        get_detailed_error_message_for_error_type(err_status));
+            if (!residual_within_bounds)
+            {
+              throw_detailed_error(
+                  std::format("Residual {} exceeds the residual tolerance {} by more than the set "
+                              "exceedance tolerance factor {}! Error status: {}",
+                      local_newton_manager_.convergence_quantities().residual_norm,
+                      local_newton_manager_.params().res_tol,
+                      local_newton_manager_.params().max_exceedance_fact_res_tol, err_status));
+            }
 
-            FOUR_C_ASSERT_ALWAYS(residual_within_bounds,
-                "Residual {} exceeds the residual tolerance {} by more than the set "
-                "exceedance tolerance factor {}! Detailed data: \n",
-                local_newton_manager_.convergence_quantities().residual_norm,
-                local_newton_manager_.params().res_tol,
-                local_newton_manager_.params().max_exceedance_fact_res_tol, extended_message);
 
             break;
           }
           case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               increment_ratio:
           {
-            const std::string extended_message =
-                get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        get_detailed_error_message_for_error_type(err_status));
-
-
-            FOUR_C_ASSERT_ALWAYS(incr_ratio_within_bounds,
-                "Relative increment {} exceeds the increment tolerance {} by more "
-                "than the set exceedance tolerance factor {}! Detailed data: \n",
-                local_newton_manager_.convergence_quantities().increment_norm,
-                local_newton_manager_.params().incr_tol,
-                local_newton_manager_.params().max_exceedance_fact_incr_tol, extended_message);
+            if (!incr_ratio_within_bounds)
+            {
+              throw_detailed_error(
+                  std::format("Relative increment {} exceeds the increment tolerance {} by more "
+                              "than the set exceedance tolerance factor {}! Error status: {}",
+                      local_newton_manager_.convergence_quantities().increment_norm,
+                      local_newton_manager_.params().incr_tol,
+                      local_newton_manager_.params().max_exceedance_fact_incr_tol, err_status));
+            }
 
             break;
           }
           case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               residual_and_increment_ratio:
           {
-            const std::string extended_message =
-                get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                        get_detailed_error_message_for_error_type(err_status));
-
-
-            FOUR_C_ASSERT_ALWAYS(residual_within_bounds && incr_ratio_within_bounds,
-                "Residual {} and relative increment {} exceed the tolerances {} and {} by "
-                "more than the set exceedance tolerance factors {} and {}! Detailed data: \n",
-                local_newton_manager_.convergence_quantities().residual_norm,
-                local_newton_manager_.convergence_quantities().increment_norm,
-                local_newton_manager_.params().res_tol, local_newton_manager_.params().incr_tol,
-                local_newton_manager_.params().max_exceedance_fact_res_tol,
-                local_newton_manager_.params().max_exceedance_fact_incr_tol, extended_message);
+            if ((!residual_within_bounds) || (!incr_ratio_within_bounds))
+            {
+              throw_detailed_error(std::format(
+                  "Residual {} and relative increment {} exceed the tolerances {} and {} by "
+                  "more than the set exceedance tolerance factors {} and {}! Error status: {}",
+                  local_newton_manager_.convergence_quantities().residual_norm,
+                  local_newton_manager_.convergence_quantities().increment_norm,
+                  local_newton_manager_.params().res_tol, local_newton_manager_.params().incr_tol,
+                  local_newton_manager_.params().max_exceedance_fact_res_tol,
+                  local_newton_manager_.params().max_exceedance_fact_incr_tol, err_status));
+            }
 
             break;
           }
           default:
-            FOUR_C_THROW("Invalid convergence check {} (verification of safe Local Newton exit)",
-                EnumTools::enum_name(local_newton_manager_.params().conv_check));
+            throw_detailed_error(
+                std::format("Invalid convergence check {} (verification of safe Local Newton exit)",
+                    EnumTools::enum_name(local_newton_manager_.params().conv_check)));
         }
       }
 
@@ -3763,14 +3753,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
       return;
     }
     default:
-      FOUR_C_THROW(
+      throw_detailed_error(
           "You should not be here (divergence management strategy for Local Newton "
           "Loop)");
   }
 
   // safeguard for the function: each path must either return of throw
-  FOUR_C_THROW("The Local Newton scheme cannot be safely exited! Uncaught exception with error {}",
-      err_status);
+  throw_detailed_error(std::format(
+      "The Local Newton scheme cannot be safely exited! Uncaught exception with error {}",
+      err_status));
 }
 
 /*--------------------------------------------------------------------*
@@ -3805,14 +3796,27 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::check_elastic_predictor(
     const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<3, 3>& iFinM_pred,
     const double plastic_strain_pred, ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
+  ensure_error_free_evaluation(err_status);
 
 
   // evaluate state with this elastic predictor and the minimum possible time step
   state_quantities_ = evaluate_state_quantities(CM, iFinM_pred, plastic_strain_pred, err_status,
       time_step_tracker_.min_dt, ViscoplastUtils::StateQuantityEvalType::plastic_strain_rate_only);
+
+
+  // DEBUG
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::setprecision(16);
+    std::cout << std::format("checking elastic predictor: elastic predictor stress: {} \n",
+        state_quantities_.curr_equiv_stress);
+    std::cout << "CM: " << std::endl;
+    CM.print(std::cout);
+    std::cout << "iFinM: " << std::endl;
+    iFinM_pred.print(std::cout);
+    std::cout << "plastic_strain: " << plastic_strain_pred << std::endl;
+  }
+
 
 
   // check if the predicted plastic strain rate is 0 -> for flow rules with yield functions,
@@ -3948,7 +3952,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
           defgrad, last_iFinM);
 
       // DEBUG
-      if (debug_mode(ele_gid_, gp_)) std::cout << "Re-estimation triggered \n";
+      if (debug_mode(ele_gid_, gp_))
+        std::cout << std::format("{} \n Re-estimation triggered \n", std::string(50, '-'));
 
       // determine updated estimate
       Core::LinAlg::Matrix<10, 1> updated_estimate =
@@ -3956,11 +3961,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
       if (eval_action == ViscoplastUtils::EvaluationAction::exit_with_error &&
           !parameter()->use_local_substepping())
       {
-        // output error and then throw
-        const std::string extended_message =
-            get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                    get_detailed_error_message_for_error_type(err_status));
-        FOUR_C_THROW("The re-estimation procedure has failed! \n: {}", extended_message);
+        // throw error
+        throw_detailed_error(
+            std::format("The re-estimation procedure has failed! Error status: {}", err_status));
       }
 
       // increment mapping the solution vector to the updated estimate
@@ -3969,13 +3972,20 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
           1.0, updated_estimate, -1.0, local_newton_manager_.sol(), 0.0);
 
       // DEBUG
-      std::cout << "increment_updated_estimate: " << std::endl;
-      increment_wrt_current_sol.print(std::cout);
-
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << "increment_updated_estimate: " << std::endl;
+        increment_wrt_current_sol.print(std::cout);
+      }
 
 
       // reinitialize the local Newton
       local_newton_manager_.increment_solution_vector_and_iter(increment_wrt_current_sol);
+
+
+      // DEBUG
+      if (debug_mode(ele_gid_, gp_))
+        std::cout << std::format("Re-estimation finished \n {} \n ", std::string(50, '-'));
 
 
       return;
@@ -3989,23 +3999,27 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
     // without evaluation management strategy, we can throw directly
     else
     {
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW(
-          "The Local Newton evaluation has failed and there is no evaluation "
-          "management strategy "
-          "selected! \n: {}",
-          extended_message);
+      throw_detailed_error(
+          std::format("The Local Newton evaluation has failed and there is no evaluation "
+                      "management strategy "
+                      "selected! Error status: {}",
+              err_status));
     }
   }
 }
 
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::throw_detailed_error(
+    const std::string& base_error_string) const
+{
+  FOUR_C_THROW("{}", get_error_warning_info(base_error_string));
+}
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::get_error_info(
+std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::get_error_warning_info(
     const std::string& base_error_string) const
 {
   // auxiliaries
@@ -4091,7 +4105,6 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::get_error_info(
   extended_error_string += temp_ostream.str();
   temp_ostream.str("");
   extended_error_string += std::string(10, '.');
-
 
   return extended_error_string;
 }
@@ -4199,11 +4212,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_e
     const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad,
     ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
-
-
+  ensure_error_free_evaluation(err_status);
 
   if (parameter()->use_adaptive_estimate_interp())
   {
@@ -4219,10 +4228,44 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_e
     // (only for yield-surface-based viscoplasticity formulations)
     if (viscoplastic_law_->uses_yield_surface())
     {
+      // DEBUG
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << std::format("Constructing the plastic predictor next... \n");
+      }
+
       construct_plastic_predictor(dt, aei_deftensors, last_plastic_strain, err_status);
+
+      // DEBUG
+      if (debug_mode(ele_gid_, gp_))
+      {
+        ViscoplastUtils::StateQuantities state_quantities_elast_pred = evaluate_state_quantities(
+            aei_deftensors.right_cg, last_inverse_inelastic_defgrad, last_plastic_strain,
+            err_status, dt, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+        std::cout << std::format("-----> elastic predictor stress: {} \n",
+            state_quantities_elast_pred.curr_equiv_stress);
+        ViscoplastUtils::StateQuantities state_quantities_plast_pred =
+            evaluate_state_quantities(aei_deftensors.right_cg,
+                adaptive_estimate_interp_manager_.get_inverse_inelastic_defgrad_plastic_pred(
+                    gp_, aei_deftensors.inv_defgrad),
+                last_plastic_strain, err_status, dt,
+                ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+        std::cout << std::format("-----> plastic predictor stress: {} \n",
+            state_quantities_plast_pred.curr_equiv_stress);
+      }
+
       // return directly in case of error
       if (err_status != ViscoplastUtils::ErrorType::no_errors)
       {
+        // DEBUG
+        if (debug_mode(ele_gid_, gp_))
+        {
+          std::cout << std::format(
+              "Early return with error {} after constructing the plastic predictor... \n",
+              err_status);
+        }
+
+
         return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
       }
     }
@@ -4244,9 +4287,19 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
         AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
     const double last_plastic_strain, ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
+  ensure_error_free_evaluation(err_status);
+
+  // DEBUG
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::setprecision(16);
+    std::cout << "aei_deftensors.defgrad: \n";
+    aei_deftensors.defgrad.print(std::cout);
+    std::cout << "aei_deftensors.right_cg: \n";
+    aei_deftensors.right_cg.print(std::cout);
+  }
+
+
 
   // evaluate the relative yield stress deviations associated with the elastic predictor
   double rel_stress_deviation_elastic_pred;
@@ -4266,11 +4319,25 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
         viscoplastic_law_->evaluate_stress_ratio(
             state_quantities_elastic_pred.curr_equiv_stress, last_plastic_strain) -
         1.0;
-    FOUR_C_ASSERT_ALWAYS(rel_stress_deviation_elastic_pred > 0.0,
-        "Your elastic predictor is under the yield surface, relative yield stress deviation: "
-        "{}! "
-        "The plastic predictor construction method should not be called!",
-        rel_stress_deviation_elastic_pred);
+    if (rel_stress_deviation_elastic_pred <= 0.0)
+    {
+      // DEBUG
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << std::format("constructing plastic predictor: elastic predictor stress: {} \n",
+            state_quantities_elastic_pred.curr_equiv_stress);
+        std::cout << "CM: " << std::endl;
+        aei_deftensors.right_cg.print(std::cout);
+        std::cout << "iFinM: " << std::endl;
+        aei_deftensors.elastic_predictor_inverse_plastic_defgrad.print(std::cout);
+        std::cout << "plastic_strain: " << last_plastic_strain << std::endl;
+      }
+
+      throw_detailed_error(std::format(
+          "Your elastic predictor is under the yield surface, relative yield stress deviation:  "
+          "{}! The plastic predictor construction method should not be called!",
+          rel_stress_deviation_elastic_pred));
+    }
   }
 
   // evaluate the relative yield stress deviations associated with the plastic predictor
@@ -4282,10 +4349,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
               gp_, aei_deftensors.inv_defgrad),
           last_plastic_strain, err_status, dt,
           ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
-  FOUR_C_ASSERT_ALWAYS(
-      err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors,
-      "Inconsistent preliminary plastic predictor stress! This should always be computable for "
-      "the interpolation to work");
+  if (err_status != ViscoplastUtils::ErrorType::no_errors)
+  {
+    throw_detailed_error(
+        "Inconsistent preliminary plastic predictor stress! This should always be computable for "
+        "the interpolation to work");
+  }
   // for isotropic materials, we use the von Mises equivalent stress; hence, we already know
   // that the preliminary plastic predictor with scale_unit eigenvalues must have 0.0 equivalent
   // stress!
@@ -4293,12 +4362,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
       parameter()->adaptive_estimate_interp_params().plastic_pred_elastic_stretch_eigenval_type ==
           ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType::scale_unit)
   {
-    FOUR_C_ASSERT_ALWAYS(state_quantities_plastic_pred.curr_equiv_stress <= 1.0e-8,
-        "You have specified isotropic material behavior and a unit scaling for the "
-        "eigenvalues, "
-        "but have received a von Mises equivalent stress of {}! This is inconsistent since the "
-        "stress has to be 0 in this case!",
-        state_quantities_plastic_pred.curr_equiv_stress);
+    if (state_quantities_plastic_pred.curr_equiv_stress > 1.0e-8)
+    {
+      throw_detailed_error(std::format(
+          "You have specified isotropic material behavior and a unit scaling for the "
+          "eigenvalues, "
+          "but have received a von Mises equivalent stress of {}! This is inconsistent since the "
+          "stress has to be 0 in this case!",
+          state_quantities_plastic_pred.curr_equiv_stress));
+    }
     rel_stress_deviation_plastic_pred = -1.0;
   }
   else
@@ -4348,9 +4420,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
       // check whether iterative procedure is still possible based on the number of iterations
       if (!adaptive_estimate_interp_manager_.is_plastic_pred_construct_possible(gp_))
       {
-        // output error and then throw
-        FOUR_C_THROW("Plastic predictor construction has failed after {} iterations",
-            parameter()->adaptive_estimate_interp_params().max_num_plastic_pred_construct_iters);
+        // throw error
+        throw_detailed_error(std::format(
+            "Plastic predictor construction has failed after {} iterations",
+            parameter()->adaptive_estimate_interp_params().max_num_plastic_pred_construct_iters));
       }
 
       // interpolate inverse inelastic defgrad and compute the associated stress state
@@ -4404,32 +4477,32 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_strain(const double dt,
-    const double equiv_stress, const double last_plastic_strain,
-    ViscoplastUtils::ErrorType& err_status) const
+double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_strain(
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::HardeningIntegrationInput&
+        integration_input,
+    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
-
+  ensure_error_free_evaluation(err_status);
 
   const ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams& hardening_params =
       parameter()->adaptive_estimate_interp_params().hardening_params;
 
 
-  FOUR_C_ASSERT_ALWAYS(
-      hardening_params.method ==
-          ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::integrate_via_evol_eqs,
-      "This method should only be called if the hardening integration method is "
-      "'integrate_via_evol_eqs'! The current method is {}",
-      parameter()->adaptive_estimate_interp_params().hardening_params.method);
+  if (hardening_params.method !=
+      ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::integrate_via_evol_eqs)
+  {
+    throw_detailed_error(
+        std::format("This method should only be called if the hardening integration method is "
+                    "'integrate_via_evol_eqs'! The current method is {}",
+            parameter()->adaptive_estimate_interp_params().hardening_params.method));
+  }
 
   // auxiliaries
   InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs
       plastic_strain_rate_derivs;
 
   // set initial estimate
-  double plastic_strain = last_plastic_strain;
+  double plastic_strain = integration_input.last_plastic_strain;
 
   // initialize iteration counter
   unsigned int iter = 0;
@@ -4440,33 +4513,48 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
   double residual = 1.0e10;
   double jacobian = 1.0e10;
 
+  // DEBUG
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::format("{} INTEGRATE PLASTIC STRAIN for stress: {} \n", std::string(30, '.'),
+        integration_input.interp_equiv_stress);
+  }
+
+
   // Newton-Raphson loop for hardening integration
   while (true)
   {
     // increment iterations
     ++iter;
 
+
     // check whether the maximum number of iterations was exceeded
     if (iter > parameter()->adaptive_estimate_interp_params().hardening_params.max_iter_integration)
     {
       if (!hardening_params.allow_integration_failure)
       {
-        FOUR_C_THROW("Could not integrate plastic strain!");
+        throw_detailed_error("Could not integrate plastic strain!");
       }
       else
       {
         if (show_warnings(ele_gid_))
         {
-          std::cout << get_error_info("WARNING: could not integrate plastic strain");
+          std::cout << get_error_warning_info("WARNING: could not integrate plastic strain");
         }
         // decide whether the state is too elastic or too plastic, and mark it accordingly
         const double rel_yield_stress_deviation =
-            viscoplastic_law_->evaluate_stress_ratio(equiv_stress, last_plastic_strain) - 1.0;
-        FOUR_C_ASSERT_ALWAYS(rel_yield_stress_deviation > 0.0,
-            "This method should not have been called in the first place! The relative yield "
-            "stress "
-            "deviation is {} for the input stress {}",
-            rel_yield_stress_deviation, equiv_stress);
+            viscoplastic_law_->evaluate_stress_ratio(
+                integration_input.interp_equiv_stress, integration_input.last_plastic_strain) -
+            1.0;
+        if (rel_yield_stress_deviation <= 0.0)
+        {
+          throw_detailed_error(std::format(
+              "This method should not have been called in the first place! The relative yield "
+              "stress "
+              "deviation is {} for the input stress {}",
+              rel_yield_stress_deviation, integration_input.interp_equiv_stress));
+        }
+
         if (rel_yield_stress_deviation <= hardening_params.failure_relative_yield_stress_deviation)
         {
           // mark artificially with "under the yield surface" error -> this will lead to a shift
@@ -4484,9 +4572,23 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
       }
     }
 
+
+    // DEBUG
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << std::format("iter: {}, plastic strain: {} \n", iter, plastic_strain);
+    }
+
     // compute plastic strain rate from the viscoplasticity law
     plastic_strain_rate = viscoplastic_law_->evaluate_plastic_strain_rate(
-        equiv_stress, plastic_strain, dt, parameter()->max_plastic_strain_incr(), err_status);
+        integration_input.interp_equiv_stress, plastic_strain, integration_input.dt,
+        parameter()->max_plastic_strain_incr(), err_status);
+
+    // DEBUG
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << std::format("iter: {}, plastic strain rate: {} \n", iter, plastic_strain_rate);
+    }
 
     // return directly when encountering error -> this will be handled by the estimate
     // interpolation directly
@@ -4496,7 +4598,15 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
     }
 
     // compute residual
-    residual = plastic_strain - last_plastic_strain - dt * plastic_strain_rate;
+    residual = plastic_strain - integration_input.last_plastic_strain -
+               integration_input.dt * plastic_strain_rate;
+
+    // DEBUG
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << std::format("iter: {}, residual: {} \n", iter, residual);
+    }
+
 
     // return solution if converged
     if (std::abs(residual) <= hardening_params.tol_integration)
@@ -4507,7 +4617,8 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
     // compute derivative of the plastic strain rate w.r.t. plastic
     // strain
     plastic_strain_rate_derivs = viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(
-        equiv_stress, plastic_strain, dt, parameter()->max_plastic_strain_deriv_incr(), err_status);
+        integration_input.interp_equiv_stress, plastic_strain, integration_input.dt,
+        parameter()->max_plastic_strain_deriv_incr(), err_status);
     deriv_plastic_strain_rate = plastic_strain_rate_derivs.deriv_plastic_strain;
 
     // return directly when encountering error -> this will be handled by the estimate
@@ -4518,7 +4629,7 @@ double Mat::InelasticDefgradTransvIsotropElastViscoplast::integrate_plastic_stra
     }
 
     // compute jacobian
-    jacobian = 1.0 - dt * deriv_plastic_strain_rate;
+    jacobian = 1.0 - integration_input.dt * deriv_plastic_strain_rate;
 
     // update solution
     plastic_strain -= residual / jacobian;
@@ -4541,6 +4652,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_estimate_candidate(con
       evaluate_state_quantities(aei_deftensors.right_cg, iFin_candidate, plastic_strain_candidate,
           err_status, dt, ViscoplastUtils::StateQuantityEvalType::full_eval);
 
+
+  // DEBUG
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::format("VERIFY_ESTIMATE_CANDIDATE: stress: {}, plastic_strain: {}, error: {}",
+        state_quantities.curr_equiv_stress, plastic_strain_candidate, err_status);
+  }
+
   // evaluation check
   if (err_status != ViscoplastUtils::ErrorType::no_errors) return err_status;
 
@@ -4549,14 +4668,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_estimate_candidate(con
   const bool is_under_yield_surface =
       (viscoplastic_law_->evaluate_stress_ratio(
            state_quantities.curr_equiv_stress, plastic_strain_candidate) < 1.0);
-  if (err_status != ViscoplastUtils::ErrorType::no_errors) return err_status;
   if (is_under_yield_surface) return ViscoplastUtils::ErrorType::under_yield_surface;
+  if (err_status != ViscoplastUtils::ErrorType::no_errors) return err_status;
 
   // evaluate the candidate state linearization
   ViscoplastUtils::StateQuantityDerivatives state_quantity_derivatives =
       evaluate_state_quantity_derivatives(aei_deftensors.right_cg, iFin_candidate,
           plastic_strain_candidate, err_status, dt,
-          ViscoplastUtils::StateQuantityDerivEvalType::full_eval);
+          ViscoplastUtils::StateQuantityDerivEvalType::full_eval, true);
 
   return err_status;
 }
@@ -4571,9 +4690,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
         AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
     const double last_plastic_strain, ViscoplastUtils::ErrorType& err_status)
 {
-  FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Unhandled error with status {}! This method should not be called!",
-      EnumTools::enum_name(err_status));
+  ensure_error_free_evaluation(err_status);
 
 
   // declare interpolated estimate for the inverse plastic defgrad and
@@ -4596,14 +4713,10 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
     // check whether interpolation is still possible
     if (!adaptive_estimate_interp_manager_.is_estimate_interp_possible(gp_))
     {
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(
-                      ViscoplastUtils::ErrorType::failed_estimate_interpolation));
-      FOUR_C_THROW(
+      throw_detailed_error(std::format(
           "Could not interpolate initial / updated estimate according to the Adaptive Estimate "
           "Interpolation algorithm: {}",
-          extended_message);
+          err_status));
     }
 
     // interpolate inverse plastic deformation gradient with the current interpolation points
@@ -4646,7 +4759,11 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
       case ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::integrate_via_evol_eqs:
       {
         interp_plastic_strain = integrate_plastic_strain(
-            dt, state_quantities_stress.curr_equiv_stress, last_plastic_strain, err_status);
+            ViscoplastUtils::HardeningIntegrationInput{
+                .interp_equiv_stress = state_quantities_stress.curr_equiv_stress,
+                .last_plastic_strain = last_plastic_strain,
+                .dt = dt},
+            err_status);
 
         // update interpolation interval and point if error was encountered
         if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
@@ -4659,12 +4776,11 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
       }
       default:
       {
-        FOUR_C_THROW("Unsupported hardening method {} for adaptive estimate interpolation!",
-            EnumTools::enum_name(
+        throw_detailed_error(
+            std::format("Unsupported hardening method {} for adaptive estimate interpolation!",
                 parameter()->adaptive_estimate_interp_params().hardening_params.method));
       }
     }
-
 
 
     // if we have reached this point, then we have a viable estimate candidate; we now verify it
@@ -4699,12 +4815,14 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
       adaptive_estimate_interp_manager_.adapt_interpolation_interval_and_point(gp_, err_status);
 
 
+
       // if the interpolation interval has narrowed down to essentially [0, 0] -> try evaluating
       // the standard elastic predictor as a last resort, i.e., return it directly, and do not
       // allow for re-estimations which are anyway not possible anymore based on the given
       // interval
       if (adaptive_estimate_interp_manager_.upper_interp_bound(gp_) <= 1.0e-8)
       {
+        err_status = ViscoplastUtils::ErrorType::no_errors;
         adaptive_estimate_interp_manager_.disable_further_reestimations();
         adaptive_estimate_interp_manager_.reset_num_estimate_interp_iters();
         return wrap_unknowns(
@@ -4713,8 +4831,7 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
     }
   }
 
-
-  FOUR_C_THROW(
+  throw_detailed_error(
       "You should not be here! We should have either returned or thrown before reaching this "
       "point "
       "in the estimate interpolation!");
@@ -4779,9 +4896,28 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
   // \f$ \xi - \xi_{\text{E}} \f$
   const double reestimation_interval = adaptive_estimate_interp_manager_.current_interp_point(gp_) -
                                        adaptive_estimate_interp_manager_.lower_interp_bound(gp_);
+
+  // DEBUG
+  if (debug_mode(ele_gid_, gp_))
+  {
+    std::cout << std::format(
+        "REESTIMATION: curr. point: {}, lower bound: {}, reestimation interval: {} vs. set "
+        "threshold: {} \n",
+        adaptive_estimate_interp_manager_.current_interp_point(gp_),
+        adaptive_estimate_interp_manager_.lower_interp_bound(gp_), reestimation_interval,
+        parameter()->adaptive_estimate_interp_params().min_reestimation_interval);
+  }
+
   if (reestimation_interval <
       parameter()->adaptive_estimate_interp_params().min_reestimation_interval)
   {
+    // DEBUG
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << std::format("REESTIMATION: increase lower bound and reinterpolate \n");
+    }
+
+
     // set lower <- current, and return re-interpolated estimate using these updated bounds
     return increase_lower_interp_bound_and_reinterpolate(
         dt, aei_deftensors, last_plastic_strain, eval_action);
@@ -4800,8 +4936,24 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
     ViscoplastUtils::StateQuantities interp_state_quantities =
         evaluate_state_quantities(aei_deftensors.right_cg, interp_iFin, 0.0, err_status, dt,
             ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+
+    // DEBUG
+    if (debug_mode(ele_gid_, gp_))
+    {
+      std::cout << std::format("REESTIMATION: intermediate point: {} -> equiv_stress: {} \n",
+          adaptive_estimate_interp_manager_.current_interp_point(gp_),
+          interp_state_quantities.curr_equiv_stress);
+    }
+
     if (err_status != ViscoplastUtils::ErrorType::no_errors)
     {
+      // DEBUG
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << std::format(
+            "REESTIMATION: eval. error!  increase lower bound and reinterpolate  \n");
+      }
+
       // set lower <- current (=intermediate!), and return re-interpolated estimate using these
       // updated bounds
       return increase_lower_interp_bound_and_reinterpolate(
@@ -4809,6 +4961,17 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
     }
     else
     {
+      // DEBUG
+      if (debug_mode(ele_gid_, gp_))
+      {
+        std::cout << std::format(
+            "REESTIMATION: about to verify the intermediate point:  stress: {}, "
+            "last_plastic_strain: {}, dt: {} \n",
+            interp_state_quantities.curr_equiv_stress, last_plastic_strain, dt);
+      }
+
+
+
       // "interpolate" plastic strain
       double interp_plastic_strain = -1.0;
       switch (parameter()->adaptive_estimate_interp_params().hardening_params.method)
@@ -4821,7 +4984,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
         case ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::integrate_via_evol_eqs:
         {
           interp_plastic_strain = integrate_plastic_strain(
-              interp_state_quantities.curr_equiv_stress, last_plastic_strain, dt, err_status);
+              ViscoplastUtils::HardeningIntegrationInput{
+                  .interp_equiv_stress = interp_state_quantities.curr_equiv_stress,
+                  .last_plastic_strain = last_plastic_strain,
+                  .dt = dt},
+              err_status);
 
           // update interpolation interval and point if error was encountered
           if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
@@ -4833,8 +5000,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
         }
         default:
         {
-          FOUR_C_THROW("Unsupported hardening method {} for adaptive estimate interpolation!",
-              EnumTools::enum_name(
+          throw_detailed_error(
+              std::format("Unsupported hardening method {} for adaptive estimate interpolation!",
                   parameter()->adaptive_estimate_interp_params().hardening_params.method));
         }
       }
@@ -4861,9 +5028,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::
     update_adaptive_estimate_interp_starting_points()
 {
-  FOUR_C_ASSERT_ALWAYS(parameter()->use_adaptive_estimate_interp(),
-      "This method should not be called without enabling adaptive estimate interpolation!");
-
+  if (!parameter()->use_adaptive_estimate_interp())
+  {
+    throw_detailed_error(
+        "This method should not be called without enabling adaptive estimate interpolation !");
+  }
 
   const ViscoplastUtils::AdaptiveEstimateInterpolationParams& aei_params =
       parameter()->adaptive_estimate_interp_params();
@@ -4879,7 +5048,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::
           last_interpolation_point:
       {
         adaptive_estimate_interp_manager_.set_starting_point(gp, std::nullopt);
-        return;
+        break;
       }
       case ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::optimal_equiv_stress:
       {
@@ -4898,10 +5067,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::
                 ViscoplastUtils::StateQuantityEvalType::
                     equiv_stress_only);  // we use only dummy values for quantities that are not
                                          // required in this partial computation
-        FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-            "Could not evaluate solution stress! This is definitely impossible! Error status: "
-            "{}",
-            EnumTools::enum_name(err_status));
+
+
+        if (err_status != ViscoplastUtils::ErrorType::no_errors)
+        {
+          throw_detailed_error(std::format(
+              "Could not evaluate solution stress! This is definitely impossible! Error status: {}",
+              err_status));
+        }
 
 
         // compute stress related to the elastic and plastic predictors at the considered Gauss
@@ -4912,12 +5085,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::
                 ViscoplastUtils::StateQuantityEvalType::
                     equiv_stress_only);  // we use only dummy values for quantities that are not
                                          // required in this partial computation
-        FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-            "Could not even evaluate the stress of the elastic predictor when attempting to "
-            "update "
-            "the starting points of the adaptive estimate interpolation using the "
-            "optimal_equiv_stress strategy! Error status: {}",
-            EnumTools::enum_name(err_status));
+
+        if (err_status != ViscoplastUtils::ErrorType::no_errors)
+        {
+          throw_detailed_error(std::format(
+              "Could not even evaluate the stress of the elastic predictor when attempting to "
+              "update "
+              "the starting points of the adaptive estimate interpolation using the "
+              "optimal_equiv_stress strategy! Error status: {}",
+              err_status));
+        }
+
         Core::LinAlg::Matrix<3, 3> iFin_plastic_pred =
             adaptive_estimate_interp_manager_.get_inverse_inelastic_defgrad_plastic_pred(
                 gp, aei_deftensors.inv_defgrad);
@@ -4926,25 +5104,48 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::
             ViscoplastUtils::StateQuantityEvalType::
                 equiv_stress_only);  // we use only dummy values for quantities that are not
                                      // required in this partial computation
-        FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-            "Could not even evaluate the stress of the plastic predictor when attempting to "
-            "update "
-            "the starting points of the adaptive estimate interpolation using the "
-            "optimal_equiv_stress strategy! Error status: {}",
-            EnumTools::enum_name(err_status));
 
-        // compute starting point
-        const double starting_point = (state_quantities_sol.curr_equiv_stress -
-                                          state_quantities_plast_pred.curr_equiv_stress) /
-                                      (state_quantities_elast_pred.curr_equiv_stress -
-                                          state_quantities_plast_pred.curr_equiv_stress);
+        if (err_status != ViscoplastUtils::ErrorType::no_errors)
+        {
+          throw_detailed_error(std::format(
+              "Could not even evaluate the stress of the plastic predictor when attempting to "
+              "update "
+              "the starting points of the adaptive estimate interpolation using the "
+              "optimal_equiv_stress strategy! \n {}",
+              err_status));
+        }
+
+        // compute starting point based on the equivalent stress: we clamp between 0.0 and 1.0
+        // because in some scenarios such as stress relaxation,  the starting point may be slightly
+        // under 0.0 (machine precision)
+        const double starting_point =
+            std::clamp((state_quantities_sol.curr_equiv_stress -
+                           state_quantities_elast_pred.curr_equiv_stress) /
+                           (state_quantities_plast_pred.curr_equiv_stress -
+                               state_quantities_elast_pred.curr_equiv_stress),
+                0.0, 1.0);
+
+
+
+        // DEBUG
+        if (debug_mode(ele_gid_, gp))
+        {
+          std::cout << std::format(
+              "...setting starting point at GP {}: equiv_stress: sol: {}, elast pred: {}, plast "
+              "pred: {} --> "
+              "{} \n",
+              gp, state_quantities_sol.curr_equiv_stress,
+              state_quantities_elast_pred.curr_equiv_stress,
+              state_quantities_plast_pred.curr_equiv_stress, starting_point);
+        }
+
 
         adaptive_estimate_interp_manager_.set_starting_point(gp, starting_point);
-        return;
+        break;
       }
       default:
-        FOUR_C_THROW("Starting point type {} unsupported!",
-            EnumTools::enum_name(aei_params.starting_point_type));
+        throw_detailed_error(
+            std::format("Starting point type {} unsupported!", aei_params.starting_point_type));
     }
   }
 }

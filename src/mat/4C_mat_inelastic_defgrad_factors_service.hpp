@@ -798,6 +798,21 @@ namespace Mat
     };
 
 
+    //! struct containing information required for integrating the hardening variables according to
+    //! their evolution equations (currently only the equivalent plastic strain) within the adaptive
+    //! estimate interpolation
+    struct HardeningIntegrationInput
+    {
+      //! interpolated equivalent stress \f$ \overline_{\sigma}(\xi) \f$
+      double interp_equiv_stress;
+
+      //! previous plastic strain \f$ \varepsilon_{\text{p}}(\xi) \f$
+      double last_plastic_strain;
+
+      //! integration time step / substep \f$ \Delta t \f$
+      double dt;
+    };
+
     //! struct containing parameters dedicated to handling the hardening variables within
     //! the adaptive estimate interpolation
     struct AdaptiveEstimateInterpolationHardeningParams

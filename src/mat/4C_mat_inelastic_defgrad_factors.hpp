@@ -1910,7 +1910,7 @@ namespace Mat
         Core::LinAlg::Matrix<6, 6>& cmatadd, const Core::LinAlg::Matrix<6, 9>& dSdiFinj);
 
     /*!
-     * @brief Get an extensive error message to be displayed when the
+     * @brief Throws an extensive error message to be displayed when the
      * simulation terminates. This is useful for debugging the time
      * integration in more detail. This message contains a base error
      * message which describes what failed in short form - this is
@@ -1920,7 +1920,32 @@ namespace Mat
      * @param[in] base_error_string base error message to be extended
      * with further information
      */
-    [[nodiscard]] std::string get_error_info(const std::string& base_error_string) const;
+    void throw_detailed_error(const std::string& base_error_string) const;
+
+
+    /*!
+     * @brief Gets extensive error / warning message, which is useful for debugging the time
+     * integration in more detail. This message contains a base error
+     * message which describes what failed in short form - this is
+     * then extended with information on the element ID, the Gauss
+     * Point, the last_ values and so on...
+     *
+     * @param[in] base_error_string base error message to be extended
+     * with further information
+     */
+    [[nodiscard]] std::string get_error_warning_info(const std::string& base_error_string) const;
+
+    /// ensure an error-free evaluation status -> throws if this is not the case
+    void ensure_error_free_evaluation(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const
+    {
+      if (err_status != InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
+      {
+        throw_detailed_error(std::format(
+            "Unhandled error with status {}! This method should not be called!", err_status));
+      }
+    }
+
 
     /*!
      * @brief Determines the initial estimate to be used within the Local Newton.
@@ -1983,14 +2008,13 @@ namespace Mat
      * for the plastic strain update / "interpolation" in the adaptive estimate interpolation
      * algorithm
      *
-     * @param[in] dt time step / substep size
-     * @param[in] equiv_stress equivalent stress serving as input for the intgration
-     * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
-     * time instant
+     * @param[in] integration_input struct containing variables required for integration, such as
+     * the interpolated equivalent stress, or the previous plastic strain
      * @param[out] err_status error status
      */
-    double integrate_plastic_strain(const double dt, const double equiv_stress,
-        const double last_plastic_strain,
+    double integrate_plastic_strain(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::HardeningIntegrationInput&
+            integration_input,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const;
 
     /*!
