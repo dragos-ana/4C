@@ -8,6 +8,7 @@
 #include "4C_mat_inelastic_defgrad_factors.hpp"
 
 #include "4C_comm_mpi_utils.hpp"
+#include "4C_comm_pack_helpers.hpp"
 #include "4C_global_data.hpp"
 #include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
@@ -36,6 +37,7 @@
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
 #include <algorithm>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <optional>
@@ -443,6 +445,23 @@ namespace
     return local_newton_params;
   }
 
+  Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
+  retrieve_error_registration_settings(const Core::Mat::PAR::Parameter::Data& matdata)
+  {
+    return ViscoplastUtils::ErrorRegistrationSettings{
+        .register_plastic_strain_incr_overflow =
+            matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
+                .get<bool>("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW"),
+        .max_plastic_strain_incr = matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
+            .get<double>("MAX_PLASTIC_STRAIN_INCR"),
+        .register_plastic_strain_incr_derivs_overflow =
+            matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
+                .get<bool>("REGISTER_PLASTIC_STRAIN_INCR_DERIVS_OVERFLOW"),
+        .max_plastic_strain_deriv_incr = matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
+            .get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")};
+  }
+
+
   bool show_warnings(const unsigned int ele_gid)
   {
     // get structure discretization
@@ -647,9 +666,6 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<ViscoplastUtils::TimIntType>("TIME_INTEGRATION_HIST_VARS")),
       linearization_type_(
           matdata.parameters.get<ViscoplastUtils::LinearizationType>("LINEARIZATION")),
-      max_plastic_strain_incr_(matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_INCR")),
-      max_plastic_strain_deriv_incr_(
-          matdata.parameters.get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")),
       use_local_substepping_(
           matdata.parameters.group("LOCAL_SUBSTEPPING").get<bool>("USE_SUBSTEPPING")),
       max_local_substepping_halve_num_(static_cast<unsigned int>(
@@ -664,7 +680,8 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       mat_log_deriv_calc_method_(
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD")),
-      local_newton_params_(retrieve_local_newton_params(matdata))
+      local_newton_params_(retrieve_local_newton_params(matdata)),
+      error_registration_settings_(retrieve_error_registration_settings(matdata))
 {
   // consistency check: yield parameters in case of transversely-isotropic behavior
   const bool all_yield_cond_param_specified =
@@ -1751,6 +1768,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
 
   // initialize time step quantities
   time_step_quantities_.init();
+
+  // initialize plastic flow tracking vector for a single Gauss point; we resize it afterwards
+  is_plastic_gp_.resize(1, false);
 }
 
 
@@ -1770,9 +1790,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   ele_gid_ = eleGID;
 
   // set time step
-  FOUR_C_ASSERT(context.time_step_size, "Time step size not given in evaluation context.");
+  FOUR_C_ASSERT_ALWAYS(context.time_step_size, "Time step size not given in evaluation context.");
   time_step_tracker_.dt = *context.time_step_size;
-  FOUR_C_ASSERT(context.total_time, "Total time not given in evaluation context.");
+  FOUR_C_ASSERT_ALWAYS(context.total_time, "Total time not given in evaluation context.");
   time_step_tracker_.tnp = *context.total_time;
 
   // set minimum substep length
@@ -1796,8 +1816,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_return_mapping()
   // pre-evaluate viscoplastic law
   viscoplastic_law_->pre_evaluate(params_, gp_);
 
-  // reset local iteration count
-  local_newton_manager_.set_iteration_count(0);
+  // set plastic flow to false for now! We set it to true if the elastic predictor step fails
+  is_plastic_gp_[gp_] = false;
 }
 
 
@@ -1839,6 +1859,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
     const double plastic_strain, ViscoplastUtils::ErrorType& err_status, const double dt,
     const ViscoplastUtils::StateQuantityEvalType& eval_type) const
 {
+  ensure_error_free_evaluation(err_status);
+
   ViscoplastUtils::StateQuantities state_quantities{};
   state_quantities.eval_type = eval_type;
 
@@ -1961,9 +1983,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
 
 
   // calculate equivalent plastic strain rate using the viscoplastic law
-  state_quantities.curr_equiv_plastic_strain_rate =
-      viscoplastic_law_->evaluate_plastic_strain_rate(state_quantities.curr_equiv_stress,
-          plastic_strain, dt, parameter()->max_plastic_strain_incr(), err_status, update_hist_var_);
+  state_quantities.curr_equiv_plastic_strain_rate = viscoplastic_law_->evaluate_plastic_strain_rate(
+      state_quantities.curr_equiv_stress, plastic_strain, dt,
+      parameter()->error_registration_settings(), err_status, update_hist_var_);
 
   if (eval_type == ViscoplastUtils::StateQuantityEvalType::plastic_strain_rate_only)
   {
@@ -2082,6 +2104,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
     const double plastic_strain, ViscoplastUtils::ErrorType& err_status, const double dt,
     const ViscoplastUtils::StateQuantityDerivEvalType& eval_type, const bool eval_state) const
 {
+  ensure_error_free_evaluation(err_status);
+
+
   ViscoplastUtils::StateQuantityDerivatives state_quantity_derivatives{};
   state_quantity_derivatives.eval_type = eval_type;
 
@@ -2370,8 +2395,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
 
   // compute the relevant derivatives of the plastic strain rate
   InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs evoEqFunctionDers =
-      viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(equiv_stress, plastic_strain,
-          dt, parameter()->max_plastic_strain_deriv_incr(), err_status);
+      viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(
+          equiv_stress, plastic_strain, dt, parameter()->error_registration_settings(), err_status);
 
   // return if we get an error, all other calculations are useless since substepping is
   // triggered
@@ -2524,6 +2549,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
     const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 1>& iCV,
     const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 6>& cmatadd)
 {
+  // calculate linearization term only if we have plastic flow
+  if (!is_plastic_gp_[gp_]) return;
+
+
+
   // reduced deformation gradient FredM, taking into account all the already computed
   // inelastic factors
   //    \f$ \boldsymbol{F_{\text{red}}} = \boldsymbol{F}
@@ -2551,110 +2581,104 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
           time_step_quantities_.current_plastic_strain[gp_], err_status, time_step_tracker_.dt,
           ViscoplastUtils::StateQuantityEvalType::full_eval);
 
-  // calculate linearization term only if we have plastic strain
-  if (std::abs(state_quantities_.curr_equiv_plastic_strain_rate * time_step_tracker_.dt) >
-      ViscoplastUtils::zero_plastic_strain_increment)
+  // ----- perturbation-based linearization ----- //
+  if (parameter()->linearization_type() == ViscoplastUtils::LinearizationType::perturbation_based ||
+      err_status != ViscoplastUtils::ErrorType::no_errors)
   {
-    // ----- perturbation-based linearization ----- //
-    if (parameter()->linearization_type() ==
-            ViscoplastUtils::LinearizationType::perturbation_based ||
-        err_status != ViscoplastUtils::ErrorType::no_errors)
-    {
-      evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
+    evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
 
-      return;
-    }
-
-    // ----- analytical linearization ----- //
-    // if error encountered: perform perturbation-based linearization
-
-    // calculate Jacobian
-    Core::LinAlg::Matrix<10, 1> current_sol =
-        wrap_unknowns(time_step_quantities_.current_plastic_defgrad_inverse[gp_],
-            time_step_quantities_.current_plastic_strain[gp_]);
-
-    Core::LinAlg::Matrix<10, 10> jacMat(Core::LinAlg::Initialization::zero);
-    viscoplastic_law_->pre_evaluate(params_, gp_);  // set last_substep <- last_
-    jacMat = evaluate_local_newton_jacobian(CredM, current_sol,
-        time_step_quantities_.last_plastic_strain[gp_],
-        time_step_quantities_.last_plastic_defgrad_inverse[gp_], time_step_tracker_.dt, err_status);
-
-    if (err_status != ViscoplastUtils::ErrorType::no_errors)
-    {
-      evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
-
-      return;
-    }
-
-    // if we get singular Jacobian: throw exception -> go to FD-based linearization
-    if (abs(jacMat.determinant()) < 1.0e-10)
-    {
-      err_status = ViscoplastUtils::ErrorType::singular_jacobian;
-      evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
-
-      return;
-    }
-
-    // declare right-hand side (RHS) terms of the linear system of equations related to the
-    // analytical linearization
-    Core::LinAlg::Matrix<9, 6> rhs_iFin_V(Core::LinAlg::Initialization::zero);
-    Core::LinAlg::Matrix<1, 6> rhs_epsp_V(Core::LinAlg::Initialization::zero);
-
-    if (parameter()->timint_type() == ViscoplastUtils::TimIntType::standard)
-    // standard time integration
-    {
-      // calculate RHS of the equation for the plastic deformation gradient
-      Core::LinAlg::FourTensor<3> dEpdC_FourTensor(true);
-      Core::LinAlg::Voigt::setup_four_tensor_from_9x6_voigt_matrix(
-          dEpdC_FourTensor, state_quantity_derivatives_.curr_dEpdC);
-      Core::LinAlg::FourTensorOperations::multiply_matrix_four_tensor<3>(tempFourTensor,
-          time_step_quantities_.last_plastic_defgrad_inverse[gp_], dEpdC_FourTensor);
-      Core::LinAlg::Voigt::setup_9x6_voigt_matrix_from_four_tensor(rhs_iFin_V, tempFourTensor);
-
-      // calculate RHS of the equation for the plastic strain
-      rhs_epsp_V.update(time_step_tracker_.dt * state_quantity_derivatives_.curr_dpsr_dequiv_stress,
-          state_quantity_derivatives_.curr_dequiv_stress_dC, 0.0);
-    }
-    else if (parameter()->timint_type() == ViscoplastUtils::TimIntType::logarithmic)
-    // logarithmic substepping
-    {
-      // calculate RHS of the equation for the plastic deformation gradient
-      rhs_iFin_V.update(-time_step_tracker_.dt, state_quantity_derivatives_.curr_dlpdC, 0.0);
-
-      // calculate RHS of the equation for the plastic strain
-      rhs_epsp_V.update(time_step_tracker_.dt * state_quantity_derivatives_.curr_dpsr_dequiv_stress,
-          state_quantity_derivatives_.curr_dequiv_stress_dC, 0.0);
-    }
-    else
-    {
-      FOUR_C_THROW("Inconsistent time integration type {} in evaluating material linearization",
-          EnumTools::enum_name(parameter()->timint_type()));
-    }
-
-    // assemble the RHS from its components
-    Core::LinAlg::Matrix<10, 6> RHS = assemble_rhs_additional_cmat(rhs_iFin_V, rhs_epsp_V);
-
-    // solve the linear system of equations
-    Core::LinAlg::Matrix<10, 6> SOL(Core::LinAlg::Initialization::zero);
-    Core::LinAlg::FixedSizeSerialDenseSolver<10, 10, 6> solver;
-    solver.set_matrix(jacMat);     // set A = jacM
-    solver.set_vectors(SOL, RHS);  // set X=SOL, B=RHS
-    solver.factor_with_equilibration(true);
-    const int err = solver.solve();  // X = A^-1 B
-    const int err2 = solver.factor();
-    if ((err != 0) || (err2 != 0))
-    {
-      err_status = ViscoplastUtils::ErrorType::failed_solution_analytic_linearization;
-      evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
-      return;
-    }
-
-    // disassemble the solution vector
-    const Core::LinAlg::Matrix<9, 6> diFinjdCV = extract_derivative_of_inv_inelastic_defgrad(SOL);
-
-    // compute additional term to stiffness matrix additional_cmat
-    cmatadd.multiply_nn(2.0, dSdiFinj, diFinjdCV, 1.0);
+    return;
   }
+
+  // ----- analytical linearization ----- //
+  // if error encountered: perform perturbation-based linearization
+
+  // calculate Jacobian
+  Core::LinAlg::Matrix<10, 1> current_sol =
+      wrap_unknowns(time_step_quantities_.current_plastic_defgrad_inverse[gp_],
+          time_step_quantities_.current_plastic_strain[gp_]);
+
+  Core::LinAlg::Matrix<10, 10> jacMat(Core::LinAlg::Initialization::zero);
+  viscoplastic_law_->pre_evaluate(params_, gp_);  // set last_substep <- last_
+  jacMat = evaluate_local_newton_jacobian(CredM, current_sol,
+      time_step_quantities_.last_plastic_strain[gp_],
+      time_step_quantities_.last_plastic_defgrad_inverse[gp_], time_step_tracker_.dt, err_status);
+
+  if (err_status != ViscoplastUtils::ErrorType::no_errors)
+  {
+    evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
+
+    return;
+  }
+
+  // if we get singular Jacobian: throw exception -> go to FD-based linearization
+  if (abs(jacMat.determinant()) < 1.0e-10)
+  {
+    err_status = ViscoplastUtils::ErrorType::singular_jacobian;
+    evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
+
+    return;
+  }
+
+  // declare right-hand side (RHS) terms of the linear system of equations related to the
+  // analytical linearization
+  Core::LinAlg::Matrix<9, 6> rhs_iFin_V(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::Matrix<1, 6> rhs_epsp_V(Core::LinAlg::Initialization::zero);
+
+  if (parameter()->timint_type() == ViscoplastUtils::TimIntType::standard)
+  // standard time integration
+  {
+    // calculate RHS of the equation for the plastic deformation gradient
+    Core::LinAlg::FourTensor<3> dEpdC_FourTensor(true);
+    Core::LinAlg::Voigt::setup_four_tensor_from_9x6_voigt_matrix(
+        dEpdC_FourTensor, state_quantity_derivatives_.curr_dEpdC);
+    Core::LinAlg::FourTensorOperations::multiply_matrix_four_tensor<3>(
+        tempFourTensor, time_step_quantities_.last_plastic_defgrad_inverse[gp_], dEpdC_FourTensor);
+    Core::LinAlg::Voigt::setup_9x6_voigt_matrix_from_four_tensor(rhs_iFin_V, tempFourTensor);
+
+    // calculate RHS of the equation for the plastic strain
+    rhs_epsp_V.update(time_step_tracker_.dt * state_quantity_derivatives_.curr_dpsr_dequiv_stress,
+        state_quantity_derivatives_.curr_dequiv_stress_dC, 0.0);
+  }
+  else if (parameter()->timint_type() == ViscoplastUtils::TimIntType::logarithmic)
+  // logarithmic substepping
+  {
+    // calculate RHS of the equation for the plastic deformation gradient
+    rhs_iFin_V.update(-time_step_tracker_.dt, state_quantity_derivatives_.curr_dlpdC, 0.0);
+
+    // calculate RHS of the equation for the plastic strain
+    rhs_epsp_V.update(time_step_tracker_.dt * state_quantity_derivatives_.curr_dpsr_dequiv_stress,
+        state_quantity_derivatives_.curr_dequiv_stress_dC, 0.0);
+  }
+  else
+  {
+    FOUR_C_THROW("Inconsistent time integration type {} in evaluating material linearization",
+        EnumTools::enum_name(parameter()->timint_type()));
+  }
+
+  // assemble the RHS from its components
+  Core::LinAlg::Matrix<10, 6> RHS = assemble_rhs_additional_cmat(rhs_iFin_V, rhs_epsp_V);
+
+  // solve the linear system of equations
+  Core::LinAlg::Matrix<10, 6> SOL(Core::LinAlg::Initialization::zero);
+  Core::LinAlg::FixedSizeSerialDenseSolver<10, 10, 6> solver;
+  solver.set_matrix(jacMat);     // set A = jacM
+  solver.set_vectors(SOL, RHS);  // set X=SOL, B=RHS
+  solver.factor_with_equilibration(true);
+  const int err = solver.solve();  // X = A^-1 B
+  const int err2 = solver.factor();
+  if ((err != 0) || (err2 != 0))
+  {
+    err_status = ViscoplastUtils::ErrorType::failed_solution_analytic_linearization;
+    evaluate_additional_cmat_perturb_based(FredM, cmatadd, dSdiFinj);
+    return;
+  }
+
+  // disassemble the solution vector
+  const Core::LinAlg::Matrix<9, 6> diFinjdCV = extract_derivative_of_inv_inelastic_defgrad(SOL);
+
+  // compute additional term to stiffness matrix additional_cmat
+  cmatadd.multiply_nn(2.0, dSdiFinj, diFinjdCV, 1.0);
 }
 
 
@@ -2700,9 +2724,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
   // declare output: history variables (after return mapping)
   HistoryVariables result;
 
-  // compute right CG tensor corresponding to the given deformation gradient
-  Core::LinAlg::Matrix<3, 3> CredM(Core::LinAlg::Initialization::zero);
-  CredM.multiply_tn(1.0, FredM, FredM, 0.0);
+  // construct struct containing deformation tensors used for local integration
+  ViscoplastUtils::LocalIntegrationDeformationTensors deftensors(
+      FredM, time_step_quantities_.last_plastic_defgrad_inverse[gp_]);
 
   // perform non-repeatable pre-evaluation tasks (non-repeatable: not
   // called in the redundant evaluate call, which is already handled -> direct return
@@ -2717,10 +2741,11 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
   ViscoplastUtils::ErrorType err_status = ViscoplastUtils::ErrorType::no_errors;
 
   // set current defgrad and current right CG tensor
-  time_step_quantities_.current_defgrad[gp_] = FredM;
-  time_step_quantities_.current_rightCG[gp_] = CredM;
+  time_step_quantities_.current_defgrad[gp_] = deftensors.defgrad;
+  time_step_quantities_.current_rightCG[gp_] = deftensors.right_cg;
   // check whether the predictor is the solution (no plastic strain during this time step)
-  bool pred_is_sol = check_elastic_predictor(CredM, iFinM_pred, plastic_strain_pred, err_status);
+  bool pred_is_sol =
+      check_elastic_predictor(deftensors.right_cg, iFinM_pred, plastic_strain_pred, err_status);
   if ((err_status == ViscoplastUtils::ErrorType::no_errors) && (pred_is_sol))
   {
     // update inverse inelastic defgrad and plastic strain
@@ -2729,19 +2754,20 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
   }
   else  // predictor does not suffice
   {
+    is_plastic_gp_[gp_] = true;
+    err_status = ViscoplastUtils::ErrorType::no_errors;
     // perform local time integration
     Core::LinAlg::Matrix<10, 1> x = wrap_unknowns(iFinM_pred, plastic_strain_pred);
-    Core::LinAlg::Matrix<10, 1> sol = viscoplastic_correction(FredM, x, err_status);
+    Core::LinAlg::Matrix<10, 1> sol = viscoplastic_correction(deftensors, err_status);
     // throw error if the Local Newton Loop cannot be evaluated with the given substepping
     // settings
     if (err_status != ViscoplastUtils::ErrorType::no_errors)
     {
       // output error and then throw (in order to display the error on
       // the right processor)
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW("{}", extended_message);
+      FOUR_C_THROW(
+          "{}", get_error_warning_info(std::format(
+                    "Viscoplastic correction was not successful! Error status: {}", err_status)));
     }
 
     // update inverse inelastic defgrad and plastic strain
@@ -2755,8 +2781,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
     time_step_quantities_.current_plastic_defgrad_inverse[gp_] = result.inv_plastic_defgrad;
     time_step_quantities_.current_plastic_strain[gp_] = result.plastic_strain;
     time_step_quantities_.current_equiv_stress[gp_] = state_quantities_.curr_equiv_stress;
-    time_step_quantities_.current_rightCG[gp_] = CredM;
-    time_step_quantities_.current_defgrad[gp_] = FredM;
+    time_step_quantities_.current_rightCG[gp_] = deftensors.right_cg;
+    time_step_quantities_.current_defgrad[gp_] = deftensors.defgrad;
   }
 
   return result;
@@ -2767,12 +2793,18 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::return_mapping(
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
 {
-  // update history variables for the next time step
-  time_step_quantities_.update();
-  // call update method of the viscoplastic law
-  viscoplastic_law_->update();
-  // reset Local Newton-Raphson manager
-  local_newton_manager_.reset();
+  for (unsigned int gp = 0; gp < num_gp_; ++gp)
+  {
+    // update history variables for the next time step
+    time_step_quantities_.update(gp);
+    if (is_plastic_gp_[gp])
+    {
+      // call update method of the viscoplastic law
+      viscoplastic_law_->update(gp);
+      // reset saved number of iterations at each Gauss point within Local Newton-Raphson manager
+      local_newton_manager_.reset_curr_num_iters(gp);
+    }
+  }
 }
 
 
@@ -2785,6 +2817,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   // auxiliaries
   Core::LinAlg::Matrix<6, 1> temp_6x1(Core::LinAlg::Initialization::zero);
 
+  // set number of Gauss points
+  num_gp_ = numgp;
+
   // resize time step quantities according to the number of Gauss points
   time_step_quantities_.resize(numgp);
 
@@ -2794,6 +2829,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   // setup the Local Newton data tracker with the correct number
   // of Gauss points
   local_newton_manager_.resize(numgp);
+
+  // resize plastic flow tracking vector with the correct number of Gauss points
+  is_plastic_gp_.resize(numgp, is_plastic_gp_[0]);
 
   // read fiber and structural tensor in the case of transverse isotropy
   if (parameter()->mat_behavior() == ViscoplastUtils::MatBehavior::transv_isotropic)
@@ -2806,7 +2844,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   }
   else
   {
-    m_.scale(0.0);
+    m_.clear();
   }
   // set material dependent constant tensors
   const_mat_tensors_.set_material_const_tensors(m_);
@@ -2832,6 +2870,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pack_inelastic(
 
     // pack Local Newton manager
     local_newton_manager_.pack(data);
+
+    // pack plastic flow tracking vector
+    add_to_pack(data, is_plastic_gp_);
   }
 }
 
@@ -2854,7 +2895,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::unpack_inelastic(
     time_step_quantities_.unpack(buffer);
     // unpack the Local Newton manager
     local_newton_manager_.unpack(buffer);
+    // unpack the plastic flow tracking vector
+    extract_from_pack(buffer, is_plastic_gp_);
   }
+
+  // set number of Gauss points manually, since the setup method is not called
+  num_gp_ = time_step_quantities_.last_defgrad.size();
 
   // now that the fiber direction is available, we set the material-dependent constant tensors
   // with it
@@ -2870,6 +2916,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_local_newton_residua
     const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
     ViscoplastUtils::ErrorType& err_status)
 {
+  ensure_error_free_evaluation(err_status);
+
   // auxiliaries
   Core::LinAlg::Matrix<3, 3> temp3x3(Core::LinAlg::Initialization::zero);
 
@@ -2967,6 +3015,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_local_newton_jacobia
     const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
     ViscoplastUtils::ErrorType& err_status)
 {
+  ensure_error_free_evaluation(err_status);
+
+
   // auxiliaries
   Core::LinAlg::FourTensor<3> tempFourTensor(true);
   Core::LinAlg::Matrix<9, 9> temp9x9(Core::LinAlg::Initialization::zero);
@@ -3101,18 +3152,18 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_local_newton_jacobia
  *--------------------------------------------------------------------*/
 Core::LinAlg::Matrix<10, 1>
 Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
-    const Core::LinAlg::Matrix<3, 3>& defgrad, const Core::LinAlg::Matrix<10, 1>& x,
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+        deftensors,
     ViscoplastUtils::ErrorType& err_status)
 {
-  // calculate right Cauchy-Green deformation tensor
-  Core::LinAlg::Matrix<3, 3> CM(Core::LinAlg::Initialization::zero);
-  CM.multiply_tn(1.0, defgrad, defgrad, 0.0);
+  ensure_error_free_evaluation(err_status);
 
-  // define solution vector
-  Core::LinAlg::Matrix<10, 1> sol = x;
 
-  // declare current right CG (tensor interpolated later on in each substep)
-  Core::LinAlg::Matrix<3, 3> curr_CM(Core::LinAlg::Initialization::zero);
+  // declare solution vector
+  Core::LinAlg::Matrix<10, 1> sol{Core::LinAlg::Initialization::zero};
+
+  // declare current defgrad (tensor interpolated later on in each substep) and right CG
+  Core::LinAlg::Matrix<3, 3> curr_FM{Core::LinAlg::Initialization::zero};
 
   // reset substep parameters
   if (parameter()->use_local_substepping())
@@ -3129,20 +3180,26 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
   {
     while (!local_substepping_utils_.end_substepping())
     {
-      // interpolate right Cauchy-Green tensor if we use local substepping
-      curr_CM = tensor_interpolator_.get_interpolated_matrix(
-          {time_step_quantities_.last_rightCG[gp_], CM}, {0.0, 1.0},
+      // interpolate deformation gradient if we use local substepping, and calculate the right
+      // Cauchy-Green deformation tensor accordingly
+      curr_FM = tensor_interpolator_.get_interpolated_matrix(
+          {time_step_quantities_.last_defgrad[gp_], deftensors.defgrad}, {0.0, 1.0},
           local_substepping_utils_.get_normalized_next_time_param(time_step_tracker_.dt),
           tensor_interp_err_status);
-      FOUR_C_ASSERT_ALWAYS(
-          tensor_interp_err_status == Core::LinAlg::TensorInterpolationErrorType::NoErrors,
-          "Tensor interpolation failed with err: {}",
-          Core::LinAlg::make_error_message(tensor_interp_err_status));
+      if (tensor_interp_err_status != Core::LinAlg::TensorInterpolationErrorType::NoErrors)
+      {
+        FOUR_C_THROW(
+            "{}", get_error_warning_info(std::format("Tensor interpolation failed with err: {}",
+                      Core::LinAlg::make_error_message(tensor_interp_err_status))));
+      }
+      ViscoplastUtils::LocalIntegrationDeformationTensors curr_deftensors(
+          curr_FM, time_step_quantities_.last_substep_plastic_defgrad_inverse[gp_]);
 
       // perform substep local Newton loop
-      local_newton_loop(curr_CM, time_step_quantities_.last_substep_plastic_strain[gp_],
-          time_step_quantities_.last_substep_plastic_defgrad_inverse[gp_],
-          local_substepping_utils_.get_substep_size(), sol, err_status);
+      err_status = ViscoplastUtils::ErrorType::no_errors;
+      sol =
+          local_newton_loop(curr_deftensors, time_step_quantities_.last_substep_plastic_strain[gp_],
+              local_substepping_utils_.get_substep_size(), err_status);
       // update Local Newton quantities
       local_newton_manager_.update_after_local_newton(gp_);
 
@@ -3163,14 +3220,14 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
       else
       {
         // halve and prepare a new substep
-        bool halving_success = halve_and_prepare_new_substep(sol, CM);
+        bool halving_success = halve_and_prepare_new_substep(sol, curr_deftensors.right_cg);
         // if the halving number was exceeded --> return with error
         if (!halving_success)
         {
-          const std::string extended_message =
-              get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                      get_detailed_error_message_for_error_type(err_status));
-          FOUR_C_THROW("{}", extended_message);
+          FOUR_C_THROW(
+              "{}", get_error_warning_info(std::format(
+                        "Maximum halving number for substepping was reached! Error status: {}",
+                        err_status)));
         }
       }
     }
@@ -3179,9 +3236,15 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
   else
   {
     // perform local Newton loop
-    local_newton_loop(CM, time_step_quantities_.last_plastic_strain[gp_],
-        time_step_quantities_.last_plastic_defgrad_inverse[gp_], time_step_tracker_.dt, sol,
-        err_status);
+    sol = local_newton_loop(deftensors, time_step_quantities_.last_plastic_strain[gp_],
+        time_step_tracker_.dt, err_status);
+    if (err_status != ViscoplastUtils::ErrorType::no_errors)
+    {
+      FOUR_C_THROW(
+          "{}", get_error_warning_info(std::format(
+                    "There was an error within the local Newton! Error status: {}", err_status)));
+    }
+
 
     // update Local Newton quantities and reset iteration counter
     local_newton_manager_.update_after_local_newton(gp_);
@@ -3194,13 +3257,17 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
-    const Core::LinAlg::Matrix<3, 3>& CM, const double last_plastic_strain,
-    const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt, Core::LinAlg::Matrix<10, 1>& sol,
+Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+        deftensors,
+    const double last_plastic_strain, const double dt,
     InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status)
 {
+  ensure_error_free_evaluation(err_status);
+
   // auxiliaries
   Core::LinAlg::Matrix<10, 1> temp10x1(Core::LinAlg::Initialization::zero);
+
 
   // Jacobian matrix
   Core::LinAlg::Matrix<10, 10> jacMat(Core::LinAlg::Initialization::zero);
@@ -3209,16 +3276,37 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
   // residual of both equations
   Core::LinAlg::Matrix<10, 1> residual(Core::LinAlg::Initialization::zero);
 
-  // initialize quantities checked for convergence
-  ViscoplastUtils::LocalNewtonConvQuantities conv_quantities{
-      .residual_norm = 1.0, .increment_norm = 1.0};
-
   // initialize evaluation management action
   ViscoplastUtils::EvaluationAction eval_action{
       ViscoplastUtils::EvaluationAction::continue_current_iteration};
 
-  // reset Local Newton iteration count
-  local_newton_manager_.set_iteration_count(0);
+  // initialize local Newton
+  temp10x1 = determine_local_newton_init_estimate(dt, deftensors, last_plastic_strain, err_status);
+  if (err_status != ViscoplastUtils::ErrorType::no_errors)
+  {
+    FOUR_C_THROW("{}",
+        get_error_warning_info(
+            std::format("Local Newton cannot even be initialized due to error: {}", err_status)));
+  }
+  local_newton_manager_.init_local_newton(temp10x1, true);
+
+  // handle eventual error in the initial estimate determination
+  if (err_status != ViscoplastUtils::ErrorType::no_errors)
+  {
+    // for substepping, we exit with the set error status and retry the computation with a smaller
+    // substep (eventually)
+    if (parameter()->use_local_substepping())
+    {
+      return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
+    }
+    // without substepping, we throw directly
+    else
+    {
+      FOUR_C_THROW(
+          "{}", get_error_warning_info("Could not compute initial estimate for the local Newton!"));
+    }
+  }
+
 
   // local Newton-Raphson loop
   while (true)
@@ -3226,16 +3314,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
     // set error status to no_errors
     err_status = ViscoplastUtils::ErrorType::no_errors;
 
-    // increment iteration counter
-    local_newton_manager_.increment_iteration_count();
-
     // evaluate residual
-    residual =
-        evaluate_local_newton_residual(CM, sol, last_plastic_strain, last_iFinM, dt, err_status);
+    residual = evaluate_local_newton_residual(deftensors.right_cg, local_newton_manager_.sol(),
+        last_plastic_strain, deftensors.elastic_predictor_inverse_plastic_defgrad, dt, err_status);
 
     // error management after residual evaluation
-    temp10x1.update(1.0, sol, 0.0);
-    manage_evaluation(err_status, eval_action);
+    temp10x1.update(1.0, local_newton_manager_.sol(), 0.0);
+    manage_evaluation(err_status, deftensors, last_plastic_strain, dt, eval_action);
+
     switch (eval_action)
     {
       case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3246,7 +3332,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
       case (ViscoplastUtils::EvaluationAction::continue_with_next_iteration):
       {
         // recompute dx after conducting adjustments to solution vector
-        dx.update(1.0, sol, -1.0, temp10x1, 0.0);
+        dx.update(1.0, local_newton_manager_.sol(), -1.0, temp10x1, 0.0);
 
         // proceed with next iteration after performing adjustments due
         // to errors
@@ -3255,30 +3341,29 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
       case (ViscoplastUtils::EvaluationAction::exit_with_error):
       {
         // exit with the set error status
-        return;
+        return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
       }
       default:
       {
-        FOUR_C_THROW("Invalid evaluation action {} for error status {} after residual evaluation",
-            EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+        FOUR_C_THROW(
+            "{}", get_error_warning_info(std::format(
+                      "Invalid evaluation action {} for error status {} after residual evaluation",
+                      eval_action, err_status)));
       }
     }
 
 
-    // if we continue, then the residual evaluation was successful
-
-    // verify convergence
-    conv_quantities.residual_norm = residual.norm2();
-    const bool is_converged = is_local_newton_converged(conv_quantities);
+    // if we continue, then the residual evaluation was successful; verify convergence next
+    local_newton_manager_.set_residual_norm(residual);
 
     // exit in case of convergence
-    if (is_converged)
+    if (local_newton_manager_.is_local_newton_converged())
     {
-      return;
+      return local_newton_manager_.sol();
     }
 
     // check if maximum iteration is exceeded
-    if (local_newton_manager_.iter() > local_newton_manager_.params().max_iter)
+    if (local_newton_manager_.is_max_iter_exceeded())
     {
       // set non-convergence error
       err_status =
@@ -3289,25 +3374,26 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
       // for a smaller substep size; hence, we return with the set error status
       if (parameter()->use_local_substepping())
       {
-        return;
+        return Core::LinAlg::Matrix<10, 1>{
+            Core::LinAlg::Initialization::zero};  // exit with the set error status
       }
       // for one-step processes, we account for the set divergence continuation strategy
       else
       {
-        verify_local_newton_exit(conv_quantities, err_status);
-        return;
+        verify_local_newton_exit(err_status);
+        return local_newton_manager_.sol();
       }
     }
     else
     {
       // check whether the Local Newton is 'stuck'
-      if (is_local_newton_stuck(conv_quantities))
+      if (local_newton_manager_.is_local_newton_stuck())
       {
         // error management routine after the 'stuck' verification
         err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::
             no_convergence_local_newton;
-        temp10x1.update(1.0, sol, 0.0);
-        manage_evaluation(err_status, eval_action);
+        temp10x1.update(1.0, local_newton_manager_.sol(), 0.0);
+        manage_evaluation(err_status, deftensors, last_plastic_strain, dt, eval_action);
         switch (eval_action)
         {
           case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3318,7 +3404,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
           case (ViscoplastUtils::EvaluationAction::continue_with_next_iteration):
           {
             // recompute dx after conducting adjustments to solution vector
-            dx.update(1.0, sol, -1.0, temp10x1, 0.0);
+            dx.update(1.0, local_newton_manager_.sol(), -1.0, temp10x1, 0.0);
 
             // proceed with next iteration after performing adjustments due
             // to errors
@@ -3327,24 +3413,27 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
           case (ViscoplastUtils::EvaluationAction::exit_with_error):
           {
             // exit with the set error status
-            return;
+            return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
           }
           default:
           {
-            FOUR_C_THROW(
-                "Invalid evaluation action {} for error status {} after verification of stuck "
-                "Local Newton",
-                EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+            FOUR_C_THROW("{}",
+                get_error_warning_info(std::format(
+                    "Invalid evaluation action {} for error status {} after verification of stuck "
+                    "Local Newton",
+                    eval_action, err_status)));
           }
         }
       }
     }
 
     // evaluate Jacobian
-    jacMat =
-        evaluate_local_newton_jacobian(CM, sol, last_plastic_strain, last_iFinM, dt, err_status);
+    jacMat = evaluate_local_newton_jacobian(deftensors.right_cg, local_newton_manager_.sol(),
+        last_plastic_strain, deftensors.elastic_predictor_inverse_plastic_defgrad, dt, err_status);
+
     // error management after Jacobian evaluation
-    manage_evaluation(err_status, eval_action);
+    manage_evaluation(err_status, deftensors, last_plastic_strain, dt, eval_action);
+
     switch (eval_action)
     {
       case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3361,12 +3450,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
       case (ViscoplastUtils::EvaluationAction::exit_with_error):
       {
         // exit with the set error status
-        return;
+        return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
       }
       default:
       {
-        FOUR_C_THROW("Invalid evaluation action {} for error status {} after Jacobian evaluation",
-            EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+        FOUR_C_THROW(
+            "{}", get_error_warning_info(std::format(
+                      "Invalid evaluation action {} for error status {} after Jacobian evaluation",
+                      eval_action, err_status)));
       }
     }
 
@@ -3377,7 +3468,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
     {
       err_status = ViscoplastUtils::ErrorType::failed_solution_linear_system_lnl;
       // error management after linear system solution
-      manage_evaluation(err_status, eval_action);
+      manage_evaluation(err_status, deftensors, last_plastic_strain, dt, eval_action);
       switch (eval_action)
       {
         case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3394,92 +3485,28 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::local_newton_loop(
         case (ViscoplastUtils::EvaluationAction::exit_with_error):
         {
           // exit with the set error status
-          return;
+          return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
         }
+
         default:
         {
           FOUR_C_THROW(
-              "Invalid evaluation action {} for error status {} after solving linear system",
-              EnumTools::enum_name(eval_action), EnumTools::enum_name(err_status));
+              "{}", get_error_warning_info(std::format("Invalid evaluation action {} for error "
+                                                       "status {} after solving linear system",
+                        eval_action, err_status)));
         }
       }
     }
 
-    // update solution vector and relative increment
-    sol.update(1.0, dx, 1.0);
-    const double sol_norm = sol.norm2();
-    const double dx_norm = dx.norm2();
-    FOUR_C_ASSERT_ALWAYS(sol_norm >= 1.0e-8,
-        "The solution vector in local iteration {} is nearly 0, with 2-norm: {}! Something went "
-        "wrong, since such mechanical states are not expected!",
-        local_newton_manager_.iter(), sol_norm);
-    conv_quantities.increment_norm = dx_norm / sol_norm;
+    // update solution vector, iteration counter increment norm
+    local_newton_manager_.increment_solution_vector_and_iter(dx);
   }
 }
 
-/*--------------------------------------------------------------------*
- *--------------------------------------------------------------------*/
-bool Mat::InelasticDefgradTransvIsotropElastViscoplast::is_local_newton_converged(
-    const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvQuantities&
-        conv_quantities)
-{
-  // check for convergence
-  switch (local_newton_manager_.params().conv_check)
-  {
-    case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::residual:
-      return (conv_quantities.residual_norm <= local_newton_manager_.params().res_tol);
-      break;
-    case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::increment_ratio:
-      return (conv_quantities.increment_norm <= local_newton_manager_.params().incr_tol);
-      break;
-    case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
-        residual_and_increment_ratio:
-      return (conv_quantities.residual_norm <= local_newton_manager_.params().res_tol &&
-              conv_quantities.increment_norm <= local_newton_manager_.params().incr_tol);
-      break;
-    default:
-      FOUR_C_THROW("You should not be here (convergence checking of the Local Newton Loop)");
-  }
-}
-
-/*--------------------------------------------------------------------*
- *--------------------------------------------------------------------*/
-bool Mat::InelasticDefgradTransvIsotropElastViscoplast::is_local_newton_stuck(
-    const ViscoplastUtils::LocalNewtonConvQuantities& conv_quantities)
-{
-  // check for "stuck" Local Newton, i.e., the increment does not change much but there is not a
-  // converged state (check only feasible after the first iteration, since dx must be available)
-  if ((local_newton_manager_.iter() > 1) && (conv_quantities.increment_norm < 1.0e-15))
-  {
-    // only in the case that the residual is verified, we set an
-    // error status
-    switch (local_newton_manager_.params().conv_check)
-    {
-      case InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::residual:
-      case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
-          residual_and_increment_ratio:
-      {
-        return (conv_quantities.residual_norm > local_newton_manager_.params().res_tol);
-      }
-      case ViscoplastUtils::LocalNewtonConvCheck::increment_ratio:
-      {
-        return false;
-      }
-      default:
-        FOUR_C_THROW(
-            "You should not be here with convergence check type {} (check: is Local Newton "
-            "stuck?)",
-            EnumTools::enum_name(local_newton_manager_.params().conv_check));
-    }
-  }
-
-  return false;
-}
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit(
-    const ViscoplastUtils::LocalNewtonConvQuantities& conv_quantities,
     InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status)
 {
   switch (local_newton_manager_.params().diver_cont)
@@ -3487,10 +3514,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
     case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop:
     {
       // throw error: there is no convergence
-      const std::string extended_message =
-          get_error_info(Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                  get_detailed_error_message_for_error_type(err_status));
-      FOUR_C_THROW("{}", extended_message);
+      FOUR_C_THROW("{}",
+          get_error_warning_info(
+              std::format("There is no Local Newton convergence! Error status: {}", err_status)));
+      return;
     }
     case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::
         continue_sim:
@@ -3503,8 +3530,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
         std::cout << std::format(
             "WARNING: The Local Newton Loop for ele_gid = {}, gp = {} did not reach "
             "convergence after {} iterations: residual = {}, increment = {}\n",
-            ele_gid_, gp_, local_newton_manager_.iter(), conv_quantities.residual_norm,
-            conv_quantities.increment_norm);
+            ele_gid_, gp_, local_newton_manager_.iter(),
+            local_newton_manager_.convergence_quantities().residual_norm,
+            local_newton_manager_.convergence_quantities().increment_norm);
       }
 
       // safeguard check: is the current solution within the bounds posed by the
@@ -3514,11 +3542,11 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
               continue_sim_with_safeguard)
       {
         const bool residual_within_bounds =
-            conv_quantities.residual_norm <
+            local_newton_manager_.convergence_quantities().residual_norm <
             (local_newton_manager_.params().res_tol *
                 local_newton_manager_.params().max_exceedance_fact_res_tol);
         const bool incr_ratio_within_bounds =
-            conv_quantities.increment_norm <
+            local_newton_manager_.convergence_quantities().increment_norm <
             (local_newton_manager_.params().incr_tol *
                 local_newton_manager_.params().max_exceedance_fact_incr_tol);
 
@@ -3527,41 +3555,60 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
           case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               residual:
           {
-            FOUR_C_ASSERT_ALWAYS(residual_within_bounds,
-                "Residual {} exceeds the residual tolerance {} by more than the set "
-                "exceedance tolerance factor {}!",
-                conv_quantities.residual_norm, local_newton_manager_.params().res_tol,
-                local_newton_manager_.params().max_exceedance_fact_res_tol);
+            if (!residual_within_bounds)
+            {
+              FOUR_C_THROW("{}",
+                  get_error_warning_info(std::format(
+                      "Residual {} exceeds the residual tolerance {} by more than the set "
+                      "exceedance tolerance factor {}! Error status: {}",
+                      local_newton_manager_.convergence_quantities().residual_norm,
+                      local_newton_manager_.params().res_tol,
+                      local_newton_manager_.params().max_exceedance_fact_res_tol, err_status)));
+            }
+
 
             break;
           }
           case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               increment_ratio:
           {
-            FOUR_C_ASSERT_ALWAYS(incr_ratio_within_bounds,
-                "Relative increment {} exceeds the increment tolerance {} by more "
-                "than the set exceedance tolerance factor {}!",
-                conv_quantities.increment_norm, local_newton_manager_.params().incr_tol,
-                local_newton_manager_.params().max_exceedance_fact_incr_tol);
+            if (!incr_ratio_within_bounds)
+            {
+              FOUR_C_THROW("{}",
+                  get_error_warning_info(std::format(
+                      "Relative increment {} exceeds the increment tolerance {} by more "
+                      "than the set exceedance tolerance factor {}! Error status: {}",
+                      local_newton_manager_.convergence_quantities().increment_norm,
+                      local_newton_manager_.params().incr_tol,
+                      local_newton_manager_.params().max_exceedance_fact_incr_tol, err_status)));
+            }
 
             break;
           }
           case FourC::Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
               residual_and_increment_ratio:
           {
-            FOUR_C_ASSERT_ALWAYS(residual_within_bounds && incr_ratio_within_bounds,
-                "Residual {} and relative increment {} exceed the tolerances {} and {} by "
-                "more than the set exceedance tolerance factors {} and {}!",
-                conv_quantities.residual_norm, conv_quantities.increment_norm,
-                local_newton_manager_.params().res_tol, local_newton_manager_.params().incr_tol,
-                local_newton_manager_.params().max_exceedance_fact_res_tol,
-                local_newton_manager_.params().max_exceedance_fact_incr_tol);
+            if ((!residual_within_bounds) || (!incr_ratio_within_bounds))
+            {
+              FOUR_C_THROW("{}",
+                  get_error_warning_info(std::format(
+                      "Residual {} and relative increment {} exceed the tolerances {} and {} by "
+                      "more than the set exceedance tolerance factors {} and {}! Error status: {}",
+                      local_newton_manager_.convergence_quantities().residual_norm,
+                      local_newton_manager_.convergence_quantities().increment_norm,
+                      local_newton_manager_.params().res_tol,
+                      local_newton_manager_.params().incr_tol,
+                      local_newton_manager_.params().max_exceedance_fact_res_tol,
+                      local_newton_manager_.params().max_exceedance_fact_incr_tol, err_status)));
+            }
 
             break;
           }
           default:
-            FOUR_C_THROW("Invalid convergence check {} (verification of safe Local Newton exit)",
-                EnumTools::enum_name(local_newton_manager_.params().conv_check));
+            FOUR_C_THROW(
+                "{}", get_error_warning_info(std::format(
+                          "Invalid convergence check {} (verification of safe Local Newton exit)",
+                          local_newton_manager_.params().conv_check)));
         }
       }
 
@@ -3572,13 +3619,16 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_local_newton_exit
     }
     default:
       FOUR_C_THROW(
-          "You should not be here (divergence management strategy for Local Newton "
-          "Loop)");
+          "{}", get_error_warning_info(
+                    "You should not be here (divergence management strategy for Local Newton "
+                    "Loop)"));
   }
 
   // safeguard for the function: each path must either return of throw
-  FOUR_C_THROW("The Local Newton scheme cannot be safely exited! Uncaught exception with error {}",
-      err_status);
+  FOUR_C_THROW(
+      "{}", get_error_warning_info(std::format(
+                "The Local Newton scheme cannot be safely exited! Uncaught exception with error {}",
+                err_status)));
 }
 
 /*--------------------------------------------------------------------*
@@ -3587,7 +3637,8 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::solve_local_newton_linea
     const Core::LinAlg::Matrix<10, 1>& residual, const Core::LinAlg::Matrix<10, 10>& jacobian,
     Core::LinAlg::Matrix<10, 1>& dx)
 {
-  // auxiliaries: use copies of the residual and jacobian to avoid modifying the original variables
+  // auxiliaries: use copies of the residual and jacobian to avoid modifying the original
+  // variables
   Core::LinAlg::Matrix<10, 1> temp_negative_residual(Core::LinAlg::Initialization::zero);
   Core::LinAlg::Matrix<10, 10> temp_jacobian(Core::LinAlg::Initialization::zero);
 
@@ -3612,10 +3663,12 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::check_elastic_predictor(
     const Core::LinAlg::Matrix<3, 3>& CM, const Core::LinAlg::Matrix<3, 3>& iFinM_pred,
     const double plastic_strain_pred, ViscoplastUtils::ErrorType& err_status)
 {
+  ensure_error_free_evaluation(err_status);
+
+
   // evaluate state with this elastic predictor and the minimum possible time step
   state_quantities_ = evaluate_state_quantities(CM, iFinM_pred, plastic_strain_pred, err_status,
       time_step_tracker_.min_dt, ViscoplastUtils::StateQuantityEvalType::plastic_strain_rate_only);
-
 
   // check if the predicted plastic strain rate is 0 -> for flow rules with yield functions,
   // this means that the predictor is correct
@@ -3728,7 +3781,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_additional_cmat
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
     const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action) const
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+        deftensors,
+    const double last_plastic_strain, const double dt,
+    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action)
 {
   // default evaluation action: continue iteration
   eval_action = InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction::
@@ -3748,22 +3804,22 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
       eval_action = ViscoplastUtils::EvaluationAction::exit_with_error;
       return;
     }
+    // without evaluation management strategy, we can throw directly
     else
     {
-      FOUR_C_THROW(
-          "The Local Newton evaluation has failed with err status {} and there is no evaluation "
-          "management strategy "
-          "selected!",
-          err_status);
+      FOUR_C_THROW("{}", get_error_warning_info(std::format(
+                             "The Local Newton evaluation has failed and there is no evaluation "
+                             "management strategy "
+                             "selected! Error status: {}",
+                             err_status)));
     }
   }
 }
 
 
-
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::get_error_info(
+std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::get_error_warning_info(
     const std::string& base_error_string) const
 {
   // auxiliaries
@@ -3774,7 +3830,11 @@ std::string Mat::InelasticDefgradTransvIsotropElastViscoplast::get_error_info(
   temp_ostream << std::fixed << std::setprecision(16) << std::endl;
 
   // declare the extended error message
-  std::string extended_error_string{local_substepping_utils_.get_info()};
+  std::string extended_error_string{};
+  if (parameter()->use_local_substepping())
+  {
+    extended_error_string += local_substepping_utils_.get_info();
+  }
 
   // get relevant error info
   extended_error_string += "BASE ERROR: \n";
@@ -3940,4 +4000,19 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_output_data(
   return viscoplastic_law_->evaluate_output_data(name, data);
 }
 
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Core::LinAlg::Matrix<10, 1>
+Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_estimate(
+    const double dt,
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+        deftensors,
+    const double last_plastic_strain,
+    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status)
+{
+  ensure_error_free_evaluation(err_status);
+
+  // we use the elastic predictor
+  return wrap_unknowns(deftensors.elastic_predictor_inverse_plastic_defgrad, last_plastic_strain);
+}
 FOUR_C_NAMESPACE_CLOSE

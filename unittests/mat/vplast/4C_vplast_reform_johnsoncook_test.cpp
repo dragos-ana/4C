@@ -108,17 +108,45 @@ namespace
         Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute solution from the viscoplasticity law
+    const double max_plastic_strain_increments = std::exp(30.0);
     double plastic_strain_rate_reformulated_JC =
-        vplast_law_reformulated_JC_->evaluate_plastic_strain_rate(
-            equiv_stress_, equiv_plastic_strain_, 1.0, std::exp(30.0), err_status, false);
+        vplast_law_reformulated_JC_->evaluate_plastic_strain_rate(equiv_stress_,
+            equiv_plastic_strain_, 1.0,
+            {.register_plastic_strain_incr_overflow = true,
+                .max_plastic_strain_incr = max_plastic_strain_increments,
+                .register_plastic_strain_incr_derivs_overflow = true,
+                .max_plastic_strain_deriv_incr = max_plastic_strain_increments},
+            err_status, false);
 
     if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
       FOUR_C_THROW("Error encountered during testing of TestEvaluatePlasticStrainRate");
-
-
-    // compare solutions
     EXPECT_NEAR(
         plastic_strain_rate_reformulated_JC_solution_, plastic_strain_rate_reformulated_JC, 1.0e-8);
+
+    // test registering of the overflow error
+    plastic_strain_rate_reformulated_JC = vplast_law_reformulated_JC_->evaluate_plastic_strain_rate(
+        equiv_stress_, equiv_plastic_strain_, 1.0,
+        {.register_plastic_strain_incr_overflow = true,
+            .max_plastic_strain_incr =
+                1.0e-16,  // effectively 0-tolerance for plastic strain increments -> results in
+                          // overflow error regardless of the computed plastic strain increment
+                          // value
+            .register_plastic_strain_incr_derivs_overflow = true,
+            .max_plastic_strain_deriv_incr = 1.0e-16},
+        err_status, false);
+    EXPECT_EQ(err_status,
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::overflow_error);
+
+    plastic_strain_rate_reformulated_JC = vplast_law_reformulated_JC_->evaluate_plastic_strain_rate(
+        equiv_stress_, equiv_plastic_strain_, 1.0,
+        {.register_plastic_strain_incr_overflow = false,
+            .max_plastic_strain_incr =
+                1.0e-16,  // same test as above, but now without registering the error
+            .register_plastic_strain_incr_derivs_overflow = false,
+            .max_plastic_strain_deriv_incr = 1.0e-16},
+        err_status, false);
+    EXPECT_EQ(
+        err_status, Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors);
   }
 
   TEST_F(ReformJohnsonCookTest, TestEvaluatePlasticStrainRateDerivatives)
@@ -135,21 +163,53 @@ namespace
         Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
 
     // compute solution from the viscoplasticity law
+    const double max_plastic_strain_increments = std::exp(30.0);
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs
         deriv_plastic_strain_rate_reformulated_JC =
-            vplast_law_reformulated_JC_->evaluate_derivatives_of_plastic_strain_rate(
-                equiv_stress_, equiv_plastic_strain_, 1.0, std::exp(30.0), err_status, false);
+            vplast_law_reformulated_JC_->evaluate_derivatives_of_plastic_strain_rate(equiv_stress_,
+                equiv_plastic_strain_, 1.0,
+                {.register_plastic_strain_incr_overflow = true,
+                    .max_plastic_strain_incr = max_plastic_strain_increments,
+                    .register_plastic_strain_incr_derivs_overflow = true,
+                    .max_plastic_strain_deriv_incr = max_plastic_strain_increments},
+                err_status, false);
 
     if (err_status != Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
       FOUR_C_THROW("Error encountered during testing of TestEvaluatePlasticStrainRateDerivatives");
-
-    // compare solutions
     EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_.deriv_equiv_stress,
         deriv_plastic_strain_rate_reformulated_JC.deriv_equiv_stress, 1.0e-6);
     EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_.deriv_plastic_strain,
         deriv_plastic_strain_rate_reformulated_JC.deriv_plastic_strain, 1.0e-6);
     EXPECT_NEAR(deriv_plastic_strain_rate_reformulated_JC_solution_.deriv_temperature,
         deriv_plastic_strain_rate_reformulated_JC.deriv_temperature, 1.0e-6);
+
+
+    deriv_plastic_strain_rate_reformulated_JC =
+        vplast_law_reformulated_JC_->evaluate_derivatives_of_plastic_strain_rate(equiv_stress_,
+            equiv_plastic_strain_, 1.0,
+            {.register_plastic_strain_incr_overflow = true,
+                .max_plastic_strain_incr =
+                    1.0e-16,  // effectively 0-tolerance for plastic strain increments -> results
+                              // in overflow error regardless of the computed plastic strain
+                              // increment value
+                .register_plastic_strain_incr_derivs_overflow = true,
+                .max_plastic_strain_deriv_incr = 1.0e-16},
+            err_status, false);
+
+    EXPECT_EQ(err_status, Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::
+                              failed_computation_flow_resistance_derivs);
+
+    deriv_plastic_strain_rate_reformulated_JC =
+        vplast_law_reformulated_JC_->evaluate_derivatives_of_plastic_strain_rate(equiv_stress_,
+            equiv_plastic_strain_, 1.0,
+            {.register_plastic_strain_incr_overflow = false,
+                .max_plastic_strain_incr =
+                    1.0e-16,  // same test as above, but now without registering the overflow error
+                .register_plastic_strain_incr_derivs_overflow = false,
+                .max_plastic_strain_deriv_incr = 1.0e-16},
+            err_status, false);
+    EXPECT_EQ(
+        err_status, Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors);
   }
 
 }  // namespace

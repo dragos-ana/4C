@@ -138,8 +138,9 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::compute_flow_resistance(
  *--------------------------------------------------------------------*/
 double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
     const double equiv_stress, const double equiv_plastic_strain, const double dt,
-    const double max_plastic_strain_incr, ViscoplastErrorType& err_status,
-    const bool update_hist_var)
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings&
+        error_registration_settings,
+    ViscoplastErrorType& err_status, const bool update_hist_var)
 {
   // first set error status to "no errors"
   err_status = ViscoplastErrorType::no_errors;
@@ -178,8 +179,9 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
 
   // verify whether the maximum plastic strain increment is larger than 0, since we will take its
   // logarithm
-  FOUR_C_ASSERT_ALWAYS(max_plastic_strain_incr > 0.0,
-      "Maximum plastic strain increment must be > 0: current value = {}", max_plastic_strain_incr);
+  FOUR_C_ASSERT_ALWAYS(error_registration_settings.max_plastic_strain_incr > 0.0,
+      "Maximum plastic strain increment must be > 0: current value = {}",
+      error_registration_settings.max_plastic_strain_incr);
 
   // stress ratio
   double stress_ratio = evaluate_stress_ratio(equiv_stress, equiv_plastic_strain);
@@ -193,7 +195,9 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
 
     // check if characteristic term too large, throw error overflow
     // error if so
-    if (std::log(dt) + log_temp > std::log(max_plastic_strain_incr + const_pars_.p * dt))
+    if (error_registration_settings.register_plastic_strain_incr_overflow &&
+        (std::log(dt) + log_temp >
+            std::log(error_registration_settings.max_plastic_strain_incr + const_pars_.p * dt)))
     {
       err_status = ViscoplastErrorType::overflow_error;
       return -1;
@@ -210,8 +214,9 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs
 Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_strain_rate(
     const double equiv_stress, const double equiv_plastic_strain, const double dt,
-    const double max_plastic_strain_deriv_incr, ViscoplastErrorType& err_status,
-    const bool update_hist_var)
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings&
+        error_registration_settings,
+    ViscoplastErrorType& err_status, const bool update_hist_var)
 {
   // declare derivatives to be computed
   double deriv_equiv_stress{0.0};
@@ -281,17 +286,22 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
 
     // verify whether the maximum plastic strain derivative increment is larger than 0, since we
     // will take its logarithm
-    FOUR_C_ASSERT_ALWAYS(max_plastic_strain_deriv_incr > 0.0,
-        "Maximum plastic strain derivative increment must be > 0: current value = {}",
-        max_plastic_strain_deriv_incr);
+    if (error_registration_settings.register_plastic_strain_incr_derivs_overflow)
+    {
+      FOUR_C_ASSERT_ALWAYS(error_registration_settings.max_plastic_strain_deriv_incr > 0.0,
+          "Maximum plastic strain derivative increment must be > 0: current value = {}",
+          error_registration_settings.max_plastic_strain_deriv_incr);
+    }
 
     // perfect plasticity
     if (const_pars_.is_perfect_plasticity)
     {
       // check overflow error using these logarithms
-      double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
-      if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) or
-          (log_dt + log_deriv_temperature > log_max_plastic_strain_deriv_value))
+      double log_max_plastic_strain_deriv_value =
+          std::log(error_registration_settings.max_plastic_strain_deriv_incr);
+      if (error_registration_settings.register_plastic_strain_incr_derivs_overflow &&
+          ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) or
+              (log_dt + log_deriv_temperature > log_max_plastic_strain_deriv_value)))
       {
         err_status = ViscoplastErrorType::failed_computation_flow_resistance_derivs;
         return InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs{
@@ -311,10 +321,12 @@ Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_derivatives_of_plastic_stra
           log_equiv_stress - 2.0 * log_yield_strength + const_pars_.log_B_N +
           (const_pars_.N - 1.0) * log_equiv_plastic_strain + log_temperature_ratio_;
       // check overflow error using these logarithms
-      double log_max_plastic_strain_deriv_value = std::log(max_plastic_strain_deriv_incr);
-      if ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) or
-          (log_dt + log_neg_deriv_eps > log_max_plastic_strain_deriv_value) or
-          (log_dt + log_deriv_temperature > log_max_plastic_strain_deriv_value))
+      double log_max_plastic_strain_deriv_value =
+          std::log(error_registration_settings.max_plastic_strain_deriv_incr);
+      if (error_registration_settings.register_plastic_strain_incr_derivs_overflow &&
+          ((log_dt + log_deriv_sigma > log_max_plastic_strain_deriv_value) or
+              (log_dt + log_neg_deriv_eps > log_max_plastic_strain_deriv_value) or
+              (log_dt + log_deriv_temperature > log_max_plastic_strain_deriv_value)))
       {
         err_status = ViscoplastErrorType::failed_computation_flow_resistance_derivs;
         return InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs{

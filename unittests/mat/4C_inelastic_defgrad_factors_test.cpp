@@ -1053,8 +1053,14 @@ namespace
       material_data.add("MATRIX_LOG_DERIV_CALC_METHOD",
           Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract);
       material_data.add("MAT_BEHAVIOR", setup.mat_behavior);
-      material_data.add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
-      material_data.add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      material_data.group("ERROR_REGISTRATION_SETTINGS")
+          .add("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW", true);
+      material_data.group("ERROR_REGISTRATION_SETTINGS")
+          .add("REGISTER_PLASTIC_STRAIN_INCR_DERIVS_OVERFLOW", false);
+      material_data.group("ERROR_REGISTRATION_SETTINGS")
+          .add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
+      material_data.group("ERROR_REGISTRATION_SETTINGS")
+          .add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
       material_data.add("TIME_INTEGRATION_HIST_VARS",
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType::logarithmic);
       material_data.add("VISCOPLAST_LAW_ID", viscoplastic_law_id);
@@ -1681,52 +1687,6 @@ namespace
         computed_state_quantities_isotrop.curr_lpM, 1.0e-10);
   }
 
-  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonParametersParsing)
-  {
-    const auto local_newton_params = set_up_viscoplastic_material().params->local_newton_params();
-
-    EXPECT_EQ(local_newton_params.conv_check,
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
-            residual_and_increment_ratio);
-    EXPECT_EQ(local_newton_params.diver_cont,
-        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop);
-    EXPECT_EQ(local_newton_params.max_iter, 100);
-    EXPECT_DOUBLE_EQ(local_newton_params.res_tol, 1.0e-8);
-    EXPECT_DOUBLE_EQ(local_newton_params.incr_tol, 1.0e-8);
-    EXPECT_DOUBLE_EQ(local_newton_params.max_exceedance_fact_res_tol, 1.0e1);
-    EXPECT_DOUBLE_EQ(local_newton_params.max_exceedance_fact_incr_tol, 1.0e1);
-  }
-
-  TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonManagerBookkeeping)
-  {
-    const auto material = set_up_viscoplastic_material();
-    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager local_newton_manager(
-        material.params->local_newton_params());
-
-    EXPECT_EQ(local_newton_manager.iter(), 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
-
-    local_newton_manager.resize(3);
-    EXPECT_EQ(local_newton_manager.curr_num_iters().size(), 3);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
-
-    local_newton_manager.set_iteration_count(4);
-    local_newton_manager.update_after_local_newton(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 4);
-
-    local_newton_manager.set_iteration_count(2);
-    local_newton_manager.update_after_local_newton(1);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 6);
-
-    local_newton_manager.reset();
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[0], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[1], 0);
-    EXPECT_EQ(local_newton_manager.curr_num_iters()[2], 0);
-  }
-
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingStop)
   {
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
@@ -1764,7 +1724,7 @@ namespace
     Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
-        Core::Exception, "Local Newton Loop did not converge");
+        Core::Exception, "There is no Local Newton convergence!");
   }
 
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonDivergenceHandlingContinue)
@@ -1934,7 +1894,7 @@ namespace
     Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
-        Core::Exception, "Local Newton Loop did not converge");
+        Core::Exception, "There is no Local Newton convergence!");
   }
 
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonResidualConvergence)
@@ -2011,7 +1971,7 @@ namespace
     Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
-        Core::Exception, "Local Newton Loop did not converge");
+        Core::Exception, "There is no Local Newton convergence!");
   }
 
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonIncrementRatioConvergence)
@@ -2099,7 +2059,7 @@ namespace
     Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material->evaluate_inverse_inelastic_def_grad(&FM_, iFin_other, iFin_result),
-        Core::Exception, "Local Newton Loop did not converge");
+        Core::Exception, "There is no Local Newton convergence!");
   }
 
   TEST_F(InelasticDefgradFactorsTest, TestLocalNewtonResidualAndIncrementRatioConvergence)
@@ -2206,15 +2166,16 @@ namespace
     // the one-step formulation fails to converge
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material_one_step->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
-        Core::Exception, "Local Newton evaluation has failed with err status overflow_error");
+        Core::Exception,
+        "Local Newton evaluation has failed and there is no evaluation management strategy");
 
 
     // the local substepping formulation converges
     material_substepping->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result);
     Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
-    iFin_result_ref(0, 0) = 0.71055164642;
-    iFin_result_ref(1, 1) = 1.18632088172;
-    iFin_result_ref(2, 2) = 1.18632088172;
+    iFin_result_ref(0, 0) = 0.71055158583;
+    iFin_result_ref(1, 1) = 1.18632093229;
+    iFin_result_ref(2, 2) = 1.18632093229;
     FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
   }
 
