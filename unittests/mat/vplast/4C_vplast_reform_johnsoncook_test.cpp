@@ -161,6 +161,7 @@ namespace
     plastic_strain_rate_reformulated_JC =
         ref_jc_register_both_with_zero_incr.material->evaluate_plastic_strain_rate(
             equiv_stress_, equiv_plastic_strain_, 1.0, err_status, false);
+
     EXPECT_EQ(err_status,
         Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::overflow_error);
 
