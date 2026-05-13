@@ -128,9 +128,9 @@ namespace
         equiv_stress_, equiv_plastic_strain_, 1.0,
         {.register_plastic_strain_incr_overflow = true,
             .max_plastic_strain_incr =
-                1.0e-16,  // effectively 0-tolerance for plastic strain increments -> results in
-                          // overflow error regardless of the computed plastic strain increment
-                          // value
+                1.0e-16,  // effectively 0-tolerance for plastic strain
+                          // increments -> results in overflow error regardless
+                          // of the computed plastic strain increment value
             .register_plastic_strain_incr_derivs_overflow = true,
             .max_plastic_strain_deriv_incr = 1.0e-16},
         err_status, false);

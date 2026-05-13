@@ -2945,6 +2945,7 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {parameter<bool>("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW",
                      {.description = "should overflow error be registered via ErrorType when the "
                                      "plastic strain increment exceeds the specified tolerance",
+
                          .default_value = true}),
                     parameter<double>("MAX_PLASTIC_STRAIN_INCR",
                         {.description = "maximum evaluable plastic strain increment "
@@ -2966,6 +2967,180 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                             .validator = positive<double>()})},
                 {.description = "Settings for registering errors within the procedures used for "
                                 "return mapping",
+                    .required = false}),
+            group("ADAPTIVE_ESTIMATE_INTERP",
+                {parameter<bool>("USE_ADAPTIVE_ESTIMATE_INTERP",
+                     {.description = "use adaptive estimate interpolation?",
+                         .default_value = true}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            AdaptiveEstimateInterpolationStartingPointType>("STARTING_POINT_TYPE",
+                        {.description = "starting point type",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    AdaptiveEstimateInterpolationStartingPointType::
+                                        optimal_equiv_stress}),
+                    parameter<double>("USER_SET_STARTING_POINT",
+                        {.description = "user-set starting point (in case that the "
+                                        "starting point "
+                                        "type is set to user_set)",
+                            .default_value = 0.5,
+                            .validator = in_range<double>(0.0, 1.0)}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            PlasticPredictorElasticStretchEigenvalType>(
+                        "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+                        {.description = "elastic stretch eigenvalue specification for the "
+                                        "plastic "
+                                        "predictor to be used within the AEI",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    PlasticPredictorElasticStretchEigenvalType::scale_unit}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            PlasticPredictorElasticStretchEigenvectType>(
+                        "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_TYPE",
+                        {.description = "elastic stretch eigenvector specification for the "
+                                        "plastic "
+                                        "predictor to be used in the AEI",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    PlasticPredictorElasticStretchEigenvectType::
+                                        from_elastic_predictor}),
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            PlasticPredictorElasticRotationType>(
+                        "PLASTIC_PRED_ELASTIC_ROTATION_TYPE",
+                        {.description = "elastic rotation specification for the plastic "
+                                        "predictor to be used in the AEI",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    PlasticPredictorElasticRotationType::from_elastic_predictor}),
+                    parameter<int>("MAX_NUM_PLASTIC_PRED_CONSTRUCT_ITERS",
+                        {.description = "maximum number of plastic predictor construction "
+                                        "iterations $ i_{\\text{C, max}} $",
+                            .default_value = 50,
+                            .validator = positive_or_zero<int>()}),
+                    parameter<double>("MAX_RELATIVE_YIELD_STRESS_DEVIATION",
+                        {.description = "maximum relative deviation between the equivalent "
+                                        "stress "
+                                        "and the yield stress expressed as "
+                                        "$\\overline{\\sigma} / "
+                                        "\\sigma_{\\text{Y}} - 1$ used within the plastic "
+                                        "predictor construction",
+                            .default_value = 1.0e-6,
+                            .validator = positive<double>()}),
+                    parameter<int>("MAX_NUM_ESTIMATE_INTERP_ITERS",
+                        {.description = "maximum number of estimate interpolation "
+                                        "iterations "
+                                        "$i_{\\text{EI,max}}$",
+                            .default_value = 50,
+                            .validator = positive<int>()}),
+                    parameter<double>("MIN_INTERP_INTERVAL",
+                        {.description = "minimum interval length $ ( \\xi_{\\text{P}} - "
+                                        "\\xi_{\\text{E}} )_{\\text{min}} $ "
+                                        "for estimate interpolation",
+                            .default_value = 1.0e-15,
+                            .validator = positive<double>()}),
+                    parameter<double>("INTERVAL_SCANNING_PARAM",
+                        {.description = "interval scanning parameter (bisection: 1/2), "
+                                        "used for "
+                                        "plastic predictor construction and estimate "
+                                        "interpolation ",
+                            .default_value = 0.5,
+                            .validator = positive<double>()}),
+                    parameter<int>("MAX_NUM_REESTIMATIONS",
+                        {.description = "maximum number of adaptive re-estimations allowed",
+                            .default_value = 10,
+                            .validator = positive_or_zero<int>()}),
+                    parameter<double>(
+                        "MIN_REESTIMATION_INTERVAL", {.description = "minimum "
+                                                                     "interval $ "
+                                                                     "\\xi -  "
+                                                                     "\\xi_{\\text{"
+                                                                     "E}} $ "
+                                                                     "required "
+                                                                     "for "
+                                                                     "verifying "
+                                                                     "the "
+                                                                     "intermediate "
+                                                                     "point $ "
+                                                                     "\\xi_{\\text{"
+                                                                     "I}} = "
+                                                                     "1 / 2 (\\xi "
+                                                                     "+ "
+                                                                     "\\xi_{\\text{"
+                                                                     "E}}) $ as an "
+                                                                     "updated "
+                                                                     "estimate "
+                                                                     "candidate "
+                                                                     "within the "
+                                                                     "re-"
+                                                                     "estimation "
+                                                                     "procedure",
+                                                         .default_value = 1.0e-5,
+                                                         .validator = positive<double>()}),
+                    parameter<bool>("PRECONDITION_ELASTIC_PRED",
+                        {.description = "precondition the elastic deformation gradient within the "
+                                        "elastic predictor to stabilize interpolation, i.e., "
+                                        "components smaller than a set tolerance are set to 0.0 to "
+                                        "avoid unnecessary, 'numerical' rotations",
+                            .default_value = true}),
+                    parameter<double>("TOL_PRECONDITION_ELASTIC_PRED",
+                        {.description = "tolerance for preconditioning the elastic "
+                                        "deformation gradient within the elastic predictor "
+                                        "to stabilize interpolation",
+                            .default_value = 1.0e-13,
+                            .validator = positive<double>()}),
+                    group("HARDENING_PARAMS",
+                        {
+                            parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    AdaptiveEstimateInterpolationHardeningMethod>("METHOD",
+                                {.description = "method to be used for handling hardening "
+                                                "variables "
+                                                "within the "
+                                                "adaptive estimate interpolation algorithm",
+                                    .default_value =
+                                        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                            AdaptiveEstimateInterpolationHardeningMethod::
+                                                integrate_via_evol_eqs}),
+                            parameter<bool>("ALLOW_INTEGRATION_FAILURE",
+                                {.description = "should failure of hardening integration "
+                                                "(via evolution "
+                                                "equations) be enabled? If so, the "
+                                                "mechanical state "
+                                                "is marked with an error status depending "
+                                                "on the location "
+                                                "of the "
+                                                "stress state w.r.t. yield surface and the "
+                                                "estimate "
+                                                "interpolation continues; otherwise, an "
+                                                "error is "
+                                                "thrown",
+                                    .default_value = false}),
+                            parameter<double>("FAILURE_RELATIVE_YIELD_STRESS_DEVIATION",
+                                {.description = "maximum relative yield stress deviation, "
+                                                "deciding whether the state is too elastic (i.e., "
+                                                "shifted towards the elastic predictor) or too "
+                                                "plastic within the integration failure hardening "
+                                                "strategy if enabled by the user",
+                                    .default_value = 1.0e-3}),
+                            parameter<int>("MAX_ITER_INTEGRATION",
+                                {.description = "maximum number of iterations for "
+                                                "hardening integration",
+                                    .default_value = 50,
+                                    .validator = positive_or_zero<int>()}),
+                            parameter<double>("TOL_INTEGRATION",
+                                {.description = "tolerance for hardening integration",
+                                    .default_value = 1.0e-8,
+                                    .validator = positive<double>()}),
+                        },
+                        {.description = "Hardening parameters to be used within the Adaptive "
+                                        "Estimate Interpolation",
+                            .required = false})
+
+                },
+                {.description = "Parameters used in the Adaptive Estimate Interpolation for Local "
+                                "Newton estimates presented "
+                                "in Ana, Schmidt, Wall: Adaptive Estimate Interpolation: "
+                                "Accelerating Local Newton--Raphson Schemes in Computational "
+                                "Plasticity / Viscoplasticity ",
                     .required = false})},
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "

@@ -87,7 +87,6 @@ MATERIALS:
       FIBER_READER_ID: 24
       MAT_BEHAVIOR: "isotropic"
       TIME_INTEGRATION_HIST_VARS: logarithmic
-
   - MAT: 23
     MAT_ViscoplasticLawReformulatedJohnsonCook:
       STRAIN_RATE_PREFAC: 1

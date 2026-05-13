@@ -61,6 +61,35 @@ namespace
     };
     bool use_substepping = false;
     unsigned int max_substepping_halve_num = 0;
+    bool use_adaptive_estimate_interp = false;
+    ViscoplastUtils::AdaptiveEstimateInterpolationParams adaptive_estimate_interp_params{
+        .starting_point_type =
+            ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::user_set,
+        .user_set_starting_point = 0.5,
+        .plastic_pred_elastic_stretch_eigenval_type =
+            ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType::scale_unit,
+        .plastic_pred_elastic_stretch_eigenvect_type =
+            ViscoplastUtils::PlasticPredictorElasticStretchEigenvectType::from_elastic_predictor,
+        .plastic_pred_elastic_rotation_type =
+            ViscoplastUtils::PlasticPredictorElasticRotationType::from_elastic_predictor,
+        .max_num_plastic_pred_construct_iters = 50,
+        .max_relative_yield_stress_deviation = 1.0e-6,
+        .max_num_estimate_interp_iters = 50,
+        .min_interp_interval = 1.0e-15,
+        .interval_scanning_param = 0.5,
+        .max_num_reestimations = 10,
+        .min_reestimation_interval = 1.0e-5,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
+        .hardening_params = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams{
+            .method = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::
+                integrate_via_evol_eqs,
+            .allow_integration_failure = false,
+            .failure_relative_yield_stress_deviation = 0.0,
+            .max_iter_integration = 50,
+            .tol_integration = 1.0e-8,
+        }};
+
     ViscoplastUtils::LinearizationType linearization_type =
         ViscoplastUtils::LinearizationType::analytic;
     std::optional<double> yield_cond_a = 1.0;
@@ -1083,6 +1112,72 @@ namespace
           .add("MAX_EXCEEDANCE_FACT_INCR_TOL",
               setup.local_newton_params.max_exceedance_fact_incr_tol);
 
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("USE_ADAPTIVE_ESTIMATE_INTERP", setup.use_adaptive_estimate_interp);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .group("HARDENING_PARAMS")
+          .add("METHOD", setup.adaptive_estimate_interp_params.hardening_params.method);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .group("HARDENING_PARAMS")
+          .add("ALLOW_INTEGRATION_FAILURE",
+              setup.adaptive_estimate_interp_params.hardening_params.allow_integration_failure);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .group("HARDENING_PARAMS")
+          .add("FAILURE_RELATIVE_YIELD_STRESS_DEVIATION",
+              setup.adaptive_estimate_interp_params.hardening_params
+                  .failure_relative_yield_stress_deviation);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .group("HARDENING_PARAMS")
+          .add("MAX_ITER_INTEGRATION",
+              static_cast<int>(
+                  setup.adaptive_estimate_interp_params.hardening_params.max_iter_integration));
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .group("HARDENING_PARAMS")
+          .add("TOL_INTEGRATION",
+              setup.adaptive_estimate_interp_params.hardening_params.tol_integration);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("STARTING_POINT_TYPE", setup.adaptive_estimate_interp_params.starting_point_type);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("USER_SET_STARTING_POINT",
+              setup.adaptive_estimate_interp_params.user_set_starting_point);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE",
+              setup.adaptive_estimate_interp_params.plastic_pred_elastic_stretch_eigenval_type);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_TYPE",
+              setup.adaptive_estimate_interp_params.plastic_pred_elastic_stretch_eigenvect_type);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("PLASTIC_PRED_ELASTIC_ROTATION_TYPE",
+              setup.adaptive_estimate_interp_params.plastic_pred_elastic_rotation_type);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("MAX_NUM_PLASTIC_PRED_CONSTRUCT_ITERS",
+              static_cast<int>(
+                  setup.adaptive_estimate_interp_params.max_num_plastic_pred_construct_iters));
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("MAX_RELATIVE_YIELD_STRESS_DEVIATION",
+              setup.adaptive_estimate_interp_params.max_relative_yield_stress_deviation);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("MAX_NUM_ESTIMATE_INTERP_ITERS",
+              static_cast<int>(
+                  setup.adaptive_estimate_interp_params.max_num_estimate_interp_iters));
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("MIN_INTERP_INTERVAL", setup.adaptive_estimate_interp_params.min_interp_interval);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("INTERVAL_SCANNING_PARAM",
+              setup.adaptive_estimate_interp_params.interval_scanning_param);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("MAX_NUM_REESTIMATIONS",
+              static_cast<int>(setup.adaptive_estimate_interp_params.max_num_reestimations));
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("MIN_REESTIMATION_INTERVAL",
+              setup.adaptive_estimate_interp_params.min_reestimation_interval);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("PRECONDITION_ELASTIC_PRED",
+              setup.adaptive_estimate_interp_params.precondition_elastic_pred);
+      material_data.group("ADAPTIVE_ESTIMATE_INTERP")
+          .add("TOL_PRECONDITION_ELASTIC_PRED",
+              setup.adaptive_estimate_interp_params.tol_precondition_elastic_pred);
+
       auto material_params =
           std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
               std::shared_ptr(Mat::make_parameter(1,
@@ -1133,7 +1228,6 @@ namespace
 
       auto viscoplastic_law = std::make_shared<Mat::Viscoplastic::ReformulatedJohnsonCook>(
           problem.materials()->parameter_by_id(viscoplastic_law_id));
-
       std::vector<std::shared_ptr<Mat::Elastic::Summand>> pot_sum_el;
       pot_sum_el.emplace_back(Mat::Elastic::Summand::factory(200));
       std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>> pot_sum_el_transv_iso;
@@ -1223,6 +1317,7 @@ namespace
     // (isotropic, logarithmic substepping, Reformulated Johnson-Cook viscoplasticity)
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
         state_quantity_derivatives_solution_isotrop_;
+
     Core::Utils::SingletonOwnerRegistry::ScopeGuard guard;
   };
 
@@ -2139,7 +2234,6 @@ namespace
                                          .max_substepping_halve_num = 10})
             .material;
 
-
     Teuchos::ParameterList params_list;
     double total_time = 1.0e-6;
     double time_step_size = 1.0e-6;
@@ -2177,6 +2271,192 @@ namespace
     iFin_result_ref(1, 1) = 1.18632093229;
     iFin_result_ref(2, 2) = 1.18632093229;
     FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+  }
+
+
+  TEST_F(InelasticDefgradFactorsTest, TestViscoplasticCorrectionAdaptiveEstimateInterpolation)
+  {
+    // tests a challenging scenario, where using the elastic predictor to initialize the local
+    // Newton-Raphson does not converge, whilst using the adaptive estimate interpolation (AEI) does
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-8,
+        .incr_tol = 1.0e-8,
+        .conv_check = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+            residual_and_increment_ratio,
+        .diver_cont =
+            Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop,
+        .max_iter = 50,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    auto material_elastic_pred =
+        set_up_viscoplastic_material({.local_newton_params = local_newton_params,
+                                         .use_substepping = false,
+                                         .viscoplastic_law_params = {.strain_rate_prefac = 1.0,
+                                             .strain_rate_exp_fac = 0.014,
+                                             .init_yield_strength = 792.0,
+                                             .isotrop_harden_prefac = 510.0,
+                                             .isotrop_harden_exp = 0.26,
+                                             .ref_temperature = 293.0,
+                                             .melt_temperature = 1000.0,
+                                             .temperature_sens = 0.1}})
+            .material;
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> FM(Core::LinAlg::Initialization::zero);
+    FM(0, 0) = 1.1;
+    FM(1, 1) = 0.9;
+    FM(2, 2) = 0.9;
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0;
+    double time_step_size = 1.0;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+
+    // the use of the elastic predictor fails to converge
+    material_elastic_pred->pre_evaluate(params_list, context, 0, 0);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_elastic_pred->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
+        Core::Exception,
+        "Local Newton evaluation has failed and there is no evaluation management strategy");
+
+
+    // setup adaptive estimate interpolation with hardening integration
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params_aei;
+    ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams hardening_params{
+        .method =
+            ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::integrate_via_evol_eqs,
+        .allow_integration_failure = false,
+        .failure_relative_yield_stress_deviation = 0.0,
+        .max_iter_integration = 50,
+        .tol_integration = 1.0e-8,
+    };
+    ViscoplastUtils::AdaptiveEstimateInterpolationParams aei_params{
+        .starting_point_type =
+            ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::user_set,
+        .user_set_starting_point = 0.5,
+        .plastic_pred_elastic_stretch_eigenval_type =
+            ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType::scale_unit,
+        .plastic_pred_elastic_stretch_eigenvect_type =
+            ViscoplastUtils::PlasticPredictorElasticStretchEigenvectType::from_elastic_predictor,
+        .plastic_pred_elastic_rotation_type =
+            ViscoplastUtils::PlasticPredictorElasticRotationType::from_elastic_predictor,
+        .max_num_plastic_pred_construct_iters = 50,
+        .max_relative_yield_stress_deviation = 1.0e-6,
+        .max_num_estimate_interp_iters = 50,
+        .min_interp_interval = 1.0e-15,
+        .interval_scanning_param = 0.5,
+        .max_num_reestimations = 50,
+        .min_reestimation_interval = 1.0e-1,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
+        .hardening_params = hardening_params};
+
+    auto material_adaptive_estimate_interp =
+        set_up_viscoplastic_material({.local_newton_params = local_newton_params,
+                                         .use_substepping = false,
+                                         .use_adaptive_estimate_interp = true,
+                                         .adaptive_estimate_interp_params = aei_params})
+            .material;
+
+    // the use of the adaptive estimate interpolation converges
+    material_adaptive_estimate_interp->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp->evaluate_inverse_inelastic_def_grad(
+        &FM, iFin_other, iFin_result);
+    Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
+    iFin_result_ref(0, 0) = 0.96637623335;
+    iFin_result_ref(1, 1) = 1.01724808212;
+    iFin_result_ref(2, 2) = 1.01724808212;
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+
+
+    // repeat test without hardening integration within the adaptive estimate interpolation
+    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
+        material_params_aei_no_hardening;
+    ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams hardening_params_no_hardening{
+        .method = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::
+            use_previous,  // previous hardening variables used
+        .allow_integration_failure = hardening_params.allow_integration_failure,
+        .failure_relative_yield_stress_deviation =
+            hardening_params.failure_relative_yield_stress_deviation,
+        .max_iter_integration = hardening_params.max_iter_integration,
+        .tol_integration = hardening_params.tol_integration,
+    };
+    ViscoplastUtils::AdaptiveEstimateInterpolationParams aei_params_no_hardening{
+        .starting_point_type = aei_params.starting_point_type,
+        .user_set_starting_point = aei_params.user_set_starting_point,
+        .plastic_pred_elastic_stretch_eigenval_type =
+            aei_params.plastic_pred_elastic_stretch_eigenval_type,
+        .plastic_pred_elastic_stretch_eigenvect_type =
+            aei_params.plastic_pred_elastic_stretch_eigenvect_type,
+        .plastic_pred_elastic_rotation_type = aei_params.plastic_pred_elastic_rotation_type,
+        .max_num_plastic_pred_construct_iters = aei_params.max_num_plastic_pred_construct_iters,
+        .max_relative_yield_stress_deviation = aei_params.max_relative_yield_stress_deviation,
+        .max_num_estimate_interp_iters = aei_params.max_num_estimate_interp_iters,
+        .min_interp_interval = aei_params.min_interp_interval,
+        .interval_scanning_param = aei_params.interval_scanning_param,
+        .max_num_reestimations = aei_params.max_num_reestimations,
+        .min_reestimation_interval = aei_params.min_reestimation_interval,
+        .precondition_elastic_pred = aei_params.precondition_elastic_pred,
+        .tol_precondition_elastic_pred = aei_params.tol_precondition_elastic_pred,
+        .hardening_params = hardening_params_no_hardening};
+
+    auto material_adaptive_estimate_interp_no_hardening = set_up_viscoplastic_material(
+        {.local_newton_params = local_newton_params,
+            .use_substepping = false,
+            .use_adaptive_estimate_interp = true,
+            .adaptive_estimate_interp_params = aei_params_no_hardening})
+                                                              .material;
+
+
+    // the use of the adaptive estimate interpolation without hardening integration also converges
+    // converges
+    material_adaptive_estimate_interp_no_hardening->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp_no_hardening->evaluate_inverse_inelastic_def_grad(
+        &FM, iFin_other, iFin_result);
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+
+
+    // let's repeat the tests with an even more difficult mechanical state, such that only the use
+    // of the adaptive estimate interpolation with hardening integration converges
+    FM.clear();
+    FM(0, 0) = 1.5;
+    FM(1, 1) = 0.75;
+    FM(2, 2) = 0.75;
+
+    material_elastic_pred->pre_evaluate(params_list, context, 0, 0);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_elastic_pred->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
+        Core::Exception,
+        "Local Newton evaluation has failed and there is no evaluation management strategy");
+
+
+    material_adaptive_estimate_interp->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp->evaluate_inverse_inelastic_def_grad(
+        &FM, iFin_other, iFin_result);
+    iFin_result_ref.clear();
+    iFin_result_ref(0, 0) = 0.70480335583;
+    iFin_result_ref(1, 1) = 1.19114880226;
+    iFin_result_ref(2, 2) = 1.19114880226;
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+
+
+    material_adaptive_estimate_interp_no_hardening->pre_evaluate(params_list, context, 0, 0);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_adaptive_estimate_interp_no_hardening->evaluate_inverse_inelastic_def_grad(
+            &FM, iFin_other, iFin_result),
+        Core::Exception, "There is no Local Newton convergence!");
   }
 
 
