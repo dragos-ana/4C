@@ -2844,38 +2844,29 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 "MAT_BEHAVIOR", {.description = "Material behavior / anisotropy type"}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimIntType>(
                 "TIME_INTEGRATION_HIST_VARS",
-                {.description =
-                        "time integration of internal variables: standard | logarithmic "
-                        "(logarithmic transformation of the "
-                        "evolution equation for the plastic deformation gradient -> default)",
+                {.description = "time integration of internal variables: standard | logarithmic "
+                                "(logarithmic transformation of the "
+                                "evolution equation for the plastic deformation gradient -> "
+                                "default)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         TimIntType::logarithmic}),
             parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LinearizationType>(
                 "LINEARIZATION",
-                {.description =
-                        "utilized material linearization: analytic | perturb_based (based on "
-                        "perturbations of the current state)",
+                {.description = "utilized material linearization: analytic | perturb_based "
+                                "(based on "
+                                "perturbations of the current state)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         LinearizationType::analytic}),
-            parameter<double>("MAX_PLASTIC_STRAIN_INCR",
-                {.description = "maximum evaluable plastic strain increment "
-                                "used for verifying overflow errors",
-                    .default_value = std::exp(30.0),
-                    .validator = positive<double>()}),
-            parameter<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
-                {.description = "maximum evaluable increment of the plastic strain derivatives "
-                                "w.r.t. plastic strain and equivalent stress, used for verifying "
-                                "possible overflow errors",
-                    .default_value = std::exp(30.0),
-                    .validator = positive<double>()}),
             parameter<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD",
                 {.description = "chosen computation method for matrix exponential (default: "
                                 "automatic method selection based on matrix characteristics)",
                     .default_value = Core::LinAlg::MatrixExpCalcMethod::automatic}),
             parameter<Core::LinAlg::GenMatrixExpFirstDerivCalcMethod>(
                 "MATRIX_EXP_DERIV_CALC_METHOD",
-                {.description = "chosen computation method for the first derivative of the matrix "
-                                "exponential w.r.t. matrix (default: automatic method selection "
+                {.description = "chosen computation method for the first derivative of the "
+                                "matrix "
+                                "exponential w.r.t. matrix (default: automatic method "
+                                "selection "
                                 "based on matrix characteristics)",
                     .default_value = Core::LinAlg::GenMatrixExpFirstDerivCalcMethod::automatic}),
             parameter<Core::LinAlg::MatrixLogCalcMethod>("MATRIX_LOG_CALC_METHOD",
@@ -2883,7 +2874,8 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                     .default_value = Core::LinAlg::MatrixLogCalcMethod::inv_scal_square}),
             parameter<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
                 "MATRIX_LOG_DERIV_CALC_METHOD",
-                {.description = "chosen computation method for the first derivative of the matrix "
+                {.description = "chosen computation method for the first derivative of the "
+                                "matrix "
                                 "logarithm w.r.t. matrix",
                     .default_value =
                         Core::LinAlg::GenMatrixLogFirstDerivCalcMethod::pade_part_fract}),
@@ -2897,16 +2889,18 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                             .default_value = 10,
                             .validator = positive_or_zero<int>()}),
                 },
-                {.description = "Settings for the usage of local substepping to integrate the "
+                {.description = "Settings for the usage of local substepping to integrate "
+                                "the "
                                 "viscoplastic evolution equations",
                     .required = false}),
             group("LOCAL_NEWTON",
-                {parameter<
-                     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck>(
-                     "CONV_CHECK",
-                     {.description = "convergence check type",
-                         .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                             LocalNewtonConvCheck::residual_and_increment_ratio}),
+                {
+                    parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                            LocalNewtonConvCheck>("CONV_CHECK",
+                        {.description = "convergence check type",
+                            .default_value =
+                                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    LocalNewtonConvCheck::residual_and_increment_ratio}),
                     parameter<int>("MAX_ITER", {.description = "maximum number of iterations",
                                                    .default_value = 100,
                                                    .validator = positive<int>()}),
@@ -2915,24 +2909,26 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                        .default_value = 1.0e-8,
                                        .validator = positive<double>()}),
                     parameter<double>("MAX_EXCEEDANCE_FACT_RES_TOL",
-                        {.description =
-                                "maximum exceedance factor for the specified residual tolerance "
-                                "(Local Newton divergence safeguard for "
-                                "continuing the simulation, if specified by the user via "
-                                "DIVER_CONT)",
+                        {.description = "maximum exceedance factor for the specified "
+                                        "residual tolerance "
+                                        "(Local Newton divergence safeguard for "
+                                        "continuing the simulation, if specified by the "
+                                        "user via "
+                                        "DIVER_CONT)",
                             .default_value = 1.0e1,
                             .validator = positive_or_zero<double>()}),
-                    parameter<double>(
-                        "INCR_TOL", {.description = "increment tolerance ("
-                                                    "ratio of |increment| / |solution|)",
-                                        .default_value = 1.0e-8,
-                                        .validator = positive<double>()}),
+                    parameter<double>("INCR_TOL", {.description = "increment tolerance ("
+                                                                  "ratio of |increment| / "
+                                                                  "|solution|)",
+                                                      .default_value = 1.0e-8,
+                                                      .validator = positive<double>()}),
                     parameter<double>("MAX_EXCEEDANCE_FACT_INCR_TOL",
-                        {.description =
-                                "maximum exceedance factor for the specified increment tolerance "
-                                "(Local Newton divergence safeguard for "
-                                "continuing the simulation, if specified by the user via "
-                                "DIVER_CONT)",
+                        {.description = "maximum exceedance factor for the specified "
+                                        "increment tolerance "
+                                        "(Local Newton divergence safeguard for "
+                                        "continuing the simulation, if specified by the "
+                                        "user via "
+                                        "DIVER_CONT)",
                             .default_value = 1.0e1,
                             .validator = positive_or_zero<double>()}),
                     parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
@@ -2940,11 +2936,36 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         {.description = "strategy to deal with divergence in the Local Newton Loop",
                             .default_value =
                                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                                    LocalNewtonDiverCont::stop})
-
+                                    LocalNewtonDiverCont::stop}),
                 },
                 {.description = "Parameters used in the Local Newton--Raphson procedure "
                                 "(viscoplastic corrector stage)",
+                    .required = false}),
+            group("ERROR_REGISTRATION_SETTINGS",
+                {parameter<bool>("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW",
+                     {.description = "should overflow error be registered via ErrorType when the "
+                                     "plastic strain increment exceeds the specified tolerance",
+                         .default_value = true}),
+                    parameter<double>("MAX_PLASTIC_STRAIN_INCR",
+                        {.description = "maximum evaluable plastic strain increment "
+                                        "used for registering overflow errors",
+                            .default_value = std::exp(30.0),
+                            .validator = positive<double>()}),
+                    parameter<bool>("REGISTER_PLASTIC_STRAIN_INCR_DERIVS_OVERFLOW",
+                        {.description = "                                should overflow error be "
+                                        "registered via ErrorType when any of the plastic strain "
+                                        "derivative "
+                                        "increments exceeds the specified tolerance",
+                            .default_value = false}),
+                    parameter<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
+                        {.description = "maximum evaluable increment of the plastic strain "
+                                        "derivatives w.r.t. plastic strain and equivalent "
+                                        "stress, used for registering "
+                                        "overflow errors",
+                            .default_value = std::exp(30.0),
+                            .validator = positive<double>()})},
+                {.description = "Settings for registering errors within the procedures used for "
+                                "return mapping",
                     .required = false})},
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
