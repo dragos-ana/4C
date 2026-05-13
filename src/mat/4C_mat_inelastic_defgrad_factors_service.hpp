@@ -711,8 +711,8 @@ namespace Mat
     };
 
     //! helper struct containing tensors associated with the deformation, passed as input
-    //! for routines within the adaptive estimate interpolation
-    struct AdaptiveEstimateInterpolationDeformationTensors
+    //! for the local time integration
+    struct LocalIntegrationDeformationTensors
     {
       /*!
        * @brief constructor
@@ -722,7 +722,7 @@ namespace Mat
        \mathbf{F}_{\text{p},n}^{-1} \f$
        *
        */
-      AdaptiveEstimateInterpolationDeformationTensors(
+      LocalIntegrationDeformationTensors(
           const Core::LinAlg::Matrix<3, 3>& F, const Core::LinAlg::Matrix<3, 3>& last_iFp);
 
       //! deformation gradient \f$ \mathbf{F}_{n+1} \f$
@@ -1092,10 +1092,10 @@ namespace Mat
        * predictor at a given Gauss point
        *
        * @param[in] gp Gauss point index
-       * @param[in] aei_deftensors deformation tensors used within the AEI
+       * @param[in] deftensors deformation tensors used for local time integration
        */
-      void reset_and_construct_prelim_plastic_pred(const unsigned int gp,
-          const AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors);
+      void reset_and_construct_prelim_plastic_pred(
+          const unsigned int gp, const LocalIntegrationDeformationTensors& deftensors);
 
       //! pack method
       void pack(Core::Communication::PackBuffer& data) const;

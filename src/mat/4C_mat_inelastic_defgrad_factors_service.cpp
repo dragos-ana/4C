@@ -768,10 +768,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::PredictorInterpolat
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-    AdaptiveEstimateInterpolationDeformationTensors::
-        AdaptiveEstimateInterpolationDeformationTensors(
-            const Core::LinAlg::Matrix<3, 3>& F, const Core::LinAlg::Matrix<3, 3>& last_iFp)
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors::
+    LocalIntegrationDeformationTensors(
+        const Core::LinAlg::Matrix<3, 3>& F, const Core::LinAlg::Matrix<3, 3>& last_iFp)
 {
   defgrad = F;
   inv_defgrad.invert(defgrad);
@@ -1053,8 +1052,8 @@ bool Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
-    reset_and_construct_prelim_plastic_pred(const unsigned int gp,
-        const AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors)
+    reset_and_construct_prelim_plastic_pred(
+        const unsigned int gp, const LocalIntegrationDeformationTensors& deftensors)
 {
   // reset certain variables
   num_plastic_pred_construct_iters_ = 0;
@@ -1066,7 +1065,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInt
 
   // construct the preliminary predictor
   predictor_interpolator_.construct_prelim_plastic_pred(
-      gp, aei_deftensors.elastic_predictor_elastic_defgrad, params_);
+      gp, deftensors.elastic_predictor_elastic_defgrad, params_);
 }
 
 /*--------------------------------------------------------------------*

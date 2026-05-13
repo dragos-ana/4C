@@ -1801,12 +1801,15 @@ namespace Mat
      * @note Uses local substepping if specified so by the user; the current time step is halved if
      * problematic numerical states, marked with an error status, are encountered
      *
-     * @param[in] defgrad deformation gradient \f$ \boldsymbol{F} \f$ in matrix form
+     * @param[in] deftensors deformation tensors used for local time integration (reset if
+     * substepping is used)
      * @param[out] err_status error status
      * @return solution vector of the Local Newton Loop, structured analogously to the initial guess
      * x
      */
-    Core::LinAlg::Matrix<10, 1> viscoplastic_correction(const Core::LinAlg::Matrix<3, 3>& defgrad,
+    Core::LinAlg::Matrix<10, 1> viscoplastic_correction(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+            deftensors,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
@@ -1816,16 +1819,17 @@ namespace Mat
      * @note The method does not perform local substepping internally, but only determines the
      * solution of a single substep in the substep loop.
      *
-     * @param[in] FM deformation gradient at current time instant
+     * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] last_plastic_strain plastic strain at the previous time instant
-     * @param[in] last_iFinM inverse inelastic deformation gradient at the previous time instant
      * @param[in] dt time step size to use for evaluation
      * @param[out] err_status error status
      * @return solution of the Local Newton Loop
      */
-    Core::LinAlg::Matrix<10, 1> local_newton_loop(const Core::LinAlg::Matrix<3, 3>& FM,
-        const double last_plastic_strain, const Core::LinAlg::Matrix<3, 3>& last_iFinM,
-        const double dt, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+    Core::LinAlg::Matrix<10, 1> local_newton_loop(
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+            deftensors,
+        const double last_plastic_strain, const double dt,
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
      * @brief History variables computed by the return mapping procedure.
@@ -1877,16 +1881,16 @@ namespace Mat
      *
      *
      * @param[in] err_status error status
-     * @param[in] defgrad deformation gradient
+     * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] last_plastic_strain plastic strain at the previous time instant
-     * @param[in] last_iFinM inverse inelastic deformation gradient at the previous time instant
      * @param[in] dt time step / substep size
      * @param[out] eval_action action to be performed subsequently in the local Newton Loop
      */
     void manage_evaluation(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-        const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
-        const Core::LinAlg::Matrix<3, 3>& last_iFinM, const double dt,
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+            deftensors,
+        const double last_plastic_strain, const double dt,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
     /*!
@@ -1953,7 +1957,7 @@ namespace Mat
      * further re-estimations.
      *
      * @param[in] dt time step / substep size
-     * @param[in] defgrad deformation gradient
+     * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
      * @param[in] last_inverse_inelastic_defgrad inverse inelastic deformation gradient at the
@@ -1964,8 +1968,9 @@ namespace Mat
      * substep
      */
     Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(const double dt,
-        const Core::LinAlg::Matrix<3, 3>& defgrad, const double last_plastic_strain,
-        const Core::LinAlg::Matrix<3, 3>& last_inverse_inelastic_defgrad,
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+            deftensors,
+        const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
     /*!
@@ -1973,15 +1978,14 @@ namespace Mat
      the dedicated manager which has already determined the preliminary plastic predictor.
      *
      * @param[in] dt time step / substep size
-     * @param[in] aei_deftensors deformation tensors required for the adaptive
-     estimate interpolation
+     * @param[in] deftensors deformation tensors required for local time integration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * @param[out] err_status error status after the procedure
      * time instant
      */
     void construct_plastic_predictor(const double dt,
-        const InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+            deftensors,
         const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
@@ -1990,16 +1994,15 @@ namespace Mat
      * according to the adaptive estimate interpolation algorithm
      *
      * @param[in] dt time step / substep size
-     * @param[in] aei_deftensors deformation tensors required for the adaptive
-     * estimate interpolation
+     * @param[in] deftensors deformation tensors required for local time integration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
      * @param[out] err_status error status after the procedure
      * @return initial / updated estimate to be used within the local Newton
      */
     Core::LinAlg::Matrix<10, 1> interpolate_estimate(const double dt,
-        const InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
+            deftensors,
         const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
@@ -2026,7 +2029,7 @@ namespace Mat
      * surface.
      *
      * @param[in] dt time step / substep size
-     * @param[in] aei_deftensors deformation tensors used within the AEI
+     * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] iFin_candidate estimate candidate: inverse plastic deformation gradient
      * @param[in] plastic_strain_candidate estimate candidate: equivalent plastic strain
      * @return error status; no_errors means that this is a valid estimate for the local Newton
@@ -2034,7 +2037,7 @@ namespace Mat
     [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType
     verify_estimate_candidate(const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+            LocalIntegrationDeformationTensors& deftensors,
         const Core::LinAlg::Matrix<3, 3>& iFin_candidate,
         const double plastic_strain_candidate) const;
 
@@ -2044,8 +2047,7 @@ namespace Mat
      * to effectively restart the local Newton loop
      *
      * @param[in] dt time step / substep size
-     * @param[in] aei_deftensors deformation gradients and components used within the adaptive
-     * estimate interpolation
+     * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
      * @param[out] eval_action action to be performed subsequently in the local Newton
@@ -2053,7 +2055,7 @@ namespace Mat
      */
     Core::LinAlg::Matrix<10, 1> reestimate_to_restart_local_newton(const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+            LocalIntegrationDeformationTensors& deftensors,
         const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
@@ -2065,7 +2067,7 @@ namespace Mat
      * @note Helper function to be called within the re-estimation procedure
      *
      * @param[in] dt time step / substep size
-     * @param[in] aei_deftensors deformation tensors used within the AEI
+     * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
      * @param[out] eval_action action to be performed subsequently in the local Newton
@@ -2073,7 +2075,7 @@ namespace Mat
      */
     Core::LinAlg::Matrix<10, 1> increase_lower_interp_bound_and_reinterpolate(const double dt,
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-            AdaptiveEstimateInterpolationDeformationTensors& aei_deftensors,
+            LocalIntegrationDeformationTensors& deftensors,
         const double last_plastic_strain,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
