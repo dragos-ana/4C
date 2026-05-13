@@ -2919,17 +2919,6 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "perturbations of the current state)",
                     .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                         LinearizationType::analytic}),
-            parameter<double>("MAX_PLASTIC_STRAIN_INCR",
-                {.description = "maximum evaluable plastic strain increment "
-                                "used for verifying overflow errors",
-                    .default_value = std::exp(30.0),
-                    .validator = positive<double>()}),
-            parameter<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
-                {.description = "maximum evaluable increment of the plastic strain derivatives "
-                                "w.r.t. plastic strain and equivalent stress, used for verifying "
-                                "possible overflow errors",
-                    .default_value = std::exp(30.0),
-                    .validator = positive<double>()}),
             parameter<Core::LinAlg::MatrixExpCalcMethod>("MATRIX_EXP_CALC_METHOD",
                 {.description = "chosen computation method for matrix exponential (default: "
                                 "automatic method selection based on matrix characteristics)",
@@ -3007,6 +2996,31 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 },
                 {.description = "Parameters used in the Local Newton--Raphson procedure "
                                 "(viscoplastic corrector stage)",
+                    .required = false}),
+            group("ERROR_REGISTRATION_SETTINGS",
+                {parameter<bool>("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW",
+                     {.description = "should overflow error be registered via ErrorType when the "
+                                     "plastic strain increment exceeds the specified tolerance?",
+                         .default_value = true}),
+                    parameter<double>("MAX_PLASTIC_STRAIN_INCR",
+                        {.description = "maximum evaluable plastic strain increment "
+                                        "used for registering overflow errors",
+                            .default_value = std::exp(30.0),
+                            .validator = positive<double>()}),
+                    parameter<bool>("REGISTER_PLASTIC_STRAIN_DERIV_INCR_OVERFLOW",
+                        {.description = "should overflow error be registered via ErrorType when "
+                                        "any of the plastic strain derivative increments exceeds "
+                                        "the specified tolerance?",
+                            .default_value = false}),
+                    parameter<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
+                        {.description = "maximum evaluable increment of the plastic strain "
+                                        "derivatives w.r.t. plastic strain and equivalent "
+                                        "stress, used for registering "
+                                        "overflow errors",
+                            .default_value = std::exp(30.0),
+                            .validator = positive<double>()})},
+                {.description = "Settings for registering errors within the procedures used for "
+                                "constitutive update",
                     .required = false})},
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
