@@ -40,6 +40,7 @@ check-csv-headers = "four_c_building_testing.check_csv_headers:cli"
 vtk-compare = "four_c_building_testing.vtk_compare:cli"
 post-processing-comparison = "four_c_building_testing.post_processing_comparison:main"
 check-restart-step = "four_c_building_testing.check_restart_step:cli"
+check-local-integration-analysis-viscoplast-material = "four_c_building_testing.check_local_integration_analysis_viscoplast_material:cli"
 
 [tool.setuptools.package-data]
 "four_c_ci.resources" = ["*.html.j2"]
