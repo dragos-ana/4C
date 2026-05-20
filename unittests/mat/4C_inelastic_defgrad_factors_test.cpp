@@ -1180,7 +1180,7 @@ namespace
       material_data.group("ADAPTIVE_ESTIMATE_INTERP")
           .add("BOUND_STRESS_BY_ELASTIC_PREDICTOR",
               setup.adaptive_estimate_interp_params.bound_stress_by_elastic_predictor);
-
+      material_data.group("LOCAL_TIMINT_ANALYSIS").add("ANALYZE_LOCAL_TIMINT", false);
 
 
       auto material_params =
