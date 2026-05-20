@@ -71,6 +71,17 @@ namespace Mat
       /// virtual destructor
       virtual ~Law() = default;
 
+      /// state object, used for saving and reinstating states
+      struct State
+      {
+        virtual ~State() = default;
+      };
+
+      /// get state object
+      [[nodiscard]] virtual std::unique_ptr<State> get_state() const = 0;
+      /// reinstate state
+      virtual void reinstate_state(const State&) = 0;
+
       /*!
        * @brief create object by input parameter ID
        *
@@ -237,6 +248,7 @@ namespace Mat
       {
         return false;
       }
+
 
      protected:
       /// Gauss point index

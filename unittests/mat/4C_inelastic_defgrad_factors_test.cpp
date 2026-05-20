@@ -90,6 +90,11 @@ namespace
     double thermal_expansion_coefficient = 0.1;
     double ref_temperature = 293.0;
     ReformulatedJohnsonCookParameters viscoplastic_law_params{};
+    ViscoplastUtils::LocalTimIntAnalysisParams local_timint_analysis_params{
+        .analyze_local_timint = false,  // no analysis of local time integration via
+                                        // ViscoplastUtils::LocalTimIntAnalysis by default
+        .ele_gid = 0,
+        .rel_tol_computation_time = 1.0};
   };
 
   struct ViscoplasticTestMaterial
@@ -197,6 +202,7 @@ namespace
             .max_plastic_strain_deriv_incr = std::exp(30.0)};
     material_data.add("ERROR_REGISTRATION_SETTINGS", error_registration_settings);
     material_data.add("ADAPTIVE_ESTIMATE_INTERPOLATION", setup.adaptive_estimate_interp_params);
+    material_data.add("LOCAL_TIMINT_ANALYSIS", setup.local_timint_analysis_params);
 
     auto material_params =
         std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(

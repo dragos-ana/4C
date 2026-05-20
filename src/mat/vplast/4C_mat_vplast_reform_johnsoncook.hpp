@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <memory>
+#include <vector>
 
 
 FOUR_C_NAMESPACE_OPEN
@@ -44,6 +45,7 @@ namespace Mat
       {
        public:
         explicit ReformulatedJohnsonCook(const Core::Mat::PAR::Parameter::Data& matdata);
+
 
         std::shared_ptr<Core::Mat::Material> create_material() override { return nullptr; };
 
@@ -113,6 +115,29 @@ namespace Mat
         return dynamic_cast<Mat::Viscoplastic::PAR::ReformulatedJohnsonCook*>(
             Mat::Viscoplastic::Law::parameter());
       }
+
+      /// state object for ReformulatedJohnsonCook
+      struct RefJohnsonCookState : public Viscoplastic::Law::State
+      {
+        //! current yield strength at all Gauss points
+        std::vector<double> current_yield_strength;
+      };
+
+      [[nodiscard]] std::unique_ptr<Viscoplastic::Law::State> get_state() const override
+      {
+        auto s = std::make_unique<RefJohnsonCookState>();
+        s->current_yield_strength = current_yield_strength_;
+        return s;
+      }
+
+      void reinstate_state(const Viscoplastic::Law::State& s) override
+      {
+        FOUR_C_ASSERT_ALWAYS(dynamic_cast<const RefJohnsonCookState*>(&s) != nullptr,
+            "reinstate_state called with wrong State type on ReformulatedJohnsonCook");
+        const auto& ds = static_cast<const RefJohnsonCookState&>(s);
+        current_yield_strength_ = ds.current_yield_strength;
+      }
+
 
       [[nodiscard]] Core::Materials::MaterialType material_type() const override
       {
@@ -244,14 +269,8 @@ namespace Mat
       /// \frac{T^{M-1}}{T_{\mathrm{melt}}^M - T_{\mathrm{ref}}^M} ) \f$
       double log_neg_temperature_ratio_deriv_;
 
-
-      //! struct containing quantities at different time points (i.e., "current" at \f[ t_{n+1} \f])
-      struct TimeStepQuantities
-      {
-        //! yield strength (for all Gauss points)
-        std::vector<double> current_yield_strength_;
-      };
-      TimeStepQuantities time_step_quantities_;
+      //! yield strength (for all Gauss points)
+      std::vector<double> current_yield_strength_;
     };
 
   }  // namespace Viscoplastic

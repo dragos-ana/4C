@@ -160,14 +160,13 @@ double Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_plastic_strain_rate(
   if (update_hist_var)
   {
     // GP index safeguard
-    FOUR_C_ASSERT_ALWAYS(
-        static_cast<size_t>(gp_) < time_step_quantities_.current_yield_strength_.size(),
+    FOUR_C_ASSERT_ALWAYS(static_cast<size_t>(gp_) < current_yield_strength_.size(),
         "The current gp index is {} while the stored number of GP within Reformulated Johnson - "
         "Cook is {} ",
-        gp_, time_step_quantities_.current_yield_strength_.size());
+        gp_, current_yield_strength_.size());
     InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType yield_strength_err_status =
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
-    time_step_quantities_.current_yield_strength_[gp_] =
+    current_yield_strength_[gp_] =
         compute_flow_resistance(equiv_stress, equiv_plastic_strain, yield_strength_err_status);
     FOUR_C_ASSERT_ALWAYS(
         yield_strength_err_status ==
@@ -334,7 +333,7 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::setup(const int numgp,
     const Discret::Elements::Fibers& fibers,
     const std::optional<Discret::Elements::CoordinateSystem>& coord_system)
 {
-  time_step_quantities_.current_yield_strength_.resize(numgp, parameter()->init_yield_strength());
+  current_yield_strength_.resize(numgp, parameter()->init_yield_strength());
 }
 
 void Mat::Viscoplastic::ReformulatedJohnsonCook::register_output_data_names(
@@ -348,10 +347,9 @@ bool Mat::Viscoplastic::ReformulatedJohnsonCook::evaluate_output_data(
 {
   if (name == "yield_strength")
   {
-    for (int gp = 0; gp < static_cast<int>(time_step_quantities_.current_yield_strength_.size());
-        ++gp)
+    for (int gp = 0; gp < static_cast<int>(current_yield_strength_.size()); ++gp)
     {
-      data(gp, 0) = time_step_quantities_.current_yield_strength_[gp];
+      data(gp, 0) = current_yield_strength_[gp];
     }
     return true;
   }
@@ -367,7 +365,7 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::pack_viscoplastic_law(
   {
     // we need to pack this current value since it also saves the number
     // of Gauss points
-    add_to_pack(data, time_step_quantities_.current_yield_strength_);
+    add_to_pack(data, current_yield_strength_);
   }
 }
 
@@ -379,7 +377,7 @@ void Mat::Viscoplastic::ReformulatedJohnsonCook::unpack_viscoplastic_law(
   // need to unpack the history variables
   if (parameter() != nullptr)
   {
-    extract_from_pack(buffer, time_step_quantities_.current_yield_strength_);
+    extract_from_pack(buffer, current_yield_strength_);
   }
 }
 

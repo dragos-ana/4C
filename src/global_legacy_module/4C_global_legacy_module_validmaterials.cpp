@@ -2879,9 +2879,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
         Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolation;
     known_materials[Core::Materials::mfi_transv_isotrop_elast_viscoplast] = group(
         "MAT_InelasticDefgradTransvIsotropElastViscoplast",
-        {parameter<int>(
-             "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law",
-                                      .validator = positive<int>()}),
+        {
+            parameter<int>(
+                "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law",
+                                         .validator = positive<int>()}),
             parameter<int>(
                 "FIBER_READER_ID", {.description = "MAT ID of the used fiber direction reader for "
                                                    "transversely isotropic behavior",
@@ -3227,8 +3228,32 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "Newton--Raphson estimates, as presented "
                                 "in Ana, Schmidt, Wall: Adaptive Estimate Interpolation: "
                                 "Accelerating Local Newton--Raphson Schemes in Computational "
-                                "Plasticity / Viscoplasticity, Preprint",
-                    .required = false})},
+                                "Plasticity/Viscoplasticity ",
+                    .required = false}),
+            group<ViscoplastUtils::LocalTimIntAnalysisParams>("LOCAL_TIMINT_ANALYSIS",
+                {
+                    parameter<bool>("ANALYZE_LOCAL_TIMINT",
+                        {.description = "analyze local time integration?",
+                            .default_value = false,
+                            .store = in_struct(&ViscoplastUtils::LocalTimIntAnalysisParams::
+                                    analyze_local_timint)}),
+                    parameter<int>("ELE_GID",
+                        {.description = "global element id to perform the analysis for ",
+                            .default_value = false,
+                            .store =
+                                in_struct(&ViscoplastUtils::LocalTimIntAnalysisParams::ele_gid)}),
+                    parameter<double>("REL_TOL_COMPUTATION_TIME",
+                        {.description = " relative tolerance used to determine convergence of "
+                                        "the computation time ",
+                            .default_value = 1.0e-3,
+                            .store = in_struct(&ViscoplastUtils::LocalTimIntAnalysisParams::
+                                    rel_tol_computation_time)}),
+
+                },
+                {.description = "settings for analyzing local time integration using the "
+                                "implemented analysis framework",
+                    .required = false}),
+        },
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
                         "viscoplasticity laws (flow rule + hardening model)"});

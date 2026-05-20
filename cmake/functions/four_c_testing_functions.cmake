@@ -873,6 +873,62 @@ function(four_c_test_add_csv_header_check)
     )
 endfunction()
 
+##
+# Define a verification test specifically for the analysis framework of InelasticDefgradTransvIsotropElastViscoplast. The test checks the csv files written by the analysis framework for consistency.
+#
+# required parameters:
+#   BASED_ON:              name of the base test that created the csv files
+#   OUTPUT_NAME:           name (without suffixes) of the output simulation
+#
+# optional parameters:
+#   LABELS:                add labels to the test
+#   REQUIRED_DEPENDENCIES: any required external dependencies. The test will be skipped if the dependencies are not met.
+#
+function(four_c_test_analysis_framework_viscoplastic_material)
+  set(options "")
+  set(oneValueArgs BASED_ON OUTPUT_NAME)
+  set(multiValueArgs LABELS REQUIRED_DEPENDENCIES)
+  cmake_parse_arguments(
+    _parsed
+    "${options}"
+    "${oneValueArgs}"
+    "${multiValueArgs}"
+    ${ARGN}
+    )
+
+  # validate input arguments
+  if(DEFINED _parsed_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR "There are unparsed arguments: ${_parsed_UNPARSED_ARGUMENTS}!")
+  endif()
+
+  assert_required_arguments(_parsed BASED_ON OUTPUT_NAME)
+
+  set(name_of_viscoplastic_material_analysis_test
+      "${_parsed_BASED_ON}-viscoplastic-material-analysis"
+      )
+  get_test_property(${_parsed_BASED_ON} _internal_OUTPUT_DIR test_directory)
+  get_test_property(${_parsed_BASED_ON} _internal_INPUT_FILE test_file_full_path)
+
+  set(csv_comparison_command
+      "${FOUR_C_PYTHON_VENV_BUILD}/bin/check-local-integration-analysis-viscoplast-material ${test_file_full_path}  ${_parsed_OUTPUT_NAME}  ${test_directory}"
+      )
+
+  # Ensure that Python is listed as required dependency
+  list(APPEND _parsed_REQUIRED_DEPENDENCIES "Python")
+  _add_test_with_options(
+    NAME_OF_TEST
+    ${name_of_viscoplastic_material_analysis_test}
+    TEST_COMMAND
+    ${csv_comparison_command}
+    ADDITIONAL_FIXTURE
+    ${_parsed_BASED_ON}
+    LABELS
+    "${_parsed_LABELS}"
+    REQUIRED_DEPENDENCIES
+    "${_parsed_REQUIRED_DEPENDENCIES}"
+    )
+endfunction()
+
 ###------------------------------------------------------------------ Nested Parallelism
 # Usage in tests/lists_of_tests.cmake: "four_c_test_nested_parallelism(<name_of_input_file_1> <name_of_input_file_2> <restart_step>)"
 # required parameters:

@@ -10,14 +10,27 @@
 
 #include "4C_config.hpp"
 
+#include "4C_comm_mpi_utils.hpp"
+#include "4C_comm_pack_helpers.hpp"
 #include "4C_comm_utils.hpp"
+#include "4C_io_runtime_csv_writer.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_utils_scalar_interpolation.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_utils_exceptions.hpp"
 
+#include <boost/core/ref.hpp>
+#include <Teuchos_TableColumn.hpp>
+#include <Teuchos_Time.hpp>
+#include <Teuchos_TimeMonitor.hpp>
+
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <format>
+#include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -27,6 +40,7 @@ FOUR_C_NAMESPACE_OPEN
 
 namespace Mat
 {
+
   /// namespace: utilities for
   /// InelasticDefgradTransvIsotropElastViscoplast
   namespace InelasticDefgradTransvIsotropElastViscoplastUtils
@@ -442,6 +456,12 @@ namespace Mat
         return out;
       };
 
+      //! clone
+      [[nodiscard]] std::unique_ptr<LocalSubsteppingUtils> clone() const
+      {
+        return std::make_unique<LocalSubsteppingUtils>(*this);
+      }
+
      private:
       //! current time parameter ranging from 0 to the problem time step \f$ \Delta t \f$
       double t_;
@@ -533,8 +553,8 @@ namespace Mat
     {
       full_eval,  ///< full evaluation (full call of the evaluate_state_quantity_derivatives
                   ///< method)
-      plastic_strain_rate_derivs_only,  ///< return in evaluate_state_quantity_derivatives once the
-                                        ///< derivatives of the plastic strain rate have been
+      plastic_strain_rate_derivs_only,  ///< return in evaluate_state_quantity_derivatives once
+                                        ///< the derivatives of the plastic strain rate have been
                                         ///< evaluated
       equiv_stress_derivs_only,  ///< return in evaluate_state_quantities once the derivatives of
                                  ///< the equivalent stress has been evaluated
@@ -821,12 +841,13 @@ namespace Mat
     {
       residual,         ///< verify convergence based on the absolute value of the Local Newton
                         ///< residual 2-norm
-      increment_ratio,  ///< verify convergence based on the ratio of solution increment to current
-                        ///< solution: \f$ \frac{\left| \Delta \boldsymbol{s}^{l+1} \right|}{\left|
+      increment_ratio,  ///< verify convergence based on the ratio of solution increment to
+                        ///< current solution: \f$ \frac{\left| \Delta \boldsymbol{s}^{l+1}
+                        ///< \right|}{\left|
                         ///< \boldsymbol{s}^{l} \right|}  \f$
-      residual_and_increment_ratio,  ///< verify convergence based on both the absolute Local Newton
-                                     ///< residual and the ratio of solution increment to current
-                                     ///< solution
+      residual_and_increment_ratio,  ///< verify convergence based on both the absolute Local
+                                     ///< Newton residual and the ratio of solution increment to
+                                     ///< current solution
     };
 
 
@@ -900,6 +921,42 @@ namespace Mat
       /// getter for Local Newton parameters
       [[nodiscard]] LocalNewtonParams params() const { return params_; }
 
+
+      /// struct: state object used for saving and reinstating the state in repeated computations
+      struct State
+      {
+        //! current local iteration
+        unsigned int iter;
+
+        //! total number of local iterations for the current timestep; vector of Gauss point values
+        std::vector<unsigned int> curr_num_iters;
+
+        //! solution vector in the current iteration \f$ \boldsymbol{s}^{(l)} \f$ (used at the
+        //! currently considered Gauss point)
+        Core::LinAlg::Matrix<10, 1> sol;
+
+        //! quantities used for convergence checks
+        LocalNewtonConvQuantities convergence_quantities;
+      };
+
+      //! get state object
+      [[nodiscard]] State get_state() const
+      {
+        return {.iter = iter_,
+            .curr_num_iters = curr_num_iters_,
+            .sol = sol_,
+            .convergence_quantities = convergence_quantities_};
+      }
+
+      //! reinstate state
+      void reinstate_state(const State& state)
+      {
+        iter_ = state.iter;
+        curr_num_iters_ = state.curr_num_iters;
+        sol_ = state.sol;
+        convergence_quantities_ = state.convergence_quantities;
+      }
+
       /// getter for local iteration count
       [[nodiscard]] unsigned int iter() const { return iter_; }
 
@@ -960,7 +1017,6 @@ namespace Mat
         return iter_ >= static_cast<unsigned int>(params_.max_iter);
       }
 
-
       /// increment iteration counter
       void increment_iter() { ++iter_; }
 
@@ -969,8 +1025,8 @@ namespace Mat
        * +
        * \Delta \boldsymbol{s}^{(l+1)} \f$ after the current iteration \f$ l \f$
        *
-       * @note Also updates the increment norm (ratio of increment to solution) internally based on
-       * the provided increment
+       * @note Also updates the increment norm (ratio of increment to solution) internally based
+       * on the provided increment
        *
        * @param[in] delta_sol increment vector for the next iteration \f$\Delta
        * \boldsymbol{s}^{(l+1)}\f$
@@ -1333,6 +1389,52 @@ namespace Mat
          */
         void update_plastic_predictor_after_construction_algo(double plastic_pred_loc);
 
+        struct PredictorInterpolatorState
+        {
+          //! elastic predictor: elastic eigenvalues \f$ \lambda_{\mathrm{elast}, i} \f$
+          Core::LinAlg::Matrix<3, 3> eigenval_elast_pred;
+          //! plastic predictor: elastic eigenvalues \f$ \lambda_{\mathrm{plast}, i} \f$
+          Core::LinAlg::Matrix<3, 3> eigenval_plast_pred;
+          //! elastic predictor: elastic eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{elast}}
+          //! \f$
+          Core::LinAlg::Matrix<3, 3> eigenvect_rot_elast_pred;
+          //! plastic predictor: relative elastic eigenvector quaternion \f$
+          //! \mathbf{q}_{\mathbf{Q}_{\mathrm{plast,rel}}} \f$  associated with \f$
+          //! \mathbf{Q}_{\mathrm{plast,rel}} =  \mathbf{Q}_{\mathrm{elast}}^{T}
+          //! \mathbf{Q}_{\mathrm{plast}}
+          //! \f$
+          Core::LinAlg::Matrix<4, 1> rel_eigenvect_rot_plast_pred;
+          //! elastic predictor: elastic rotation matrix \f$ \mathbf{R}_{\mathrm{elast}} \f$
+          Core::LinAlg::Matrix<3, 3> rot_elast_pred;
+          //! plastic predictor: relative elastic rotation quaternion \f$
+          //! \mathbf{q}_{\mathbf{R}_{\mathrm{plast,rel}}}
+          //! \f$ associated with \f$ \mathbf{R}_{\mathrm{plast,rel}} =
+          //! \mathbf{R}_{\mathrm{elast}}^{T} \mathbf{R}_{\mathrm{plast}}\f$
+          Core::LinAlg::Matrix<4, 1> rel_rot_plast_pred;
+        };
+
+        //! get state object
+        [[nodiscard]] PredictorInterpolatorState get_state() const
+        {
+          return {.eigenval_elast_pred = eigenval_elast_pred_,
+              .eigenval_plast_pred = eigenval_plast_pred_,
+              .eigenvect_rot_elast_pred = eigenvect_rot_elast_pred_,
+              .rel_eigenvect_rot_plast_pred = rel_eigenvect_rot_plast_pred_,
+              .rot_elast_pred = rot_elast_pred_,
+              .rel_rot_plast_pred = rel_rot_plast_pred_};
+        }
+
+        //! reinstate state
+        void reinstate_state(const PredictorInterpolatorState& state)
+        {
+          eigenval_elast_pred_ = state.eigenval_elast_pred;
+          eigenval_plast_pred_ = state.eigenval_plast_pred;
+          eigenvect_rot_elast_pred_ = state.eigenvect_rot_elast_pred;
+          rel_eigenvect_rot_plast_pred_ = state.rel_eigenvect_rot_plast_pred;
+          rot_elast_pred_ = state.rot_elast_pred;
+          rel_rot_plast_pred_ = state.rel_rot_plast_pred;
+        }
+
        private:
         /*!
          * @brief Interpolates eigenvalues and rotational contributions based on the stored
@@ -1500,6 +1602,12 @@ namespace Mat
               num_plastic_pred_construct_iters_ <= params_.plastic_predictor_construction.max_iter);
         };
 
+        //! getter for the current number of plastic predictor construction iterations
+        [[nodiscard]] int num_plastic_pred_construct_iters() const
+        {
+          return num_plastic_pred_construct_iters_;
+        }
+
         /*!
          * @brief Verify whether estimate interpolation is still possible, based on the set maximum
          * number of interpolation iterations
@@ -1510,6 +1618,9 @@ namespace Mat
           return (num_estimate_interp_iters_ <= params_.estimate_interpolation.max_iter);
         };
 
+        //! getter for the current number of estimate interpolation iterations
+        [[nodiscard]] int num_estimate_interp_iters() const { return num_estimate_interp_iters_; }
+
         /*!
          * @brief Verify whether re-estimations are still possible, based on the
          * set maximum number of re-estimations
@@ -1519,6 +1630,9 @@ namespace Mat
         {
           return (num_reestimations_ <= params_.reestimation.max_num_reestimations);
         };
+
+        //! getter for the current number of re-estimations
+        [[nodiscard]] int num_reestimations() const { return num_reestimations_; }
 
         /*!
          * @brief Reset tasks and construction of the preliminary plastic
@@ -1640,6 +1754,61 @@ namespace Mat
         //! increment number of plastic predictor construction iterations
         void increment_num_plastic_pred_construct_iters() { ++num_plastic_pred_construct_iters_; }
 
+        /// struct: state object used for saving and reinstating the state in repeated computations
+        struct AEIManagerState
+        {
+          //! current number of plastic predictor construction iterations
+          int num_plastic_pred_construct_iters;
+
+          //! current number of estimation interpolation iterations
+          int num_estimate_interp_iters;
+
+          //! current number of re-estimations
+          int num_reestimations;
+
+          //! interpolation point container states
+          std::vector<InterpolationPointContainer> interpolation_point_containers;
+
+          // predictor interpolator states
+          std::vector<PredictorInterpolator::PredictorInterpolatorState>
+              predictor_interpolator_states;
+        };
+
+
+        //! get state object
+        [[nodiscard]] AEIManagerState get_state() const
+        {
+          return {.num_plastic_pred_construct_iters = num_plastic_pred_construct_iters_,
+              .num_estimate_interp_iters = num_estimate_interp_iters_,
+              .num_reestimations = num_reestimations_,
+              .interpolation_point_containers = interpolation_point_containers_,
+              .predictor_interpolator_states = [&]
+              {
+                std::vector<PredictorInterpolator::PredictorInterpolatorState> states;
+                states.reserve(predictor_interpolators_.size());
+
+                for (const auto& predictor_interpolator : predictor_interpolators_)
+                {
+                  states.push_back(predictor_interpolator.get_state());
+                }
+
+                return states;
+              }()};
+        };
+
+        //! reinstate state
+        void reinstate_state(const AEIManagerState& state)
+        {
+          num_plastic_pred_construct_iters_ = state.num_plastic_pred_construct_iters;
+          num_estimate_interp_iters_ = state.num_estimate_interp_iters;
+          num_reestimations_ = state.num_reestimations;
+          interpolation_point_containers_ = state.interpolation_point_containers;
+          for (unsigned int gp = 0; gp < predictor_interpolators_.size(); ++gp)
+          {
+            predictor_interpolators_[gp].reinstate_state(state.predictor_interpolator_states[gp]);
+          }
+        }
+
        private:
         //! Adaptive Estimate Interpolation parameters
         const AEIParams params_;
@@ -1667,6 +1836,509 @@ namespace Mat
         std::vector<PredictorInterpolator> predictor_interpolators_;
       };
     }  // namespace AdaptiveEstimateInterpolation
+
+    //! parameters for the analysis framework for local time integration: tracking the Local Newton
+    //! and the Adaptive Estimate Interpolation at a given element
+    struct LocalTimIntAnalysisParams
+    {
+      //! is the analysis framework used
+      bool analyze_local_timint;
+
+      //! global element id
+      int ele_gid;
+
+      //! relative tolerance used to determine convergence of the computation time
+      double rel_tol_computation_time;
+    };
+
+
+    //! analysis framework for local time integration: tracking the Local Newton and the Adaptive
+    //! Estimate Interpolation at a given element; writes two csv tables: a timestep table
+    //! tracking the general info such as iterations or computation times in each timestep, and one
+    //! focusing specifically on the evolution of the interpolation point and the interpolation
+    //! bounds in the adaptive estimate interpolation procedure (including re-estimation) within
+    //! each timestep
+    class LocalTimIntAnalysis
+    {
+     public:
+      /*!
+       * @brief Constructor.
+       *
+       * @param[in] use_adaptive_estimate_interpolation Does the analyzed material use adaptive
+       * estimate interpolation?
+       * @param[in] num_gp Number of Gauss points
+       *
+       */
+      LocalTimIntAnalysis(
+          const bool use_adaptive_estimate_interpolation, const unsigned int num_gp);
+
+
+      //! struct: tracking object for the evolution of several quantitities over the Local Newton
+      //! iterations
+      struct LocalNewtonIterData
+      {
+        //! Local Newton iteration
+        unsigned int local_iter;
+
+        //! error status
+        ErrorType error_status;
+
+        //! 2-norm of the residual in the Local Newton iteration
+        double residual_norm = -1.0;
+
+        //! increment ratio (as described in LocalNewtonConvQuantities) in the
+        //! Local Newton iteration
+        double increment_norm = -1.0;
+
+        //! convergence status in the Local Newton iteration
+        bool is_converged;
+
+        //! current interpolation point \f$ \xi \f$ (from the previous
+        //! Adaptive Estimate Interpolation) in the Local Newton iteration -> optional, because this
+        //! may never exist if the Adaptive Estimate Interpolation is not enabled
+        std::optional<double> current_interpolation_point = std::nullopt;
+
+        //! equivalent stress
+        double equiv_stress;
+
+        //! plastic strain
+        double plastic_strain;
+
+
+        //! plastic strain increment \f$ \Delta t v_{\text{P}} \f$
+        double plastic_strain_increment;
+      };
+
+      //! struct: tracking object for the evolution of the interpolation point and the
+      //! interpolation interval within the estimate interpolation procedure, including
+      //! re-estimation
+      struct EstimateInterpolationEvolTrackingObject
+      {
+        //! current interpolation point
+        const double current_interp_point;
+
+        //! lower interpolation bound
+        const double lower_interp_bound;
+
+        //! upper interpolation bound
+        const double upper_interp_bound;
+
+        //! local iteration (Local Newton)
+        const unsigned int local_iter;
+      };
+
+
+      //! struct: tracking settings used for csv writing
+      struct TrackingSettings
+      {
+        //! time
+        double time;
+
+        //! timestep
+        unsigned int timestep;
+
+        //! is this a new timestep? If so, then timestep is incremented; else, the global
+        //! iteration is incremented.
+        bool is_new_timestep;
+
+        //! global iteration
+        int global_iter;
+      };
+
+      //! reset all vectors for the next timestep at a given Gauss point
+      void reset(const unsigned int gp);
+
+      //! update method: updates total values, writes all tables (timestep table: each Gauss point
+      //! and summary, and detailed AEI table: each Gauss point) to csv, and resets all quantities
+      //! in preparation for the next timestep
+      void update_gp_totals_and_write_gp_tables(const unsigned int gp);
+
+      //! write overall timestep table (over all GP) to csv
+      void write_overall_timestep_table_to_csv();
+
+      //! increment number of Local Newton iterations accumulated in the current timestep at a
+      //! given Gauss point
+      void increment_num_lnl_iters(const unsigned int gp, const unsigned int increment = 1)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < num_lnl_iters_.size(),
+            "You try to increment num_lnl_iters_ at GP {}, but the current size is {}", gp,
+            num_lnl_iters_.size());
+
+        num_lnl_iters_[gp] += increment;
+      }
+
+      //! increment constitutive update time accumulated in the current timestep at a given Gauss
+      //! point
+      void increment_constitutive_update_time(const unsigned int gp, const double increment)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < constitutive_update_time_.size(),
+            "You try to increment constitutive_update_time_ at GP {}, but the current size is {}",
+            gp, constitutive_update_time_.size());
+
+        constitutive_update_time_[gp] += increment;
+      }
+
+      //! increment number of plastic predictor construction iterations accumulated in the current
+      //! timestep at a given Gauss point
+      void increment_aei_num_plastic_pred_construct_iters(
+          const unsigned int gp, const unsigned int increment = 1)
+      {
+        FOUR_C_ASSERT_ALWAYS(
+            adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+        FOUR_C_ASSERT_ALWAYS(
+            gp < adaptive_estimate_interp_data_->num_plastic_pred_construct_iters.size(),
+            "You try to increment aei_num_plastic_pred_construct_iters_ at GP {}, but the "
+            "current "
+            "size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->num_plastic_pred_construct_iters.size());
+
+        adaptive_estimate_interp_data_->num_plastic_pred_construct_iters[gp] += increment;
+      }
+
+      //! increment number of estimate interpolation iterations accumulated in the current
+      //! timestep at a given Gauss point
+      void increment_aei_num_interp_iters(const unsigned int gp, const unsigned int increment = 1)
+      {
+        FOUR_C_ASSERT_ALWAYS(
+            adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+
+        FOUR_C_ASSERT_ALWAYS(gp < adaptive_estimate_interp_data_->num_interp_iters.size(),
+            "You try to increment aei_num_interp_iters_ at GP {}, but the current size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->num_interp_iters.size());
+
+        adaptive_estimate_interp_data_->num_interp_iters[gp] += increment;
+      }
+
+      //! increment number of re-estimations accumulated in the current
+      //! timestep at a given Gauss point
+      void increment_aei_num_reestimations(const unsigned int gp, const unsigned int increment)
+      {
+        FOUR_C_ASSERT_ALWAYS(
+            adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+        FOUR_C_ASSERT_ALWAYS(gp < adaptive_estimate_interp_data_->num_reestimations.size(),
+            "You try to increment aei_num_reestimations_ at GP {}, but the current size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->num_reestimations.size());
+
+        adaptive_estimate_interp_data_->num_reestimations[gp] += increment;
+      }
+
+
+      //! append estimate interpolation tracking data in the current timestep at a given Gauss point
+      void append_estimate_interp_tracking_data(const unsigned int gp,
+          const EstimateInterpolationEvolTrackingObject& estimate_interp_tracking_object)
+      {
+        FOUR_C_ASSERT_ALWAYS(
+            adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+
+        FOUR_C_ASSERT_ALWAYS(gp < adaptive_estimate_interp_data_->current_interp_points.size(),
+            "You try to append aei_current_interp_points_ at GP {}, but the current size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->current_interp_points.size());
+
+        adaptive_estimate_interp_data_->current_interp_points[gp].push_back(
+            estimate_interp_tracking_object.current_interp_point);
+        adaptive_estimate_interp_data_->lower_interp_bounds[gp].push_back(
+            estimate_interp_tracking_object.lower_interp_bound);
+        adaptive_estimate_interp_data_->upper_interp_bounds[gp].push_back(
+            estimate_interp_tracking_object.upper_interp_bound);
+        adaptive_estimate_interp_data_->global_iters[gp].push_back(tracking_settings_.global_iter);
+        adaptive_estimate_interp_data_->local_iters[gp].push_back(
+            estimate_interp_tracking_object.local_iter);
+      }
+
+
+      //! append Local Newton tracker in the current timestep at a given Gauss point
+      void append_lnl_tracking_data(
+          const unsigned int gp, const LocalNewtonIterData& local_newton_iter_data)
+      {
+        FOUR_C_ASSERT_ALWAYS(gp < local_newton_data_.local_iters.size(),
+            "You try to append aei_current_interp_points_ at GP {}, but the current size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->local_iters.size());
+
+        local_newton_data_.global_iters[gp].push_back(tracking_settings_.global_iter);
+        local_newton_data_.local_iters[gp].push_back(local_newton_iter_data.local_iter);
+        local_newton_data_.error_status[gp].push_back(local_newton_iter_data.error_status);
+        local_newton_data_.residual_norms[gp].push_back(local_newton_iter_data.residual_norm);
+        local_newton_data_.increment_norms[gp].push_back(local_newton_iter_data.increment_norm);
+        local_newton_data_.is_converged[gp].push_back(local_newton_iter_data.is_converged);
+        if (local_newton_iter_data.current_interpolation_point.has_value())
+        {
+          FOUR_C_ASSERT_ALWAYS(local_newton_data_.current_interpolation_points.has_value(),
+              "You try to set the current interpolation point but the Local Newton data has not "
+              "registered that the Adaptive Estimate Interpolation is used!");
+          local_newton_data_.current_interpolation_points->at(gp).push_back(
+              local_newton_iter_data.current_interpolation_point.value());
+        }
+        local_newton_data_.equiv_stresses[gp].push_back(local_newton_iter_data.equiv_stress);
+        local_newton_data_.plastic_strains[gp].push_back(local_newton_iter_data.plastic_strain);
+        local_newton_data_.plastic_strain_increments[gp].push_back(
+            local_newton_iter_data.plastic_strain_increment);
+      }
+
+      //! set interpolation point leading to the solution equivalent stress used in the current
+      //! timestep for the adaptive estimate interpolation at a given Gauss point
+      void set_aei_interp_point_equiv_stress_history(const unsigned int gp,
+          const AdaptiveEstimateInterpolation::AEIManager& aei_manager,
+          const AdaptiveEstimateInterpolation::InputEquivStressStartingPoint&
+              input_equiv_stress_starting_point);
+
+
+      //! set starting point used in the current timestep
+      //! for the adaptive estimate interpolation at a given Gauss point
+      void set_aei_starting_point(const unsigned int gp, const double val)
+      {
+        FOUR_C_ASSERT_ALWAYS(
+            adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+        FOUR_C_ASSERT_ALWAYS(gp < adaptive_estimate_interp_data_->starting_point.size(),
+            "You try to set aei_starting_point at GP {}, but the current size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->starting_point.size());
+        adaptive_estimate_interp_data_->starting_point[gp] = val;
+      }
+
+
+      //! increment computation time for determining the starting point in the next timestep
+      //! (accumulated in the current timestep)
+      void increment_aei_starting_point_determination_time(const unsigned int gp, const double val)
+      {
+        FOUR_C_ASSERT_ALWAYS(
+            adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+        FOUR_C_ASSERT_ALWAYS(
+            gp < adaptive_estimate_interp_data_->starting_point_determination_time.size(),
+            "You try to set starting_point_determination_time at GP {}, but the current size "
+            "is {}",
+            gp, adaptive_estimate_interp_data_->total_starting_point_determination_time.size());
+
+        adaptive_estimate_interp_data_->starting_point_determination_time[gp] += val;
+      }
+
+
+      //! get control variable for tracking quantities
+      [[nodiscard]] bool track_quantities() const { return track_quantities_; }
+
+      //! set control variable for tracking quantities
+      void set_track_quantities(const bool track_quantities)
+      {
+        track_quantities_ = track_quantities;
+      }
+
+      //! set time, and determine whether this is a new timestep
+      void set_time(const double time)
+      {
+        tracking_settings_.is_new_timestep = !(time == tracking_settings_.time);
+        tracking_settings_.time = time;
+      }
+
+      //! increment timestep / global iteration, depending on whether this is a new timestep or
+      //! not
+      void increment_timestep_or_global_iter()
+      {
+        if (tracking_settings_.is_new_timestep)
+        {
+          tracking_settings_.timestep++;
+        }
+        else
+        {
+          tracking_settings_.global_iter++;
+        }
+      }
+
+     private:
+      //! struct: tracked data for the evolution of data within the iterations of the Local Newton
+      //! loop
+      struct LocalNewtonEvolData
+      {
+        //! vector tracking the global iterations in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: Local Newton
+        //! iterations)
+        std::vector<std::vector<unsigned int>> global_iters;
+
+        //! vector tracking the Local Newton iterations in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: Local Newton
+        //! iterations)
+        std::vector<std::vector<unsigned int>> local_iters;
+
+        //! vector tracking the error status in the Local Newton iterations within the current
+        //! timestep (outer vector: over all Gauss points, inner vector: Local Newton iterations)
+        std::vector<std::vector<ErrorType>> error_status;
+
+        //! vector tracking the 2-norm of the residual in the Local Newton iterations within the
+        //! current timestep (outer vector: over all Gauss points, inner vector: Local Newton
+        //! iterations)
+        std::vector<std::vector<double>> residual_norms;
+
+        //! vector tracking the increment ratio (as described in LocalNewtonConvQuantities) in the
+        //! Local Newton iterations within the current timestep (outer vector: over all Gauss
+        //! points, inner vector: Local Newton iterations)
+        std::vector<std::vector<double>> increment_norms;
+
+        //! vector tracking the convergence status in the Local Newton iterations within the
+        //! current timestep (outer vector: over all Gauss points, inner vector: Local Newton
+        //! iterations)
+        std::vector<std::vector<bool>> is_converged;
+
+        //! vector tracking the current interpolation point \f$ \xi \f$ (from the previous
+        //! Adaptive Estimate Interpolation) in the Local Newton iterations within the current
+        //! timestep (outer vector: over all Gauss points, inner vector: Local Newton iterations)
+        std::optional<std::vector<std::vector<double>>> current_interpolation_points = std::nullopt;
+
+        //! vector tracking the equivalent stresses in the
+        //! Local Newton iterations within the current timestep (outer vector: over all Gauss
+        //! points, inner vector: Local Newton iterations)
+        std::vector<std::vector<double>> equiv_stresses;
+
+        //! vector tracking the plastic strains in the
+        //! Local Newton iterations within the current timestep (outer vector: over all Gauss
+        //! points, inner vector: Local Newton iterations)
+        std::vector<std::vector<double>> plastic_strains;
+
+        //! vector tracking the plastic strain increments \f$ \Delta t v_{\text{P}} \f$ in the
+        //! Local Newton iterations within the current timestep (outer vector: over all Gauss
+        //! points, inner vector: Local Newton iterations)
+        std::vector<std::vector<double>> plastic_strain_increments;
+      };
+
+      //! struct: tracked data for adaptive estimate interpolation
+      struct AdaptiveEstimateInterpolationData
+      {
+        //! number of plastic predictor construction iterations
+        //! accumulated in the current timestep (vector over all Gauss points)
+        std::vector<unsigned int> num_plastic_pred_construct_iters;
+
+        //! number of plastic predictor construction iterations
+        //! accumulated over all timesteps (vector over all Gauss points)
+        std::vector<unsigned int> total_num_plastic_pred_construct_iters;
+
+        //! number of estimate interpolation iterations
+        //! accumulated in the current timestep (vector over all Gauss points)
+        std::vector<unsigned int> num_interp_iters;
+
+        //! number of estimate interpolation iterations
+        //! accumulated over all timesteps (vector over all Gauss points)
+        std::vector<unsigned int> total_num_interp_iters;
+
+        //! number of re-estimations
+        //! accumulated in the current timestep (vector over all Gauss points)
+        std::vector<unsigned int> num_reestimations;
+
+        //! number of re-estimations
+        //! accumulated over all timesteps (vector over all Gauss points)
+        std::vector<unsigned int> total_num_reestimations;
+
+        //! vector tracking current interpolation points in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: AEI iterations)
+        std::vector<std::vector<double>> current_interp_points;
+
+        //! vector tracking lower interpolation bounds in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: AEI iterations)
+        std::vector<std::vector<double>> lower_interp_bounds;
+
+        //! vector tracking upper interpolation bounds in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: AEI iterations)
+        std::vector<std::vector<double>> upper_interp_bounds;
+
+        //! vector tracking the global iterations in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: AEI iterations)
+        std::vector<std::vector<double>> global_iters;
+
+        //! vector tracking the local iterations in the
+        //! current timestep (outer vector: over all Gauss points, inner vector: AEI iterations)
+        std::vector<std::vector<double>> local_iters;
+
+        //! interpolation point leading to the solution equivalent
+        //! stress in the current timestep (vector over all gauss points)
+        std::vector<double> interp_point_equiv_stress_history;
+
+        //! starting point used in the current timestep (vector
+        //! over all gauss points)
+        std::vector<double> starting_point;
+
+        //! computation time for determining the starting points for the next timestep,
+        //! accumulated in the current timestep (vector over all Gauss points)
+        std::vector<double> starting_point_determination_time;
+
+        //! computation time for determining the starting points for the next timestep,
+        //! accumulated over all timesteps (vector over all Gauss points)
+        std::vector<double> total_starting_point_determination_time;
+      };
+
+
+
+      //! tracking settings
+      TrackingSettings tracking_settings_;
+
+      //! csv writers for timestep quantities at each Gauss point
+      std::map<unsigned int, std::optional<Core::IO::RuntimeCsvWriter>>
+          csv_timestep_data_writer_at_gp_;
+
+      //! csv writers for timestep quantities summing over all Gauss points
+      std::optional<Core::IO::RuntimeCsvWriter> csv_timestep_data_writer_overall_;
+
+      //! csv writers for detailed adaptive estimate interpolation tracking at each Gauss point
+      std::map<unsigned int, std::optional<Core::IO::RuntimeCsvWriter>> csv_aei_data_writer_at_gp_;
+
+      //! csv writers for detailed Local Newton tracking at each Gauss point
+      std::map<unsigned int, std::optional<Core::IO::RuntimeCsvWriter>> csv_lnl_data_writer_at_gp_;
+
+      //! control variable: should the analysis framework track the quantities below? -->
+      //! we use this variable because tracking of computation times is separate from the tracking
+      //! of these quantities, as the timed procedures need to be repeated over and over again for
+      //! accurate timing (we don't want to accumulate the iterations in these repetitions!)
+      bool track_quantities_;
+
+      //! number of global iterations accumulated over all timesteps
+      unsigned int total_num_global_iters_;
+
+      //! number of Local Newton iterations accumulated in the current timestep (vector over all
+      //! Gauss points)
+      std::vector<unsigned int> num_lnl_iters_;
+
+      //! number of Local Newton iterations accumulated over all timesteps (vector over all
+      //! Gauss points)
+      std::vector<unsigned int> total_num_lnl_iters_;
+
+      //! computation time for constitutive update accumulated in the current timestep (vector over
+      //! all Gauss points)
+      std::vector<double> constitutive_update_time_;
+
+      //! computation time for constitutive update accumulated over all timesteps (vector over all
+      //! Gauss points)
+      std::vector<double> total_constitutive_update_time_;
+
+      //! data tracked for the Local Newton iterations
+      LocalNewtonEvolData local_newton_data_;
+
+      //! data tracked for the adaptive estimate interpolation
+      std::optional<AdaptiveEstimateInterpolationData> adaptive_estimate_interp_data_ =
+          std::nullopt;
+
+      //! update total values at a given Gauss point after a finalised timestep
+      void update_total(const unsigned int gp);
+
+      //! write timestep table at a given Gauss point to csv
+      void write_timestep_tables_at_gp_to_csv(const unsigned int gp);
+
+      //! write detailed adaptive estimate interpolation tables (at a given Gauss point)
+      //! to csv
+      void write_aei_tables_to_csv(const unsigned int gp);
+
+
+      //! write detailed Local Newton data tables (at a given Gauss point)
+      //! to csv
+      void write_lnl_tables_to_csv(const unsigned int gp);
+    };
+
+
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
 }  // namespace Mat

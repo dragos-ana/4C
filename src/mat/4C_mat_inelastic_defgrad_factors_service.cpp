@@ -11,6 +11,8 @@
 
 #include "4C_comm_pack_helpers.hpp"
 #include "4C_fem_general_largerotations.hpp"
+#include "4C_global_data.hpp"
+#include "4C_io_runtime_csv_writer.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_generators.hpp"
 #include "4C_linalg_fixedsizematrix_tensor_products.hpp"
@@ -23,21 +25,46 @@
 #include "4C_utils_exceptions.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <initializer_list>
+#include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
 
 
-FOUR_C_NAMESPACE_OPEN
+            FOUR_C_NAMESPACE_OPEN
 
-using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
+    using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
 namespace AEI =
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolation;
 
 
 namespace
 {
+
+  // map error status to double for csv output
+  double error_status_to_double(const ErrorType err_status)
+  {
+    switch (err_status)
+    {
+      case (ErrorType::no_errors):
+        return 0.0;
+      case (ErrorType::overflow_error):
+        return 10.0;
+      case (ErrorType::under_yield_surface):
+        return 2.0;
+      case (ErrorType::no_convergence_local_newton):
+        return 3.0;
+      case (ErrorType::failed_solution_linear_system_lnl):
+        return 4.0;
+      default:
+        FOUR_C_THROW("Error status {} not yet enabled!", err_status);
+    }
+  }
+
 
   // elastic and plastic predictor locations
   constexpr double ELASTIC_PREDICTOR_LOCATION = 0.0;
@@ -191,6 +218,364 @@ namespace
                               input_equiv_stress_starting_point.equiv_stress_elast_pred),
         ELASTIC_PREDICTOR_LOCATION, PLASTIC_PREDICTOR_LOCATION);
   }
+
+  /// initialize csv timestep data writer (the csv writer can write at a single Gauss point, or over
+  /// all Gauss points -> is_overall_table = true in the latter case)
+  void init_timestep_data_csv_writer(const bool use_adaptive_estimate_interpolation,
+      Core::IO::RuntimeCsvWriter& csv_writer, const bool is_overall_table = false)
+  {
+    csv_writer.register_data_vector("Eval. iterations (global)", 1, 16);
+    csv_writer.register_data_vector("Total iterations (global)", 1, 16);
+    csv_writer.register_data_vector("Eval. iterations (LNL)", 1, 16);
+    csv_writer.register_data_vector("Total iterations (LNL)", 1, 16);
+    csv_writer.register_data_vector("Eval. time (CU)", 1, 16);
+    csv_writer.register_data_vector("Total time (CU)", 1, 16);
+    if (use_adaptive_estimate_interpolation)
+    {
+      csv_writer.register_data_vector("Eval. PPC iters (AEI)", 1, 16);
+      csv_writer.register_data_vector("Total PPC iters (AEI)", 1, 16);
+      csv_writer.register_data_vector("Eval. interp. iters (AEI)", 1, 16);
+      csv_writer.register_data_vector("Total interp. iters (AEI)", 1, 16);
+      csv_writer.register_data_vector("Eval. re-estimations (AEI)", 1, 16);
+      csv_writer.register_data_vector("Total re-estimations (AEI)", 1, 16);
+      csv_writer.register_data_vector("Eval. start. point det. time (AEI)", 1, 16);
+      csv_writer.register_data_vector("Total start. point det. time (AEI)", 1, 16);
+      if (!is_overall_table)
+      {
+        csv_writer.register_data_vector("Interp. point equiv. stress history (AEI)", 1, 16);
+        csv_writer.register_data_vector("Starting point (AEI)", 1, 16);
+      }
+    }
+  }
+
+
+  /// special struct for timestep data containing data for the adaptive estimate interpolation (csv)
+  struct CsvWritingTimestepAEIData
+  {
+    //! adaptive estimate interpolation: number of plastic predictor construction iterations
+    //! accumulated in the current timestep
+    const unsigned int num_plastic_pred_construct_iters;
+
+    //! adaptive estimate interpolation: number of plastic predictor construction iterations
+    //! accumulated over all timesteps
+    const unsigned int total_num_plastic_pred_construct_iters;
+
+    //! adaptive estimate interpolation: number of estimate interpolation iterations
+    //! accumulated in the current timestep
+    const unsigned int num_interp_iters;
+
+    //! adaptive estimate interpolation: number of estimate interpolation iterations
+    //! accumulated over all timesteps
+    const unsigned int total_num_interp_iters;
+
+    //! adaptive estimate interpolation: number of re-estimations
+    //! accumulated in the current timestep
+    const unsigned int num_reestimations;
+
+    //! adaptive estimate interpolation: number of re-estimations
+    //! accumulated over all timesteps
+    const unsigned int total_num_reestimations;
+
+    //! adaptive estimate interpolation: interpolation point leading to the equivalent stress of the
+    //! solution in the current timestep
+    const double interp_point_equiv_stress_history;
+
+    //! adaptive estimate interpolation: starting point in the current timestep
+    const double starting_point;
+
+    //! adaptive estimate interpolation: computation time for determining the starting point in the
+    //! next timestep, accumulated over the current timestep
+    const double starting_point_determination_time;
+
+    //! adaptive estimate interpolation: computation time for determining the starting point in the
+    //! next timestep, accumulated over all timesteps
+    const double total_starting_point_determination_time;
+  };
+
+
+  /// struct used for timestep data writing (csv)
+  struct CsvWritingTimestepData
+  {
+    //! number of global iterations accumulated in the current timestep
+    unsigned int num_global_iters;
+
+    //! number of global iterations accumulated over all timesteps
+    unsigned int total_num_global_iters;
+
+    //! number of Local Newton iterations accumulated in the current timestep
+    unsigned int num_lnl_iters;
+
+    //! number of Local Newton iterations accumulated over all timesteps
+    unsigned int total_num_lnl_iters;
+
+    //! computation time for constitutive update accumulated in the current timestep
+    double constitutive_update_time;
+
+    //! computation time for constitutive update accumulated over all timesteps
+    double total_constitutive_update_time;
+
+    //! adaptive estimate interpolation: number of plastic predictor construction iterations
+    //! accumulated in the current timestep
+    std::optional<CsvWritingTimestepAEIData> aei_data;
+  };
+
+
+
+  /// write timestep data to csv (the csv writer can write at a single Gauss point, or over
+  /// all Gauss points -> is_overall_table = true in the latter case)
+  void write_timestep_data_to_csv(Core::IO::RuntimeCsvWriter& csv_writer,
+      const CsvWritingTimestepData& data,
+      const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+          TrackingSettings& tracking_settings,
+      const bool is_overall_table = false)
+  {
+    // output data
+    std::map<std::string, std::vector<double>> output_data;
+    output_data["Eval. iterations (global)"] = {static_cast<double>(data.num_global_iters)};
+    output_data["Total iterations (global)"] = {static_cast<double>(data.total_num_global_iters)};
+    output_data["Eval. iterations (LNL)"] = {static_cast<double>(data.num_lnl_iters)};
+    output_data["Total iterations (LNL)"] = {static_cast<double>(data.total_num_lnl_iters)};
+    output_data["Eval. time (CU)"] = {data.constitutive_update_time};
+    output_data["Total time (CU)"] = {data.total_constitutive_update_time};
+    if (data.aei_data.has_value())
+    {
+      output_data["Eval. PPC iters (AEI)"] = {
+          static_cast<double>(data.aei_data->num_plastic_pred_construct_iters)};
+      output_data["Total PPC iters (AEI)"] = {
+          static_cast<double>(data.aei_data->total_num_plastic_pred_construct_iters)};
+      output_data["Eval. interp. iters (AEI)"] = {
+          static_cast<double>(data.aei_data->num_interp_iters)};
+      output_data["Total interp. iters (AEI)"] = {
+          static_cast<double>(data.aei_data->total_num_interp_iters)};
+      output_data["Eval. re-estimations (AEI)"] = {
+          static_cast<double>(data.aei_data->num_reestimations)};
+      output_data["Total re-estimations (AEI)"] = {
+          static_cast<double>(data.aei_data->total_num_reestimations)};
+      output_data["Eval. start. point det. time (AEI)"] = {
+          data.aei_data->starting_point_determination_time};
+      output_data["Total start. point det. time (AEI)"] = {
+          data.aei_data->total_starting_point_determination_time};
+      if (!is_overall_table)
+      {
+        output_data["Interp. point equiv. stress history (AEI)"] = {
+            data.aei_data->interp_point_equiv_stress_history};
+
+
+        output_data["Starting point (AEI)"] = {data.aei_data->starting_point};
+      }
+    }
+
+    // write output data to csv
+    csv_writer.write_data_to_file(tracking_settings.time, tracking_settings.timestep, output_data);
+  }
+
+
+  /// struct used for detailed AEI data writing (csv) --> vectors with the same size tracking the
+  /// evolution of interpolation points and intervals within the adaptive estimate interpolation
+  /// including re-estimation
+  struct CsvWritingAEIData
+  {
+    //! adaptive estimate interpolation: vector tracking current interpolation points in the
+    //! current timestep
+    std::vector<double> aei_current_interp_points;
+
+    //! adaptive estimate interpolation: vector tracking lower interpolation bounds in the
+    //! current timestep
+    std::vector<double> aei_lower_interp_bounds;
+
+    //! adaptive estimate interpolation: vector tracking upper interpolation bounds in the
+    //! current timestep
+    std::vector<double> aei_upper_interp_bounds;
+
+    //! adaptive estimate interpolation: vector tracking the global iteration in the current
+    //! timestep
+    std::vector<double> aei_global_iters;
+
+    //! adaptive estimate interpolation: vector tracking the local iteration in the current
+    //! timestep
+    std::vector<double> aei_local_iters;
+
+    //! verify equal lengths of the vectors
+    void verify_equal_lengths() const
+    {
+      auto l = {aei_current_interp_points.size(), aei_lower_interp_bounds.size(),
+          aei_upper_interp_bounds.size(), aei_global_iters.size(), aei_local_iters.size()};
+
+      auto all_same =
+          std::all_of(l.begin(), l.end(), [&](unsigned int v) { return v == *l.begin(); });
+      FOUR_C_ASSERT_ALWAYS(all_same,
+          "Your vectors for the AEI don't have equal lengths! Current interpolation points: {}, "
+          "lower interpolation bounds: {}, upper interpolation bounds: {}, global iterations: "
+          "{}, "
+          "local iterations: {}",
+          aei_current_interp_points.size(), aei_lower_interp_bounds.size(),
+          aei_upper_interp_bounds.size(), aei_global_iters.size(), aei_local_iters.size());
+    }
+  };
+
+  /// initialize csv adaptive estimate interpolation data writer
+  void init_aei_data_csv_writer(Core::IO::RuntimeCsvWriter& csv_writer)
+  {
+    csv_writer.register_data_vector("Lower interpolation bound", 1, 16);
+    csv_writer.register_data_vector("Current interpolation point", 1, 16);
+    csv_writer.register_data_vector("Upper interpolation bound", 1, 16);
+    csv_writer.register_data_vector("Global iteration", 1, 16);
+    csv_writer.register_data_vector("Local iteration", 1, 16);
+  }
+
+
+  /// write detailed adaptive estimate interpolation data to csv
+  void write_aei_data_to_csv(Core::IO::RuntimeCsvWriter& csv_writer, const CsvWritingAEIData& data,
+      const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+          TrackingSettings& tracking_settings)
+  {
+    data.verify_equal_lengths();
+    const size_t length = data.aei_global_iters.size();
+
+    for (unsigned int l = 0; l < length; ++l)
+    {
+      // output data
+      std::map<std::string, std::vector<double>> output_data;
+
+      output_data["Lower interpolation bound"] = {
+          static_cast<double>(data.aei_lower_interp_bounds[l])};
+      output_data["Current interpolation point"] = {
+          static_cast<double>(data.aei_current_interp_points[l])};
+      output_data["Upper interpolation bound"] = {
+          static_cast<double>(data.aei_upper_interp_bounds[l])};
+      output_data["Global iteration"] = {static_cast<double>(data.aei_global_iters[l])};
+      output_data["Local iteration"] = {static_cast<double>(data.aei_local_iters[l])};
+
+      // write output data to csv
+      csv_writer.write_data_to_file(
+          tracking_settings.time, tracking_settings.timestep, output_data);
+    }
+  }
+
+
+  /// struct used for detailed Local Newton data writing (csv) --> vectors with the same size
+  /// tracking the evolution of interpolation points and intervals within the adaptive estimate
+  /// interpolation including re-estimation
+  struct CsvWritingLNLData
+  {
+    //! vector tracking global iterations in the
+    //! current timestep
+    std::vector<unsigned int> global_iters;
+
+    //! vector tracking Local Newton iterations in the
+    //! current timestep
+    std::vector<unsigned int> local_iters;
+
+    //! vector tracking the error status in the
+    //! current timestep
+    std::vector<ErrorType> error_status;
+
+    //! vector tracking the residual norms in the
+    //! current timestep
+    std::vector<double> residual_norms;
+
+    //! vector tracking the increment norms in the
+    //! current timestep
+    std::vector<double> increment_norms;
+
+    //! vector tracking the convergence status over the Local iterations in the
+    //! current timestep
+    std::vector<bool> is_converged;
+
+    //! vector tracking the current interpolation point \f$ \xi \f$ (from the previous Adaptive
+    //! Estimate Interpolation) over the Local iterations in the current timestep
+    std::optional<std::vector<double>> current_interpolation_points = std::nullopt;
+
+    //! vector tracking the equivalent stresses in the
+    //! current timestep
+    std::vector<double> equiv_stresses;
+
+    //! vector tracking the plastic strains in the
+    //! current timestep
+    std::vector<double> plastic_strains;
+
+    //! vector tracking the plastic strain increments in the
+    //! current timestep
+    std::vector<double> plastic_strain_increments;
+
+    //! verify equal lengths of the vectors
+    void verify_equal_lengths() const
+    {
+      auto l = {global_iters.size(), local_iters.size(), error_status.size(), residual_norms.size(),
+          increment_norms.size(), is_converged.size(),
+          current_interpolation_points.has_value() ? current_interpolation_points->size()
+                                                   : global_iters.size(),
+          equiv_stresses.size(), plastic_strains.size(), plastic_strain_increments.size()};
+
+      auto all_same =
+          std::all_of(l.begin(), l.end(), [&](unsigned int v) { return v == *l.begin(); });
+      FOUR_C_ASSERT_ALWAYS(all_same,
+          "Your vectors for the LNL don't have equal lengths! Global iters: {}, "
+          "local iters: {}, error_status: {}, residual_norms: "
+          "{}, "
+          "increment_norms: {}, current_interpolation_points: {}, equiv_stresses: {}, "
+          "plastic_strains: {}, "
+          "plastic_strain_increments: {}",
+          global_iters.size(), local_iters.size(), error_status.size(), residual_norms.size(),
+          increment_norms.size(), is_converged.size(),
+          current_interpolation_points.has_value() ? current_interpolation_points->size()
+                                                   : global_iters.size(),
+          equiv_stresses.size(), plastic_strains.size(), plastic_strain_increments.size());
+    }
+  };
+
+
+  /// initialize csv Local Newton data writer
+  void init_lnl_data_csv_writer(
+      Core::IO::RuntimeCsvWriter& csv_writer, const bool use_adaptive_estimate_interpolation)
+  {
+    csv_writer.register_data_vector("Global iteration", 1, 16);
+    csv_writer.register_data_vector("Local iteration", 1, 16);
+    csv_writer.register_data_vector("Error status", 1, 16);
+    csv_writer.register_data_vector("Residual norm", 1, 16);
+    csv_writer.register_data_vector("Increment norm", 1, 16);
+    csv_writer.register_data_vector("Is converged?", 1, 16);
+    if (use_adaptive_estimate_interpolation)
+      csv_writer.register_data_vector("Current interpolation point", 1, 16);
+    csv_writer.register_data_vector("Equivalent stress", 1, 16);
+    csv_writer.register_data_vector("Plastic strain", 1, 16);
+    csv_writer.register_data_vector("Plastic strain increment", 1, 16);
+  }
+
+
+  /// write detailed Local Newton data to csv
+  void write_lnl_data_to_csv(Core::IO::RuntimeCsvWriter& csv_writer, const CsvWritingLNLData& data,
+      const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+          TrackingSettings& tracking_settings)
+  {
+    data.verify_equal_lengths();
+    const size_t length = data.global_iters.size();
+
+    for (unsigned int l = 0; l < length; ++l)
+    {
+      // output data
+      std::map<std::string, std::vector<double>> output_data;
+
+      output_data["Global iteration"] = {static_cast<double>(data.global_iters[l])};
+      output_data["Local iteration"] = {static_cast<double>(data.local_iters[l])};
+      output_data["Error status"] = {error_status_to_double(data.error_status[l])};
+      output_data["Residual norm"] = {static_cast<double>(data.residual_norms[l])};
+      output_data["Increment norm"] = {static_cast<double>(data.increment_norms[l])};
+      output_data["Is converged?"] = {static_cast<double>(data.is_converged[l])};
+      if (data.current_interpolation_points.has_value())
+        output_data["Current interpolation point"] = {
+            static_cast<double>(data.current_interpolation_points->at(l))};
+      output_data["Equivalent stress"] = {static_cast<double>(data.equiv_stresses[l])};
+      output_data["Plastic strain"] = {static_cast<double>(data.plastic_strains[l])};
+      output_data["Plastic strain increment"] = {
+          static_cast<double>(data.plastic_strain_increments[l])};
+
+      // write output data to csv
+      csv_writer.write_data_to_file(
+          tracking_settings.time, tracking_settings.timestep, output_data);
+    }
+  }
+
 
 }  // namespace
 
@@ -395,8 +780,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimeStepQuantities:
   last_rightCG.resize(1, id3x3);
   current_rightCG.resize(1, id3x3);  // value irrelevant at this point
 
-  // default value for the current deformation gradient: zero tensor \f$ \boldsymbol{0} f$ (to make
-  // sure that the inverse inelastic deformation gradient is evaluated in the first method call)
+  // default value for the current deformation gradient: zero tensor \f$ \boldsymbol{0} f$ (to
+  // make sure that the inverse inelastic deformation gradient is evaluated in the first method
+  // call)
   last_defgrad.resize(1, Core::LinAlg::Matrix<3, 3>{id3x3});
   current_defgrad.resize(1, Core::LinAlg::Matrix<3, 3>{Core::LinAlg::Initialization::zero});
 }
@@ -408,7 +794,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimeStepQuantities:
     const unsigned int numgp)
 {
   FOUR_C_ASSERT_ALWAYS(!resize_called,
-      "You already called resize for the time step quantities! The number of current GP is {} and "
+      "You already called resize for the time step quantities! The number of current GP is {} "
+      "and "
       "you attempt to set it to {}",
       last_plastic_strain.size(), numgp);
 
@@ -449,7 +836,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimeStepQuantities:
     const unsigned int gp)
 {
   FOUR_C_ASSERT_ALWAYS(gp < last_plastic_defgrad_inverse.size(),
-      "You try to pre-evaluate the time step quantities at GP {}, but the object has only {} Gauss "
+      "You try to pre-evaluate the time step quantities at GP {}, but the object has only {} "
+      "Gauss "
       "points",
       gp, last_plastic_defgrad_inverse.size());
 
@@ -603,7 +991,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager:
     const unsigned int numgp)
 {
   FOUR_C_ASSERT_ALWAYS(!resize_called_,
-      "You already called resize for the Local Newton manager! The number of current GP is {} and "
+      "You already called resize for the Local Newton manager! The number of current GP is {} "
+      "and "
       "you attempt to set it to {}",
       curr_num_iters_.size(), numgp);
 
@@ -632,7 +1021,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager:
     reset_curr_num_iters(const unsigned int gp)
 {
   FOUR_C_ASSERT_ALWAYS(gp < curr_num_iters_.size(),
-      "You try to reset the current number of iterations within the Local Newton manager at Gauss "
+      "You try to reset the current number of iterations within the Local Newton manager at "
+      "Gauss "
       "point {}, but the object only has {} Gauss points",
       gp, curr_num_iters_.size());
 
@@ -1233,5 +1623,329 @@ void AEI::AEIManager::set_stress_based_starting_point(
   interpolation_point_containers_[gp].starting_point =
       calculate_equiv_stress_starting_point(input_equiv_stress_starting_point);
 }
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::LocalTimIntAnalysis(
+    const bool use_adaptive_estimate_interpolation, const unsigned int num_gp)
+{
+  // set initial tracking settings
+  tracking_settings_ = TrackingSettings{
+      .time = 0.0,
+      .timestep = 0,
+      .is_new_timestep = true,
+      .global_iter = -1,  // we set it to -1, since there is an initial evaluation when the
+                          // simulation starts which will increment this value
+  };
+
+
+  // initialize stored quantities
+  total_num_global_iters_ = 0;
+  num_lnl_iters_.resize(num_gp, 0);
+  total_num_lnl_iters_.resize(num_gp, 0);
+  constitutive_update_time_.resize(num_gp, 0.0);
+  total_constitutive_update_time_.resize(num_gp, 0.0);
+
+  // initialize and resize the Local Newton data tracker
+  local_newton_data_.global_iters.resize(num_gp, std::vector<unsigned int>{});
+  local_newton_data_.local_iters.resize(num_gp, std::vector<unsigned int>{});
+  local_newton_data_.error_status.resize(num_gp, std::vector<ErrorType>{});
+  local_newton_data_.residual_norms.resize(num_gp, std::vector<double>{});
+  local_newton_data_.increment_norms.resize(num_gp, std::vector<double>{});
+  local_newton_data_.is_converged.resize(num_gp, std::vector<bool>{});
+  if (use_adaptive_estimate_interpolation)
+  {
+    local_newton_data_.current_interpolation_points = std::vector<std::vector<double>>(num_gp);
+  }
+  local_newton_data_.equiv_stresses.resize(num_gp, std::vector<double>{});
+  local_newton_data_.plastic_strains.resize(num_gp, std::vector<double>{});
+  local_newton_data_.plastic_strain_increments.resize(num_gp, std::vector<double>{});
+
+  // initialize and resize the Adaptive Estimate Interpolation data
+  if (use_adaptive_estimate_interpolation)
+  {
+    adaptive_estimate_interp_data_ =
+        std::make_optional<LocalTimIntAnalysis::AdaptiveEstimateInterpolationData>();
+
+    adaptive_estimate_interp_data_->num_plastic_pred_construct_iters.resize(num_gp, 0);
+    adaptive_estimate_interp_data_->total_num_plastic_pred_construct_iters.resize(num_gp, 0);
+    adaptive_estimate_interp_data_->num_interp_iters.resize(num_gp, 0);
+    adaptive_estimate_interp_data_->total_num_interp_iters.resize(num_gp, 0);
+    adaptive_estimate_interp_data_->num_reestimations.resize(num_gp, 0);
+    adaptive_estimate_interp_data_->total_num_reestimations.resize(num_gp, 0);
+    adaptive_estimate_interp_data_->current_interp_points.resize(num_gp, std::vector<double>{});
+    adaptive_estimate_interp_data_->lower_interp_bounds.resize(num_gp, std::vector<double>{});
+    adaptive_estimate_interp_data_->upper_interp_bounds.resize(num_gp, std::vector<double>{});
+    adaptive_estimate_interp_data_->global_iters.resize(num_gp, std::vector<double>{});
+    adaptive_estimate_interp_data_->local_iters.resize(num_gp, std::vector<double>{});
+    adaptive_estimate_interp_data_->interp_point_equiv_stress_history.resize(num_gp, 0.0);
+    adaptive_estimate_interp_data_->starting_point.resize(num_gp, 0.0);
+    adaptive_estimate_interp_data_->starting_point_determination_time.resize(num_gp, 0.0);
+    adaptive_estimate_interp_data_->total_starting_point_determination_time.resize(num_gp, 0.0);
+  }
+
+  // create csv writer for timestep data (overall)
+  csv_timestep_data_writer_overall_.emplace(
+      0, *Global::Problem::instance()->output_control_file(), "timint_output");
+  init_timestep_data_csv_writer(
+      adaptive_estimate_interp_data_.has_value(), csv_timestep_data_writer_overall_.value(), true);
+
+  // initialize Gauss point csv writers
+  for (unsigned int gp = 0; gp < num_gp; ++gp)
+  {
+    csv_timestep_data_writer_at_gp_.insert(std::make_pair(gp, std::nullopt));
+    csv_timestep_data_writer_at_gp_[gp].emplace(0,
+        *Global::Problem::instance()->output_control_file(),
+        "timint_output_gp_" + std::to_string(gp));
+    init_timestep_data_csv_writer(
+        adaptive_estimate_interp_data_.has_value(), csv_timestep_data_writer_at_gp_[gp].value());
+
+    csv_lnl_data_writer_at_gp_[gp].emplace(0, *Global::Problem::instance()->output_control_file(),
+        "lnl_output_gp_" + std::to_string(gp));
+    init_lnl_data_csv_writer(
+        csv_lnl_data_writer_at_gp_[gp].value(), use_adaptive_estimate_interpolation);
+
+    if (adaptive_estimate_interp_data_.has_value())
+    {
+      csv_aei_data_writer_at_gp_[gp].emplace(0, *Global::Problem::instance()->output_control_file(),
+          "aei_output_gp_" + std::to_string(gp));
+      init_aei_data_csv_writer(csv_aei_data_writer_at_gp_[gp].value());
+    }
+  }
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::update_total(
+    const unsigned int gp)
+{
+  if (gp == 0) total_num_global_iters_ += tracking_settings_.global_iter;
+  total_num_lnl_iters_[gp] += num_lnl_iters_[gp];
+  total_constitutive_update_time_[gp] += constitutive_update_time_[gp];
+  if (adaptive_estimate_interp_data_.has_value())
+  {
+    adaptive_estimate_interp_data_->total_num_plastic_pred_construct_iters[gp] +=
+        adaptive_estimate_interp_data_->num_plastic_pred_construct_iters[gp];
+    adaptive_estimate_interp_data_->total_num_interp_iters[gp] +=
+        adaptive_estimate_interp_data_->num_interp_iters[gp];
+    adaptive_estimate_interp_data_->total_num_reestimations[gp] +=
+        adaptive_estimate_interp_data_->num_reestimations[gp];
+    adaptive_estimate_interp_data_->total_starting_point_determination_time[gp] +=
+        adaptive_estimate_interp_data_->starting_point_determination_time[gp];
+  }
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::reset(
+    const unsigned int gp)
+{
+  num_lnl_iters_[gp] = 0;
+  constitutive_update_time_[gp] = 0.0;
+
+  // reset Local Newton data tracker
+  local_newton_data_.global_iters[gp] = {};
+  local_newton_data_.local_iters[gp] = {};
+  local_newton_data_.error_status[gp] = {};
+  local_newton_data_.residual_norms[gp] = {};
+  local_newton_data_.increment_norms[gp] = {};
+  local_newton_data_.is_converged[gp] = {};
+  if (local_newton_data_.current_interpolation_points.has_value())
+    local_newton_data_.current_interpolation_points->at(gp) = {};
+  local_newton_data_.equiv_stresses[gp] = {};
+  local_newton_data_.plastic_strains[gp] = {};
+  local_newton_data_.plastic_strain_increments[gp] = {};
+
+
+  // reset Adaptive Estimate Interpolation data tracker
+  if (adaptive_estimate_interp_data_.has_value())
+  {
+    adaptive_estimate_interp_data_->num_plastic_pred_construct_iters[gp] = 0;
+    adaptive_estimate_interp_data_->num_interp_iters[gp] = 0;
+    adaptive_estimate_interp_data_->num_reestimations[gp] = 0;
+    adaptive_estimate_interp_data_->current_interp_points[gp] = {};
+    adaptive_estimate_interp_data_->lower_interp_bounds[gp] = {};
+    adaptive_estimate_interp_data_->upper_interp_bounds[gp] = {};
+    adaptive_estimate_interp_data_->global_iters[gp] = {};
+    adaptive_estimate_interp_data_->local_iters[gp] = {};
+    adaptive_estimate_interp_data_->interp_point_equiv_stress_history[gp] = -1.0;
+    adaptive_estimate_interp_data_->starting_point[gp] = -1.0;
+    adaptive_estimate_interp_data_->starting_point_determination_time[gp] = 0.0;
+  }
+  tracking_settings_.global_iter =
+      0;  // here we set it to 0, since the new timestep should start with the 0-th iteration
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+    update_gp_totals_and_write_gp_tables(const unsigned int gp)
+{
+  update_total(gp);
+  write_timestep_tables_at_gp_to_csv(gp);
+  write_lnl_tables_to_csv(gp);
+  if (adaptive_estimate_interp_data_.has_value()) write_aei_tables_to_csv(gp);
+}
+
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+    write_timestep_tables_at_gp_to_csv(const unsigned int gp)
+{
+  const auto csv_writing_timestep_aei_data =
+      adaptive_estimate_interp_data_.has_value()
+          ? std::make_optional(CsvWritingTimestepAEIData{
+                .num_plastic_pred_construct_iters =
+                    adaptive_estimate_interp_data_->num_plastic_pred_construct_iters[gp],
+                .total_num_plastic_pred_construct_iters =
+                    adaptive_estimate_interp_data_->total_num_plastic_pred_construct_iters[gp],
+                .num_interp_iters = adaptive_estimate_interp_data_->num_interp_iters[gp],
+                .total_num_interp_iters =
+                    adaptive_estimate_interp_data_->total_num_interp_iters[gp],
+                .num_reestimations = adaptive_estimate_interp_data_->num_reestimations[gp],
+                .total_num_reestimations =
+                    adaptive_estimate_interp_data_->total_num_reestimations[gp],
+                .interp_point_equiv_stress_history =
+                    adaptive_estimate_interp_data_->interp_point_equiv_stress_history[gp],
+                .starting_point = adaptive_estimate_interp_data_->starting_point[gp],
+                .starting_point_determination_time =
+                    adaptive_estimate_interp_data_->starting_point_determination_time[gp],
+                .total_starting_point_determination_time =
+                    adaptive_estimate_interp_data_->total_starting_point_determination_time[gp],
+            })
+          : std::nullopt;
+
+  const auto csv_writing_timestep_data = CsvWritingTimestepData{
+      .num_global_iters = static_cast<unsigned int>(tracking_settings_.global_iter),
+      .total_num_global_iters = total_num_global_iters_,
+      .num_lnl_iters = num_lnl_iters_[gp],
+      .total_num_lnl_iters = total_num_lnl_iters_[gp],
+      .constitutive_update_time = constitutive_update_time_[gp],
+      .total_constitutive_update_time = total_constitutive_update_time_[gp],
+      .aei_data = csv_writing_timestep_aei_data,
+  };
+
+
+
+  write_timestep_data_to_csv(
+      csv_timestep_data_writer_at_gp_[gp].value(), csv_writing_timestep_data, tracking_settings_);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+    write_overall_timestep_table_to_csv()
+{
+  const auto csv_writing_timestep_aei_data =
+      adaptive_estimate_interp_data_.has_value()
+          ? std::make_optional(CsvWritingTimestepAEIData{
+                .num_plastic_pred_construct_iters = std::reduce(
+                    adaptive_estimate_interp_data_->num_plastic_pred_construct_iters.begin(),
+                    adaptive_estimate_interp_data_->num_plastic_pred_construct_iters.end()),
+                .total_num_plastic_pred_construct_iters = std::reduce(
+                    adaptive_estimate_interp_data_->total_num_plastic_pred_construct_iters.begin(),
+                    adaptive_estimate_interp_data_->total_num_plastic_pred_construct_iters.end()),
+                .num_interp_iters =
+                    std::reduce(adaptive_estimate_interp_data_->num_interp_iters.begin(),
+                        adaptive_estimate_interp_data_->num_interp_iters.end()),
+                .total_num_interp_iters =
+                    std::reduce(adaptive_estimate_interp_data_->total_num_interp_iters.begin(),
+                        adaptive_estimate_interp_data_->total_num_interp_iters.end()),
+                .num_reestimations =
+                    std::reduce(adaptive_estimate_interp_data_->num_reestimations.begin(),
+                        adaptive_estimate_interp_data_->num_reestimations.end()),
+                .total_num_reestimations =
+                    std::reduce(adaptive_estimate_interp_data_->total_num_reestimations.begin(),
+                        adaptive_estimate_interp_data_->total_num_reestimations.end()),
+                .interp_point_equiv_stress_history = -1.0,
+                .starting_point = -1.0,
+                .starting_point_determination_time = std::reduce(
+                    adaptive_estimate_interp_data_->starting_point_determination_time.begin(),
+                    adaptive_estimate_interp_data_->starting_point_determination_time.end()),
+                .total_starting_point_determination_time = std::reduce(
+                    adaptive_estimate_interp_data_->total_starting_point_determination_time.begin(),
+                    adaptive_estimate_interp_data_->total_starting_point_determination_time.end()),
+            })
+          : std::nullopt;
+
+  const auto csv_writing_timestep_data = CsvWritingTimestepData{
+      .num_global_iters = static_cast<unsigned int>(tracking_settings_.global_iter),
+      .total_num_global_iters = total_num_global_iters_,
+      .num_lnl_iters = std::reduce(num_lnl_iters_.begin(), num_lnl_iters_.end()),
+      .total_num_lnl_iters = std::reduce(total_num_lnl_iters_.begin(), total_num_lnl_iters_.end()),
+      .constitutive_update_time =
+          std::reduce(constitutive_update_time_.begin(), constitutive_update_time_.end()),
+      .total_constitutive_update_time = std::reduce(
+          total_constitutive_update_time_.begin(), total_constitutive_update_time_.end()),
+      .aei_data = csv_writing_timestep_aei_data};
+  write_timestep_data_to_csv(csv_timestep_data_writer_overall_.value(), csv_writing_timestep_data,
+      tracking_settings_, true);
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+    write_aei_tables_to_csv(const unsigned int gp)
+{
+  const auto csv_writing_aei_data = CsvWritingAEIData{
+      .aei_current_interp_points = adaptive_estimate_interp_data_->current_interp_points[gp],
+      .aei_lower_interp_bounds = adaptive_estimate_interp_data_->lower_interp_bounds[gp],
+      .aei_upper_interp_bounds = adaptive_estimate_interp_data_->upper_interp_bounds[gp],
+      .aei_global_iters = adaptive_estimate_interp_data_->global_iters[gp],
+      .aei_local_iters = adaptive_estimate_interp_data_->local_iters[gp]};
+  write_aei_data_to_csv(
+      csv_aei_data_writer_at_gp_[gp].value(), csv_writing_aei_data, tracking_settings_);
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+    write_lnl_tables_to_csv(const unsigned int gp)
+{
+  const auto csv_writing_lnl_data = CsvWritingLNLData{
+      .global_iters = local_newton_data_.global_iters[gp],
+      .local_iters = local_newton_data_.local_iters[gp],
+      .error_status = local_newton_data_.error_status[gp],
+      .residual_norms = local_newton_data_.residual_norms[gp],
+      .increment_norms = local_newton_data_.increment_norms[gp],
+      .is_converged = local_newton_data_.is_converged[gp],
+      .current_interpolation_points =
+          local_newton_data_.current_interpolation_points.has_value()
+              ? std::make_optional(local_newton_data_.current_interpolation_points->at(gp))
+              : std::nullopt,
+      .equiv_stresses = local_newton_data_.equiv_stresses[gp],
+      .plastic_strains = local_newton_data_.plastic_strains[gp],
+      .plastic_strain_increments = local_newton_data_.plastic_strain_increments[gp],
+  };
+
+  write_lnl_data_to_csv(
+      csv_lnl_data_writer_at_gp_[gp].value(), csv_writing_lnl_data, tracking_settings_);
+}
+
+void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::
+    set_aei_interp_point_equiv_stress_history(const unsigned int gp,
+        const AdaptiveEstimateInterpolation::AEIManager& aei_manager,
+        const AdaptiveEstimateInterpolation::InputEquivStressStartingPoint&
+            input_equiv_stress_starting_point)
+{
+  FOUR_C_ASSERT_ALWAYS(
+      adaptive_estimate_interp_data_.has_value(), "This method should not be called!");
+
+  FOUR_C_ASSERT_ALWAYS(
+      gp < adaptive_estimate_interp_data_->interp_point_equiv_stress_history.size(),
+      "You try to set interp_point_equiv_stress_history at GP {}, but the current "
+      "size "
+      "is {}",
+      gp, adaptive_estimate_interp_data_->interp_point_equiv_stress_history.size());
+  adaptive_estimate_interp_data_->interp_point_equiv_stress_history[gp] =
+      calculate_equiv_stress_starting_point(input_equiv_stress_starting_point);
+}
+
 
 FOUR_C_NAMESPACE_CLOSE
