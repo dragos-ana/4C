@@ -423,6 +423,17 @@ namespace Mat
         return use_adaptive_estimate_interp_;
       }
 
+      //! analyze local time integration using the implemented analysis framework
+      [[nodiscard]] bool analyze_local_timint() const { return analyze_local_timint_; };
+
+
+      //! parameters for analyzing local time integration
+      [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysisParams
+      local_timint_analysis_params() const
+      {
+        return local_timint_analysis_params_;
+      }
+
      private:
       //! ID of the viscoplasticity law
       const int viscoplastic_law_id_;
@@ -478,6 +489,13 @@ namespace Mat
       //! Adaptive Estimate Interpolation parameters
       const InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationParams
           adaptive_estimate_interp_params_;
+
+      //! analyze local time integration using the implemented analysis framework
+      const bool analyze_local_timint_;
+
+      //! parameters for analyzing local time integration
+      const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysisParams
+          local_timint_analysis_params_;
     };
   }  // namespace PAR
 
@@ -1688,6 +1706,49 @@ namespace Mat
         InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager>
         adaptive_estimate_interp_manager_;
 
+    //! TODO: is this really required or should I just use the pack and unpack methods; state
+    //! object: useful for saving and reinstating state, to be able to repeat the same method over
+    //! and over again during benchmarking (tracker object for the overall state including the other
+    //! utilities as the managers of the different procedures
+    struct OverallState
+    {
+      //! current time step quantities
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::TimeStepQuantities
+          time_step_quantities;
+
+      //! current state quantities
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantities state_quantities;
+
+      //! current state quantity derivatives
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::StateQuantityDerivatives
+          state_quantity_derivatives;
+
+      //! viscoplastic law state
+      std::unique_ptr<Mat::Viscoplastic::Law::State> viscoplastic_law_state;
+
+      //! local substepping utilities
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalSubsteppingUtils
+          local_substepping_utils;
+
+      //! Local Newton manager state
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager::State
+          local_newton_manager_state;
+
+      //! adaptive estimate interpolation manager state
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationManager::
+          AdaptiveEstimateInterpolationManagerState adaptive_estimate_interp_manager_state;
+    };
+
+    //! analysis framework for the local time integration if enabled by the user
+    std::optional<InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis>
+        local_timint_analysis_;
+
+    //! save overall state recursively
+    [[nodiscard]] OverallState save_overall_state() const;
+
+    //! reinstate overall state
+    void reinstate_overall_state(const OverallState& overall_state);
+
     /*!
      * @brief Calculate the Holzapfel gamma and delta values of the isotropic elastic material
      * components
@@ -2080,6 +2141,95 @@ namespace Mat
     //! and plastic predictors
     InelasticDefgradTransvIsotropElastViscoplastUtils::OptimalEquivStressStartingPointInput
     get_input_optimal_equiv_stress(const unsigned int gp);
+
+    //! initialize the analysis framework local time integration  on the owner rank of the specified
+    //! global element, if this was not already done
+    //! --> uses the saved global element id ele_gid_, and already resizes the local integration
+    //! analysis object with the saved number of Gauss points
+    void init_local_timint_analysis();
+
+    /// benchmarking procedure: runs a specific function in a loop until the
+    /// computation time converges based on a specified relative tolerance
+    template <typename Func, typename... Args>
+    double get_converged_computation_time(
+        std::string func_descr, const double relative_tol, Func&& func)
+    {
+      // disable quantity tracking of the local timint analysis
+      local_timint_analysis_->set_track_quantities(false);
+
+      // initialize function timer
+      Teuchos::Time func_timer{func_descr, false};
+
+      // average computation time (current iteration)
+      double avg_time = 0.0;
+
+      // average computation time (previous iteration)
+      double prev_avg_time = 0.0;
+
+      // number of performed iterations / repetitions
+      unsigned int num_of_required_iters = 0;
+
+      // minimum and maximum numbers of iterations
+      constexpr int warmup_iters = 3;    // number of warm-up iterations
+      constexpr int max_iters = 100000;  // safety cap
+
+      // start timer
+      func_timer.start(true);
+
+      // loop over iterations
+      while (true)
+      {
+        // increment iterations and check safety cap
+        ++num_of_required_iters;
+        FOUR_C_ASSERT_ALWAYS(num_of_required_iters < max_iters,
+            "Maximum number of repetitions {} was reached without a converged computation time for "
+            "the function [{}]",
+            max_iters, func_descr);
+
+        // reset timer upon reaching minimum number of iterations (warm-up
+        // iterations)
+        if (num_of_required_iters == warmup_iters)
+        {
+          func_timer.reset();
+          continue;
+        }
+
+        // run function to be timed
+        func();
+
+        // if this is not a warm-up iteration anymore, we calculate
+        // relative change and check for convergence
+        if (num_of_required_iters > warmup_iters)
+        {
+          // get current elapsed time
+          const double t = func_timer.totalElapsedTime(true);
+
+          // running average
+          avg_time = t / (num_of_required_iters - warmup_iters);
+
+          // check for convergence based on the relative tolerance
+          const double rel_change = std::abs(avg_time - prev_avg_time) / avg_time;
+
+
+          // if convergence is reached: stop the timer and break out of the loop
+          if (rel_change < relative_tol)
+          {
+            func_timer.stop();
+            break;
+          }
+
+          // set previous times for the next iteration
+          prev_avg_time = avg_time;
+        }
+      }
+
+      // re-enable quantity tracking of the local timint analysis
+      local_timint_analysis_->set_track_quantities(true);
+
+
+      // return average time
+      return avg_time;
+    }
   };
 }  // namespace Mat
 

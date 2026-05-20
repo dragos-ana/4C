@@ -37,7 +37,8 @@
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
 #include <algorithm>
-#include <filesystem>
+#include <chrono>
+#include <cmath>
 #include <format>
 #include <iomanip>
 #include <iostream>
@@ -49,8 +50,7 @@
 #include <string>
 #include <utility>
 
-FOUR_C_NAMESPACE_OPEN
-namespace
+FOUR_C_NAMESPACE_OPEN namespace
 {
   namespace ViscoplastUtils = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
 
@@ -567,6 +567,26 @@ namespace
   }
 
 
+  Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysisParams
+  retrieve_local_timint_analysis_params(const Core::Mat::PAR::Parameter::Data& matdata)
+  {
+    const bool analyze_local_timint =
+        matdata.parameters.group("LOCAL_TIMINT_ANALYSIS").get<bool>("ANALYZE_LOCAL_TIMINT");
+    // if analysis framework is used, get the associated parameters; else, use dummy values
+    if (analyze_local_timint)
+    {
+      return {
+          .ele_gid = static_cast<unsigned int>(
+              matdata.parameters.group("LOCAL_TIMINT_ANALYSIS").get<int>("ELE_GID")),
+          .rel_tol_computation_time = matdata.parameters.group("LOCAL_TIMINT_ANALYSIS")
+              .get<double>("REL_TOL_COMPUTATION_TIME"),
+      };
+    }
+    else
+    {
+      return {.ele_gid = 0, .rel_tol_computation_time = 0.0};
+    }
+  }
 
   bool show_warnings(const unsigned int ele_gid)
   {
@@ -791,7 +811,10 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       error_registration_settings_(retrieve_error_registration_settings(matdata)),
       use_adaptive_estimate_interp_(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
               .get<bool>("USE_ADAPTIVE_ESTIMATE_INTERP")),
-      adaptive_estimate_interp_params_(retrieve_aei_params(matdata))
+      adaptive_estimate_interp_params_(retrieve_aei_params(matdata)),
+      analyze_local_timint_(
+          matdata.parameters.group("LOCAL_TIMINT_ANALYSIS").get<bool>("ANALYZE_LOCAL_TIMINT")),
+      local_timint_analysis_params_(retrieve_local_timint_analysis_params(matdata))
 {
   // consistency check: yield parameters in case of transversely-isotropic behavior
   const bool all_yield_cond_param_specified =
@@ -1922,6 +1945,17 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
   time_step_quantities_.pre_evaluate(gp);
   // call preevaluate method of the viscoplastic law
   viscoplastic_law_->pre_evaluate(params, gp);
+
+  // local time integration analysis: initialization, only in the corresponding element and on the
+  // owner rank!
+  if (parameter()->analyze_local_timint()) init_local_timint_analysis();
+
+  // set total time for the local time integration analysis -> only do it once, at the first GP
+  if (local_timint_analysis_.has_value() && gp == 0)
+  {
+    local_timint_analysis_->set_time(*context.total_time);
+    local_timint_analysis_->set_track_quantities(true);
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -1933,6 +1967,18 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_constitutive_upd
 
   // set plastic flow to false for now! We set it to true if the elastic predictor step fails
   is_plastic_gp_[gp_] = false;
+
+  // We increment timestep or global iteration of the analysis framework in the return mapping
+  // preparation, not in the pre-evaluation routine of the material, to circumvent the double
+  // material evaluation calls in issue #121; also, we set the used starting point
+  if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+  {
+    // incrementation done only once for the first Gauss point
+    if (gp_ == 0) local_timint_analysis_->increment_timestep_or_global_iter();
+    if (adaptive_estimate_interp_manager_.has_value())
+      local_timint_analysis_->set_aei_starting_point(
+          gp_, adaptive_estimate_interp_manager_->starting_point(gp_));
+  }
 }
 
 
@@ -2828,6 +2874,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_inverse_inelast
   // via constitutive update (elastic predictor -- viscoplastic corrector).
 
   iFinM = constitutive_update(FredM).inv_plastic_defgrad;
+
+  // track return mapping time
+  if (local_timint_analysis_.has_value())
+  {
+    local_timint_analysis_->increment_constitutive_update_time(gp_,
+        get_converged_computation_time("Constitutive update",
+            parameter()->local_timint_analysis_params().rel_tol_computation_time,
+            [this, &iFinM, &FredM]() { iFinM = constitutive_update(FredM).inv_plastic_defgrad; }));
+  }
 }
 
 /*--------------------------------------------------------------------*
@@ -2915,6 +2970,25 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
     if (is_plastic_gp_[gp] && adaptive_estimate_interp_manager_.has_value())
     {
       update_adaptive_estimate_interp_starting_points(gp);
+
+      if (local_timint_analysis_.has_value())
+      {
+        local_timint_analysis_->increment_aei_starting_point_determination_time(
+            gp, get_converged_computation_time("AEI Starting point determination",
+                    parameter()->local_timint_analysis_params().rel_tol_computation_time,
+                    [this, gp]() { update_adaptive_estimate_interp_starting_points(gp); }));
+
+        local_timint_analysis_->set_aei_interp_point_optimal_equiv_stress(
+            gp, adaptive_estimate_interp_manager_.value(), get_input_optimal_equiv_stress(gp));
+      }
+    }
+
+    if (local_timint_analysis_.has_value())
+    {
+      // the order of operations is important for the analysis framework of local time
+      // integration: we need to first write out all Gauss point tables, than write the overall
+      // table, and only then reset each Gauss point individually
+      local_timint_analysis_->update_gp_totals_and_write_gp_tables(gp);
     }
 
     // update history variables for the next time step
@@ -2927,6 +3001,12 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::update()
       local_newton_manager_.reset_curr_num_iters(gp);
     }
   }
+
+  if (local_timint_analysis_.has_value())
+  {
+    local_timint_analysis_->write_overall_timestep_table_to_csv();
+    for (unsigned int gp = 0; gp < num_gp_; ++gp) local_timint_analysis_->reset(gp);
+  };
 }
 
 
@@ -2960,6 +3040,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::setup(const int numgp,
   {
     adaptive_estimate_interp_manager_->resize(numgp);
   }
+
 
 
   // read fiber and structural tensor in the case of transverse isotropy
@@ -3339,6 +3420,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
       // update Local Newton quantities
       local_newton_manager_.update_after_local_newton(gp_);
 
+
+      if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+      {
+        local_timint_analysis_->increment_num_lnl_iters(gp_, local_newton_manager_.iter());
+      }
+
       // update substep
       if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
       {
@@ -3374,6 +3461,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
     // perform local Newton loop
     sol = local_newton_loop(deftensors, time_step_quantities_.last_plastic_strain[gp_],
         time_step_tracker_.dt, err_status);
+    if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+      local_timint_analysis_->increment_num_lnl_iters(gp_, local_newton_manager_.iter());
+
     if (err_status != ViscoplastUtils::ErrorType::no_errors)
     {
       FOUR_C_THROW(
@@ -3419,6 +3509,8 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
   // initialize local Newton
   local_newton_manager_.reset_iter();
   temp10x1 = determine_local_newton_init_estimate(dt, deftensors, last_plastic_strain, err_status);
+
+
   if (err_status != ViscoplastUtils::ErrorType::no_errors)
   {
     FOUR_C_THROW("{}",
@@ -3470,11 +3562,47 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       {
         // proceed with next iteration after performing adjustments due
         // to errors
+
+
+        if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+        {
+          local_timint_analysis_->append_lnl_tracking_data(
+              gp_, {.local_iter = local_newton_manager_.iter(),
+                       .has_error = true,
+                       .is_converged = false,
+                       .current_interpolation_point =
+                           adaptive_estimate_interp_manager_.has_value()
+                               ? std::make_optional(
+                                     adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                               : std::nullopt,
+                       .equiv_stress = state_quantities_.curr_equiv_stress,
+                       .plastic_strain_increment =
+                           state_quantities_.curr_equiv_plastic_strain_rate * dt});
+        }
+
         local_newton_manager_.increment_iter();
         continue;
       }
       case (ViscoplastUtils::EvaluationAction::exit_with_error):
       {
+        if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+        {
+          local_timint_analysis_->append_lnl_tracking_data(
+              gp_, {.local_iter = local_newton_manager_.iter(),
+                       .has_error = true,
+                       .is_converged = false,
+                       .current_interpolation_point =
+                           adaptive_estimate_interp_manager_.has_value()
+                               ? std::make_optional(
+                                     adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                               : std::nullopt,
+                       .equiv_stress = state_quantities_.curr_equiv_stress,
+                       .plastic_strain_increment =
+                           state_quantities_.curr_equiv_plastic_strain_rate * dt});
+        }
+
+
+
         // exit with the set error status
         return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
       }
@@ -3495,6 +3623,22 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
     // exit in case of convergence
     if (local_newton_manager_.is_local_newton_converged())
     {
+      if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+      {
+        local_timint_analysis_->append_lnl_tracking_data(gp_,
+            {.local_iter = local_newton_manager_.iter(),
+                .has_error = false,
+                .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                .is_converged = true,
+                .current_interpolation_point =
+                    adaptive_estimate_interp_manager_.has_value()
+                        ? std::make_optional(
+                              adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                        : std::nullopt,
+                .equiv_stress = state_quantities_.curr_equiv_stress,
+                .plastic_strain_increment = state_quantities_.curr_equiv_plastic_strain_rate * dt});
+      }
+
       return local_newton_manager_.sol();
     }
 
@@ -3510,6 +3654,19 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       // for a smaller substep size; hence, we return with the set error status
       if (parameter()->use_local_substepping())
       {
+        local_timint_analysis_->append_lnl_tracking_data(gp_,
+            {.local_iter = local_newton_manager_.iter(),
+                .has_error = true,
+                .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                .is_converged = false,
+                .current_interpolation_point =
+                    adaptive_estimate_interp_manager_.has_value()
+                        ? std::make_optional(
+                              adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                        : std::nullopt,
+                .equiv_stress = state_quantities_.curr_equiv_stress,
+                .plastic_strain_increment = state_quantities_.curr_equiv_plastic_strain_rate * dt});
+
         return Core::LinAlg::Matrix<10, 1>{
             Core::LinAlg::Initialization::zero};  // exit with the set error status
       }
@@ -3517,6 +3674,26 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       else
       {
         verify_local_newton_exit(err_status);
+
+
+        if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+        {
+          local_timint_analysis_->append_lnl_tracking_data(gp_,
+              {.local_iter = local_newton_manager_.iter(),
+                  .has_error = true,
+                  .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                  .is_converged = false,
+                  .current_interpolation_point =
+                      adaptive_estimate_interp_manager_.has_value()
+                          ? std::make_optional(
+                                adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                          : std::nullopt,
+                  .equiv_stress = state_quantities_.curr_equiv_stress,
+                  .plastic_strain_increment =
+                      state_quantities_.curr_equiv_plastic_strain_rate * dt});
+        }
+
+
         return local_newton_manager_.sol();
       }
     }
@@ -3540,11 +3717,48 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
           {
             // proceed with next iteration after performing adjustments due
             // to errors
+
+            if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+            {
+              local_timint_analysis_->append_lnl_tracking_data(gp_,
+                  {.local_iter = local_newton_manager_.iter(),
+                      .has_error = true,
+                      .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                      .is_converged = false,
+                      .current_interpolation_point =
+                          adaptive_estimate_interp_manager_.has_value()
+                              ? std::make_optional(
+                                    adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                              : std::nullopt,
+                      .equiv_stress = state_quantities_.curr_equiv_stress,
+                      .plastic_strain_increment =
+                          state_quantities_.curr_equiv_plastic_strain_rate * dt});
+            }
+
+
             local_newton_manager_.increment_iter();
             continue;
           }
           case (ViscoplastUtils::EvaluationAction::exit_with_error):
           {
+            if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+            {
+              local_timint_analysis_->append_lnl_tracking_data(gp_,
+                  {.local_iter = local_newton_manager_.iter(),
+                      .has_error = true,
+                      .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                      .is_converged = false,
+                      .current_interpolation_point =
+                          adaptive_estimate_interp_manager_.has_value()
+                              ? std::make_optional(
+                                    adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                              : std::nullopt,
+                      .equiv_stress = state_quantities_.curr_equiv_stress,
+                      .plastic_strain_increment =
+                          state_quantities_.curr_equiv_plastic_strain_rate * dt});
+            }
+
+
             // exit with the set error status
             return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
           }
@@ -3566,8 +3780,6 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
     // error management after Jacobian evaluation
     manage_evaluation(err_status, deftensors, last_plastic_strain, dt, eval_action);
-
-
     switch (eval_action)
     {
       case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3579,11 +3791,47 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       {
         // proceed with next iteration after performing adjustments due
         // to errors
+
+
+        if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+        {
+          local_timint_analysis_->append_lnl_tracking_data(gp_,
+              {.local_iter = local_newton_manager_.iter(),
+                  .has_error = true,
+                  .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                  .is_converged = false,
+                  .current_interpolation_point =
+                      adaptive_estimate_interp_manager_.has_value()
+                          ? std::make_optional(
+                                adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                          : std::nullopt,
+                  .equiv_stress = state_quantities_.curr_equiv_stress,
+                  .plastic_strain_increment =
+                      state_quantities_.curr_equiv_plastic_strain_rate * dt});
+        }
+
         local_newton_manager_.increment_iter();
         continue;
       }
       case (ViscoplastUtils::EvaluationAction::exit_with_error):
       {
+        if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+        {
+          local_timint_analysis_->append_lnl_tracking_data(gp_,
+              {.local_iter = local_newton_manager_.iter(),
+                  .has_error = true,
+                  .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                  .is_converged = false,
+                  .current_interpolation_point =
+                      adaptive_estimate_interp_manager_.has_value()
+                          ? std::make_optional(
+                                adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                          : std::nullopt,
+                  .equiv_stress = state_quantities_.curr_equiv_stress,
+                  .plastic_strain_increment =
+                      state_quantities_.curr_equiv_plastic_strain_rate * dt});
+        }
+
         // exit with the set error status
         return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
       }
@@ -3605,9 +3853,6 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
       err_status = ViscoplastUtils::ErrorType::failed_solution_linear_system_lnl;
       // error management after linear system solution
       manage_evaluation(err_status, deftensors, last_plastic_strain, dt, eval_action);
-
-
-
       switch (eval_action)
       {
         case (ViscoplastUtils::EvaluationAction::continue_current_iteration):
@@ -3619,11 +3864,48 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
         {
           // proceed with next iteration after performing adjustments due
           // to errors
+
+
+          if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+          {
+            local_timint_analysis_->append_lnl_tracking_data(gp_,
+                {.local_iter = local_newton_manager_.iter(),
+                    .has_error = true,
+                    .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                    .is_converged = false,
+                    .current_interpolation_point =
+                        adaptive_estimate_interp_manager_.has_value()
+                            ? std::make_optional(
+                                  adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                            : std::nullopt,
+                    .equiv_stress = state_quantities_.curr_equiv_stress,
+                    .plastic_strain_increment =
+                        state_quantities_.curr_equiv_plastic_strain_rate * dt});
+          }
+
           local_newton_manager_.increment_iter();
           continue;
         }
         case (ViscoplastUtils::EvaluationAction::exit_with_error):
         {
+          if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+          {
+            local_timint_analysis_->append_lnl_tracking_data(gp_,
+                {.local_iter = local_newton_manager_.iter(),
+                    .has_error = true,
+                    .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+                    .is_converged = false,
+                    .current_interpolation_point =
+                        adaptive_estimate_interp_manager_.has_value()
+                            ? std::make_optional(
+                                  adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                            : std::nullopt,
+                    .equiv_stress = state_quantities_.curr_equiv_stress,
+                    .plastic_strain_increment =
+                        state_quantities_.curr_equiv_plastic_strain_rate * dt});
+          }
+
+
           // exit with the set error status
           return Core::LinAlg::Matrix<10, 1>{Core::LinAlg::Initialization::zero};
         }
@@ -3640,6 +3922,23 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::l
 
     // update solution vector, iteration counter increment norm
     local_newton_manager_.increment_solution_vector(dx);
+
+    if (local_timint_analysis_.has_value() && local_timint_analysis_->track_quantities())
+    {
+      local_timint_analysis_->append_lnl_tracking_data(gp_,
+          {.local_iter = local_newton_manager_.iter(),
+              .has_error = false,
+              .residual_norm = local_newton_manager_.convergence_quantities().residual_norm,
+              .increment_norm = local_newton_manager_.convergence_quantities().increment_norm,
+              .is_converged = false,
+              .current_interpolation_point =
+                  adaptive_estimate_interp_manager_.has_value()
+                      ? std::make_optional(
+                            adaptive_estimate_interp_manager_->current_interp_point(gp_))
+                      : std::nullopt,
+              .equiv_stress = state_quantities_.curr_equiv_stress,
+              .plastic_strain_increment = state_quantities_.curr_equiv_plastic_strain_rate * dt});
+    }
 
     local_newton_manager_.increment_iter();
   }
@@ -3964,6 +4263,13 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
       // determine updated estimate
       Core::LinAlg::Matrix<10, 1> updated_estimate =
           reestimate_to_restart_local_newton(dt, deftensors, last_plastic_strain, eval_action);
+
+
+      if (local_timint_analysis_.has_value() && adaptive_estimate_interp_manager_.has_value() &&
+          local_timint_analysis_->track_quantities())
+        local_timint_analysis_->increment_aei_num_reestimations(
+            gp_, adaptive_estimate_interp_manager_->num_reestimations());
+
       if (eval_action == ViscoplastUtils::EvaluationAction::exit_with_error &&
           !parameter()->use_local_substepping())
       {
@@ -3973,14 +4279,15 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
                       "The re-estimation procedure has failed! Error status: {}", err_status)));
       }
 
-      // increment mapping the solution vector to the updated estimate
+
+      // compute increment mapping the current solution vector to the updated estimate
       Core::LinAlg::Matrix<10, 1> increment_wrt_current_sol{Core::LinAlg::Initialization::zero};
       increment_wrt_current_sol.update(
           1.0, updated_estimate, -1.0, local_newton_manager_.sol(), 0.0);
 
+
       // reinitialize the local Newton
       local_newton_manager_.increment_solution_vector(increment_wrt_current_sol);
-      local_newton_manager_.increment_iter();
 
       return;
     }
@@ -4212,6 +4519,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_e
     if (viscoplastic_law_->uses_yield_surface())
     {
       construct_plastic_predictor(dt, deftensors, last_plastic_strain, err_status);
+
+      if (local_timint_analysis_.has_value() && adaptive_estimate_interp_manager_.has_value() &&
+          local_timint_analysis_->track_quantities())
+        local_timint_analysis_->increment_aei_num_plastic_pred_construct_iters(
+            gp_, adaptive_estimate_interp_manager_->num_plastic_pred_construct_iters());
+
 
       // return directly in case of error
       if (err_status != ViscoplastUtils::ErrorType::no_errors)
@@ -4638,10 +4951,23 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
   Core::LinAlg::Matrix<3, 3> interp_iFin{Core::LinAlg::Initialization::zero};
   double interp_plastic_strain{0.0};
 
+
   // loop until the interpolated estimate candidate is also a valid local Newton estimate
   while (true)
   {
     adaptive_estimate_interp_manager_->increment_num_estimate_interp_iters();
+
+
+    if (local_timint_analysis_.has_value() && adaptive_estimate_interp_manager_.has_value() &&
+        local_timint_analysis_->track_quantities())
+    {
+      local_timint_analysis_->append_estimate_interp_tracking_data(gp_,
+          {.current_interp_point = adaptive_estimate_interp_manager_->current_interp_point(gp_),
+              .lower_interp_bound = adaptive_estimate_interp_manager_->lower_interp_bound(gp_),
+              .upper_interp_bound = adaptive_estimate_interp_manager_->upper_interp_bound(gp_),
+              .local_iter = local_newton_manager_.iter()});
+    }
+
 
     // check whether interpolation is still possible
     if (!adaptive_estimate_interp_manager_->is_estimate_interp_possible(gp_))
@@ -4745,6 +5071,13 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
     err_status = verify_estimate_candidate(dt, deftensors, interp_iFin, interp_plastic_strain);
     if (err_status == ViscoplastUtils::ErrorType::no_errors)
     {
+      if (local_timint_analysis_.has_value() && adaptive_estimate_interp_manager_.has_value() &&
+          local_timint_analysis_->track_quantities())
+      {
+        local_timint_analysis_->increment_aei_num_interp_iters(
+            gp_, adaptive_estimate_interp_manager_->num_estimate_interp_iters());
+      }
+
       // reset counter and return solution
       adaptive_estimate_interp_manager_->reset_num_estimate_interp_iters();
 
@@ -4833,7 +5166,6 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
         get_error_warning_info(std::format("This method should not be called without initializing "
                                            "the manager for adaptive estimate interpolation!")));
   }
-
 
   // increment number of re-estimations
   adaptive_estimate_interp_manager_->increment_num_reestimations();
@@ -5055,4 +5387,55 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::get_input_optimal_equiv_stres
       .equiv_stress_elast_pred = state_quantities_elast_pred.curr_equiv_stress,
       .equiv_stress_plast_pred = state_quantities_plast_pred.curr_equiv_stress};
 }
+
+
+Mat::InelasticDefgradTransvIsotropElastViscoplast::OverallState
+Mat::InelasticDefgradTransvIsotropElastViscoplast::save_overall_state() const
+{
+  return {.time_step_quantities = time_step_quantities_,
+      .state_quantities = state_quantities_,
+      .state_quantity_derivatives = state_quantity_derivatives_,
+      .viscoplastic_law_state = viscoplastic_law_->get_state(),
+      .local_substepping_utils = local_substepping_utils_,
+      .local_newton_manager_state = local_newton_manager_.get_state(),
+      .adaptive_estimate_interp_manager_state = adaptive_estimate_interp_manager_->get_state()};
+}
+
+
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::reinstate_overall_state(
+    const InelasticDefgradTransvIsotropElastViscoplast::OverallState& overall_state)
+{
+  time_step_quantities_ = overall_state.time_step_quantities;
+  state_quantities_ = overall_state.state_quantities;
+  state_quantity_derivatives_ = overall_state.state_quantity_derivatives;
+  viscoplastic_law_->reinstate_state(*overall_state.viscoplastic_law_state);
+  local_substepping_utils_ = overall_state.local_substepping_utils;
+  local_newton_manager_.reinstate_state(overall_state.local_newton_manager_state);
+  adaptive_estimate_interp_manager_->reinstate_state(
+      overall_state.adaptive_estimate_interp_manager_state);
+}
+
+void Mat::InelasticDefgradTransvIsotropElastViscoplast::init_local_timint_analysis()
+{
+  FOUR_C_ASSERT_ALWAYS(!parameter()->use_local_substepping(),
+      "Analysis of local time integration not yet enabled / tested for local substepping");
+
+  // determine whether the element ids match
+  if (ele_gid_ != parameter()->local_timint_analysis_params().ele_gid) return;
+
+  // only proceed on the rank that owns this element
+  const auto discretization = Global::Problem::instance()->get_dis("structure");
+  FOUR_C_ASSERT_ALWAYS(discretization != nullptr, "Structure discretization not found.");
+
+  if (discretization->element_row_map()->lid(static_cast<int>(ele_gid_)) < 0) return;
+
+  // initialize analysis framework if enabled by the user exactly once, on the owning rank of the
+  // element!
+  if (!local_timint_analysis_.has_value())
+  {
+    local_timint_analysis_.emplace(parameter()->use_adaptive_estimate_interp(), num_gp_);
+  }
+}
+
+
 FOUR_C_NAMESPACE_CLOSE

@@ -2818,9 +2818,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
     using namespace Core::IO::InputSpecBuilders::Validators;
     known_materials[Core::Materials::mfi_transv_isotrop_elast_viscoplast] = group(
         "MAT_InelasticDefgradTransvIsotropElastViscoplast",
-        {parameter<int>(
-             "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law",
-                                      .validator = positive<int>()}),
+        {
+            parameter<int>(
+                "VISCOPLAST_LAW_ID", {.description = "MAT ID of the corresponding viscoplastic law",
+                                         .validator = positive<int>()}),
             parameter<int>(
                 "FIBER_READER_ID", {.description = "MAT ID of the used fiber direction reader for "
                                                    "transversely isotropic behavior",
@@ -2969,9 +2970,10 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "return mapping",
                     .required = false}),
             group("ADAPTIVE_ESTIMATE_INTERP",
-                {parameter<bool>("USE_ADAPTIVE_ESTIMATE_INTERP",
-                     {.description = "use adaptive estimate interpolation?",
-                         .default_value = true}),
+                {
+                    parameter<bool>("USE_ADAPTIVE_ESTIMATE_INTERP",
+                        {.description = "use adaptive estimate interpolation?",
+                            .default_value = true}),
                     parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                             AdaptiveEstimateInterpolationStartingPointType>("STARTING_POINT_TYPE",
                         {.description = "starting point type",
@@ -3136,15 +3138,38 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         },
                         {.description = "Hardening parameters to be used within the Adaptive "
                                         "Estimate Interpolation",
-                            .required = false})
-
+                            .required = false}),
                 },
                 {.description = "Parameters used in the Adaptive Estimate Interpolation for Local "
                                 "Newton estimates presented "
                                 "in Ana, Schmidt, Wall: Adaptive Estimate Interpolation: "
                                 "Accelerating Local Newton--Raphson Schemes in Computational "
-                                "Plasticity / Viscoplasticity ",
-                    .required = false})},
+                                "Plasticity/Viscoplasticity ",
+                    .required = false}),
+            group("LOCAL_TIMINT_ANALYSIS",
+                {
+                    parameter<bool>("ANALYZE_LOCAL_TIMINT",
+                        {
+                            .description = "analyze local time integration?",
+                            .default_value = false,
+                        }),
+                    parameter<int>("ELE_GID",
+                        {
+                            .description = "global element id to perform the analysis for ",
+                            .default_value = false,
+                        }),
+                    parameter<double>("REL_TOL_COMPUTATION_TIME",
+                        {
+                            .description = " relative tolerance used to determine convergence of "
+                                           "the computation time ",
+                            .default_value = 1.0e-3,
+                        }),
+
+                },
+                {.description = "settings for analyzing local time integration using the "
+                                "implemented analysis framework",
+                    .required = false}),
+        },
         {.description = "Versatile transversely isotropic (or isotropic) viscoplasticity model for "
                         "finite deformations with isotropic hardening, using user-defined "
                         "viscoplasticity laws (flow rule + hardening model)"});
