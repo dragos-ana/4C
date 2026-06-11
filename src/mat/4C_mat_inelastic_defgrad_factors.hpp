@@ -1520,6 +1520,9 @@ namespace Mat
         std::vector<std::shared_ptr<Mat::Elastic::CoupTransverselyIsotropic>>
             pot_sum_el_transv_iso);
 
+    //! destructor as a helper to write csv tables at the last timestep
+    ~InelasticDefgradTransvIsotropElastViscoplast() override { update(); }
+
     [[nodiscard]] Core::Materials::MaterialType material_type() const override
     {
       return Core::Materials::mfi_transv_isotrop_elast_viscoplast;

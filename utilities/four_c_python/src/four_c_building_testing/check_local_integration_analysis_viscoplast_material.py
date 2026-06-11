@@ -63,7 +63,8 @@ LNL_OUTPUT_HEADERS = {
         "Global iteration",
         "Local iteration",
         "Equivalent stress",
-        "Has error?",
+        "Plastic strain",
+        "Error status",
         "Increment norm",
         "Is converged?",
         "Plastic strain increment",
@@ -793,23 +794,40 @@ def check_aei_output_gp_file(
                     aei_dict["Lower interpolation bound"][i - 1]
                     + aei_dict["Current interpolation point"][i - 1]
                 )
-                # --> two cases are now possible for re-estimation based on the intermediate interpolation point
-                # CASE 1:The current interpolation point is updated to the intermediate point and the Local Newton proceeds; then the interpolation interval remains unchanged, and the current interpolation point is reset based on the updated interval.
-                # CASE 2: The intermediate point is unsuitable as an updated estimate; hence, the lower bound is updated to the intermediate point, and the current interpolation point is reset based on the updated interval.
+                # --> three cases are now possible for re-estimation based on the intermediate interpolation point
+                # CASE 1:The current interpolation point is updated to the intermediate point and the Local Newton proceeds; then the interpolation interval remains unchanged.
+                # CASE 2: The intermediate point is unsuitable as an updated estimate and the lower bound is updated to the intermediate point; subsequently, the current interpolation point is reset based on the updated interval.
+                # CASE 3: The intermediate point is unsuitable as an updated estimate and the upper bound is updated to the intermediate point; subsequently, the current interpolation point is reset based on the updated interval.
+
                 current_interp_point_eq_intermediate = (
                     aei_dict["Current interpolation point"][i] == intermediate_point
                 )
                 lower_interp_bound_eq_intermediate = (
                     aei_dict["Lower interpolation bound"][i] == intermediate_point
                 )
-                assert not (
-                    current_interp_point_eq_intermediate
-                    and lower_interp_bound_eq_intermediate
-                ), f"Both current interpolation point and lower interpolation bound have been set to the intermediate interpolation point! This is inconsistent, in file row {i + 2} of {aei_output_gp_file}"
+                upper_interp_bound_eq_intermediate = (
+                    aei_dict["Upper interpolation bound"][i] == intermediate_point
+                )
+                assert (
+                    len(
+                        {
+                            aei_dict["Current interpolation point"][i],
+                            aei_dict["Lower interpolation bound"][i],
+                            aei_dict["Upper interpolation bound"][i],
+                        }
+                    )
+                    == 3
+                ), (
+                    "Expected all three interpolation values to be distinct: "
+                    f"current={aei_dict['Current interpolation point'][i]}, "
+                    f"lower={aei_dict['Lower interpolation bound'][i]}, "
+                    f"upper={aei_dict['Upper interpolation bound'][i]}"
+                )
                 assert (
                     current_interp_point_eq_intermediate
                     or lower_interp_bound_eq_intermediate
-                ), "Either the current interpolation point or the lower bound have to be set to the intermediate point in the re-estimation, for file row {i + 2} of {aei_output_gp_file}"
+                    or upper_interp_bound_eq_intermediate
+                ), f"Either the current interpolation point {aei_dict['Current interpolation point'][i - 1]} or the lower bound {aei_dict['Lower interpolation bound'][i - 1]} have to be set to the intermediate point {intermediate_point} in the re-estimation, for file row {i + 2} of {aei_output_gp_file}"
 
                 if current_interp_point_eq_intermediate:
                     check_interpolation_points(
@@ -851,6 +869,30 @@ def check_aei_output_gp_file(
                         upper_interpolation_bound_ref=aei_dict[
                             "Upper interpolation bound"
                         ][i - 1],
+                        current_interpolation_point=aei_dict[
+                            "Current interpolation point"
+                        ][i],
+                        current_interpolation_point_ref=updated_current_interp_point,
+                    )
+
+                elif upper_interp_bound_eq_intermediate:
+                    updated_current_interp_point = aei_dict[
+                        "Lower interpolation bound"
+                    ][i - 1] + interval_scanning_param * (
+                        intermediate_point
+                        - aei_dict["Lower interpolation bound"][i - 1]
+                    )
+                    check_interpolation_points(
+                        lower_interpolation_bound=aei_dict["Lower interpolation bound"][
+                            i
+                        ],
+                        lower_interpolation_bound_ref=aei_dict[
+                            "Lower interpolation bound"
+                        ][i - 1],
+                        upper_interpolation_bound=aei_dict["Upper interpolation bound"][
+                            i
+                        ],
+                        upper_interpolation_bound_ref=intermediate_point,
                         current_interpolation_point=aei_dict[
                             "Current interpolation point"
                         ][i],
@@ -964,15 +1006,16 @@ def check_lnl_output_gp_file(
                 )
             )
             if current_interpolation_point_ref:
-                assert are_equal_numbers(
-                    lnl_dict["Current interpolation point"][i],
-                    current_interpolation_point_ref,
-                ), f"Current interpolation point for file row {i + 2} from {lnl_output_gp_file} does not match the one from {aei_output_gp_file}"
+                if i < len(lnl_dict["step"]) - 1:
+                    assert are_equal_numbers(
+                        lnl_dict["Current interpolation point"][i + 1],
+                        current_interpolation_point_ref,
+                    ), f"Current interpolation point for file row {i + 2} from {lnl_output_gp_file} does not match the one from {aei_output_gp_file}"
 
         # we cannot have convergence and errors are at the same time
         if int(lnl_dict["Is converged?"][i]):
             assert (
-                int(lnl_dict["Has error?"][i]) == 0
+                int(lnl_dict["Error status"][i]) == 0
             ), f"Inconsistency in file row {i + 2} of {lnl_output_gp_file}: we cannot have both convergence and evaluation errors within the same iteration!"
 
         # determine whether this is a new timestep and / or a new global iteration
@@ -1042,7 +1085,7 @@ def check_lnl_output_gp_file(
             ), f"Local iteration must be 0 for file row {i + 2} because this is a new global iteration for {lnl_output_gp_file}"
             assert (
                 int(lnl_dict["Is converged?"][i - 1]) == 1
-                and int(lnl_dict["Has error?"][i - 1]) == 0
+                and int(lnl_dict["Error status"][i - 1]) == 0
             ), f"Inconsistency in file row {i + 2} of {lnl_output_gp_file}! The previous iteration should have converged and have no errors!"
 
         # verifications in the case that this is not a new timestep or a new global iteration
@@ -1057,7 +1100,7 @@ def check_lnl_output_gp_file(
                         lnl_dict["Current interpolation point"][i - 1],
                     ):
                         assert (
-                            int(lnl_dict["Has error?"][i - 1]) == 1
+                            int(lnl_dict["Error status"][i - 1]) > 0
                         ), f"A re-estimation took place in file row {i + 2} of {lnl_output_gp_file}, but there was no error in file row {i + 1}"
 
 

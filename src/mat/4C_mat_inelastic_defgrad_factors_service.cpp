@@ -29,6 +29,28 @@ using namespace Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
 
 namespace
 {
+
+  // map error status to double for csv output
+  double error_status_to_double(const ErrorType err_status)
+  {
+    switch (err_status)
+    {
+      case (ErrorType::no_errors):
+        return 0.0;
+      case (ErrorType::overflow_error):
+        return 10.0;
+      case (ErrorType::under_yield_surface):
+        return 2.0;
+      case (ErrorType::no_convergence_local_newton):
+        return 3.0;
+      case (ErrorType::failed_solution_linear_system_lnl):
+        return 4.0;
+      default:
+        FOUR_C_THROW("Error status {} not yet enabled!", err_status);
+    }
+  }
+
+
   // sets the elastic and plastic predictor locations for the adaptive estimate interpolation,
   // specifically 0 and 1
   std::vector<Core::LinAlg::Matrix<1, 1>> set_elast_and_plast_predictor_locs()
@@ -366,9 +388,9 @@ namespace
     //! current timestep
     std::vector<unsigned int> local_iters;
 
-    //! vector tracking whether the iterations have errors in the
+    //! vector tracking the error status in the
     //! current timestep
-    std::vector<bool> has_error;
+    std::vector<ErrorType> error_status;
 
     //! vector tracking the residual norms in the
     //! current timestep
@@ -390,6 +412,10 @@ namespace
     //! current timestep
     std::vector<double> equiv_stresses;
 
+    //! vector tracking the plastic strains in the
+    //! current timestep
+    std::vector<double> plastic_strains;
+
     //! vector tracking the plastic strain increments in the
     //! current timestep
     std::vector<double> plastic_strain_increments;
@@ -397,25 +423,26 @@ namespace
     //! verify equal lengths of the vectors
     void verify_equal_lengths() const
     {
-      auto l = {global_iters.size(), local_iters.size(), has_error.size(), residual_norms.size(),
+      auto l = {global_iters.size(), local_iters.size(), error_status.size(), residual_norms.size(),
           increment_norms.size(), is_converged.size(),
           current_interpolation_points.has_value() ? current_interpolation_points->size()
                                                    : global_iters.size(),
-          equiv_stresses.size(), plastic_strain_increments.size()};
+          equiv_stresses.size(), plastic_strains.size(), plastic_strain_increments.size()};
 
       auto all_same =
           std::all_of(l.begin(), l.end(), [&](unsigned int v) { return v == *l.begin(); });
       FOUR_C_ASSERT_ALWAYS(all_same,
           "Your vectors for the LNL don't have equal lengths! Global iters: {}, "
-          "local iters: {}, has_error: {}, residual_norms: "
+          "local iters: {}, error_status: {}, residual_norms: "
           "{}, "
           "increment_norms: {}, current_interpolation_points: {}, equiv_stresses: {}, "
+          "plastic_strains: {}, "
           "plastic_strain_increments: {}",
-          global_iters.size(), local_iters.size(), has_error.size(), residual_norms.size(),
+          global_iters.size(), local_iters.size(), error_status.size(), residual_norms.size(),
           increment_norms.size(), is_converged.size(),
           current_interpolation_points.has_value() ? current_interpolation_points->size()
                                                    : global_iters.size(),
-          equiv_stresses.size(), plastic_strain_increments.size());
+          equiv_stresses.size(), plastic_strains.size(), plastic_strain_increments.size());
     }
   };
 
@@ -426,13 +453,14 @@ namespace
   {
     csv_writer.register_data_vector("Global iteration", 1, 16);
     csv_writer.register_data_vector("Local iteration", 1, 16);
-    csv_writer.register_data_vector("Has error?", 1, 16);
+    csv_writer.register_data_vector("Error status", 1, 16);
     csv_writer.register_data_vector("Residual norm", 1, 16);
     csv_writer.register_data_vector("Increment norm", 1, 16);
     csv_writer.register_data_vector("Is converged?", 1, 16);
     if (use_adaptive_estimate_interpolation)
       csv_writer.register_data_vector("Current interpolation point", 1, 16);
     csv_writer.register_data_vector("Equivalent stress", 1, 16);
+    csv_writer.register_data_vector("Plastic strain", 1, 16);
     csv_writer.register_data_vector("Plastic strain increment", 1, 16);
   }
 
@@ -452,7 +480,7 @@ namespace
 
       output_data["Global iteration"] = {static_cast<double>(data.global_iters[l])};
       output_data["Local iteration"] = {static_cast<double>(data.local_iters[l])};
-      output_data["Has error?"] = {static_cast<double>(data.has_error[l])};
+      output_data["Error status"] = {error_status_to_double(data.error_status[l])};
       output_data["Residual norm"] = {static_cast<double>(data.residual_norms[l])};
       output_data["Increment norm"] = {static_cast<double>(data.increment_norms[l])};
       output_data["Is converged?"] = {static_cast<double>(data.is_converged[l])};
@@ -460,6 +488,7 @@ namespace
         output_data["Current interpolation point"] = {
             static_cast<double>(data.current_interpolation_points->at(l))};
       output_data["Equivalent stress"] = {static_cast<double>(data.equiv_stresses[l])};
+      output_data["Plastic strain"] = {static_cast<double>(data.plastic_strains[l])};
       output_data["Plastic strain increment"] = {
           static_cast<double>(data.plastic_strain_increments[l])};
 
@@ -468,7 +497,6 @@ namespace
           tracking_settings.time, tracking_settings.timestep, output_data);
     }
   }
-
 
 
 }  // namespace
@@ -1602,7 +1630,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::Loc
   // initialize and resize the Local Newton data tracker
   local_newton_data_.global_iters.resize(num_gp, std::vector<unsigned int>{});
   local_newton_data_.local_iters.resize(num_gp, std::vector<unsigned int>{});
-  local_newton_data_.has_error.resize(num_gp, std::vector<bool>{});
+  local_newton_data_.error_status.resize(num_gp, std::vector<ErrorType>{});
   local_newton_data_.residual_norms.resize(num_gp, std::vector<double>{});
   local_newton_data_.increment_norms.resize(num_gp, std::vector<double>{});
   local_newton_data_.is_converged.resize(num_gp, std::vector<bool>{});
@@ -1611,6 +1639,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis::Loc
     local_newton_data_.current_interpolation_points = std::vector<std::vector<double>>(num_gp);
   }
   local_newton_data_.equiv_stresses.resize(num_gp, std::vector<double>{});
+  local_newton_data_.plastic_strains.resize(num_gp, std::vector<double>{});
   local_newton_data_.plastic_strain_increments.resize(num_gp, std::vector<double>{});
 
   // initialize and resize the Adaptive Estimate Interpolation data
@@ -1700,13 +1729,14 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis
   // reset Local Newton data tracker
   local_newton_data_.global_iters[gp] = {};
   local_newton_data_.local_iters[gp] = {};
-  local_newton_data_.has_error[gp] = {};
+  local_newton_data_.error_status[gp] = {};
   local_newton_data_.residual_norms[gp] = {};
   local_newton_data_.increment_norms[gp] = {};
   local_newton_data_.is_converged[gp] = {};
   if (local_newton_data_.current_interpolation_points.has_value())
     local_newton_data_.current_interpolation_points->at(gp) = {};
   local_newton_data_.equiv_stresses[gp] = {};
+  local_newton_data_.plastic_strains[gp] = {};
   local_newton_data_.plastic_strain_increments[gp] = {};
 
 
@@ -1829,9 +1859,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis
       .total_num_global_iters = total_num_global_iters_,
       .num_lnl_iters = std::reduce(num_lnl_iters_.begin(), num_lnl_iters_.end()),
       .total_num_lnl_iters = std::reduce(total_num_lnl_iters_.begin(), total_num_lnl_iters_.end()),
-      .constitutive_update_time = std::reduce(constitutive_update_time_.begin(), constitutive_update_time_.end()),
-      .total_constitutive_update_time =
-          std::reduce(total_constitutive_update_time_.begin(), total_constitutive_update_time_.end()),
+      .constitutive_update_time =
+          std::reduce(constitutive_update_time_.begin(), constitutive_update_time_.end()),
+      .total_constitutive_update_time = std::reduce(
+          total_constitutive_update_time_.begin(), total_constitutive_update_time_.end()),
       .aei_data = csv_writing_timestep_aei_data};
   write_timestep_data_to_csv(csv_timestep_data_writer_overall_.value(), csv_writing_timestep_data,
       tracking_settings_, true);
@@ -1861,7 +1892,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis
   const auto csv_writing_lnl_data = CsvWritingLNLData{
       .global_iters = local_newton_data_.global_iters[gp],
       .local_iters = local_newton_data_.local_iters[gp],
-      .has_error = local_newton_data_.has_error[gp],
+      .error_status = local_newton_data_.error_status[gp],
       .residual_norms = local_newton_data_.residual_norms[gp],
       .increment_norms = local_newton_data_.increment_norms[gp],
       .is_converged = local_newton_data_.is_converged[gp],
@@ -1870,6 +1901,7 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalTimIntAnalysis
               ? std::make_optional(local_newton_data_.current_interpolation_points->at(gp))
               : std::nullopt,
       .equiv_stresses = local_newton_data_.equiv_stresses[gp],
+      .plastic_strains = local_newton_data_.plastic_strains[gp],
       .plastic_strain_increments = local_newton_data_.plastic_strain_increments[gp],
   };
 

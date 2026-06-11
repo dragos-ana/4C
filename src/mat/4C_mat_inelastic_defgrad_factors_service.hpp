@@ -1713,9 +1713,8 @@ namespace Mat
         //! Local Newton iteration
         unsigned int local_iter;
 
-        //! error status (simplified: tracking of boolean whether there is an
-        //! error)
-        bool has_error;
+        //! error status
+        ErrorType error_status;
 
         //! 2-norm of the residual in the Local Newton iteration
         double residual_norm = -1.0;
@@ -1734,6 +1733,10 @@ namespace Mat
 
         //! equivalent stress
         double equiv_stress;
+
+        //! plastic strain
+        double plastic_strain;
+
 
         //! plastic strain increment \f$ \Delta t v_{\text{P}} \f$
         double plastic_strain_increment;
@@ -1802,8 +1805,8 @@ namespace Mat
       void increment_constitutive_update_time(const unsigned int gp, const double increment)
       {
         FOUR_C_ASSERT_ALWAYS(gp < constitutive_update_time_.size(),
-            "You try to increment constitutive_update_time_ at GP {}, but the current size is {}", gp,
-            constitutive_update_time_.size());
+            "You try to increment constitutive_update_time_ at GP {}, but the current size is {}",
+            gp, constitutive_update_time_.size());
 
         constitutive_update_time_[gp] += increment;
       }
@@ -1894,7 +1897,7 @@ namespace Mat
 
         local_newton_data_.global_iters[gp].push_back(tracking_settings_.global_iter);
         local_newton_data_.local_iters[gp].push_back(local_newton_iter_data.local_iter);
-        local_newton_data_.has_error[gp].push_back(local_newton_iter_data.has_error);
+        local_newton_data_.error_status[gp].push_back(local_newton_iter_data.error_status);
         local_newton_data_.residual_norms[gp].push_back(local_newton_iter_data.residual_norm);
         local_newton_data_.increment_norms[gp].push_back(local_newton_iter_data.increment_norm);
         local_newton_data_.is_converged[gp].push_back(local_newton_iter_data.is_converged);
@@ -1907,6 +1910,7 @@ namespace Mat
               local_newton_iter_data.current_interpolation_point.value());
         }
         local_newton_data_.equiv_stresses[gp].push_back(local_newton_iter_data.equiv_stress);
+        local_newton_data_.plastic_strains[gp].push_back(local_newton_iter_data.plastic_strain);
         local_newton_data_.plastic_strain_increments[gp].push_back(
             local_newton_iter_data.plastic_strain_increment);
       }
@@ -2008,10 +2012,9 @@ namespace Mat
         //! iterations)
         std::vector<std::vector<unsigned int>> local_iters;
 
-        //! vector tracking the error status (simplified: tracking of boolean whether there is an
-        //! error) in the Local Newton iterations within the current timestep (outer vector: over
-        //! all Gauss points, inner vector: Local Newton iterations)
-        std::vector<std::vector<bool>> has_error;
+        //! vector tracking the error status in the Local Newton iterations within the current
+        //! timestep (outer vector: over all Gauss points, inner vector: Local Newton iterations)
+        std::vector<std::vector<ErrorType>> error_status;
 
         //! vector tracking the 2-norm of the residual in the Local Newton iterations within the
         //! current timestep (outer vector: over all Gauss points, inner vector: Local Newton
@@ -2038,6 +2041,10 @@ namespace Mat
         //! points, inner vector: Local Newton iterations)
         std::vector<std::vector<double>> equiv_stresses;
 
+        //! vector tracking the plastic strains in the
+        //! Local Newton iterations within the current timestep (outer vector: over all Gauss
+        //! points, inner vector: Local Newton iterations)
+        std::vector<std::vector<double>> plastic_strains;
 
         //! vector tracking the plastic strain increments \f$ \Delta t v_{\text{P}} \f$ in the
         //! Local Newton iterations within the current timestep (outer vector: over all Gauss
@@ -2144,8 +2151,8 @@ namespace Mat
       //! Gauss points)
       std::vector<unsigned int> total_num_lnl_iters_;
 
-      //! computation time for constitutive update accumulated in the current timestep (vector over all
-      //! Gauss points)
+      //! computation time for constitutive update accumulated in the current timestep (vector over
+      //! all Gauss points)
       std::vector<double> constitutive_update_time_;
 
       //! computation time for constitutive update accumulated over all timesteps (vector over all
