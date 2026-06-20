@@ -43,6 +43,9 @@ namespace
 {
   using namespace FourC;
   namespace ViscoplastUtils = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils;
+  namespace AEINamespace =
+      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolation;
+
 
   struct ReformulatedJohnsonCookParameters
   {
@@ -70,6 +73,43 @@ namespace
     };
     bool use_substepping = false;
     unsigned int max_substepping_halve_num = 0;
+    bool use_adaptive_estimate_interp = false;
+    AEINamespace::AEIParams adaptive_estimate_interp_params{
+        .use_adaptive_estimate_interpolation = false,
+        .precondition_elastic_pred = true,
+        .tol_precondition_elastic_pred = 1.0e-13,
+        .plastic_predictor_construction =
+            AEINamespace::PlasticPredictorConstructionParams{
+                .elastic_stretch_eigenval_type =
+                    AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
+                .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
+                    ElasticStretchEigenvectType::from_elastic_predictor,
+                .elastic_rotation_type = AEINamespace::PrelimPlasticPredictor::ElasticRotationType::
+                    from_elastic_predictor,
+                .max_iter = 50,
+                .relative_understress_tol = 1.0e-6,
+                .interval_scanning_param = 0.5,
+            },
+        .estimate_interpolation =
+            ViscoplastUtils::AdaptiveEstimateInterpolation::EstimateInterpolationParams{
+                .starting_point_type =
+                    ViscoplastUtils::AdaptiveEstimateInterpolation::StartingPointType::user_set,
+                .user_set_starting_point = 0.5,
+                .max_iter = 50,
+                .interval_scanning_param = 0.5},
+        .hardening =
+            ViscoplastUtils::AdaptiveEstimateInterpolation::HardeningParams{
+                .method = AEINamespace::HardeningMethod::integrate_via_evol_eqs,
+                .max_iter_integration = 50,
+                .tol_integration = 1.0e-8,
+            },
+        .reestimation =
+            ViscoplastUtils::AdaptiveEstimateInterpolation::ReestimationParams{
+                .max_num_reestimations = 10,
+                .interval_scanning_param = 0.5,
+            },
+    };
+
     ViscoplastUtils::LinearizationType linearization_type =
         ViscoplastUtils::LinearizationType::analytic;
     std::optional<double> yield_cond_a = 1.0;
@@ -186,9 +226,8 @@ namespace
             .register_plastic_strain_deriv_incr_overflow = false,
             .max_plastic_strain_deriv_incr = std::exp(30.0)};
     material_data.add("ERROR_REGISTRATION_SETTINGS", error_registration_settings);
-
-
-
+    material_data.add("ADAPTIVE_ESTIMATE_INTERPOLATION", setup.adaptive_estimate_interp_params);
+    
     auto material_params =
         std::dynamic_pointer_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>(
             std::shared_ptr(Mat::make_parameter(1,

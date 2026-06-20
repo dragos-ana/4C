@@ -700,7 +700,10 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
           matdata.parameters.get<ViscoplastUtils::LocalNewtonParams>("LOCAL_NEWTON")),
       error_registration_settings_(
           matdata.parameters.get<ViscoplastUtils::ErrorRegistrationSettings>(
-              "ERROR_REGISTRATION_SETTINGS"))
+              "ERROR_REGISTRATION_SETTINGS")),
+      adaptive_estimate_interpolation_params_(
+          matdata.parameters.get<ViscoplastUtils::AdaptiveEstimateInterpolation::AEIParams>(
+              "ADAPTIVE_ESTIMATE_INTERPOLATION"))
 {
   // consistency check: yield parameters in case of transversely-isotropic behavior
   const bool all_yield_cond_param_specified =
