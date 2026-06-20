@@ -413,6 +413,19 @@ namespace Mat
       {
         return error_registration_settings_;
       }
+      //! get Adaptive Estimate Interpolation parameters
+      [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::
+          AdaptiveEstimateInterpolationParams
+          adaptive_estimate_interp_params() const
+      {
+        return adaptive_estimate_interp_params_;
+      }
+
+      //! use Adaptive Estimate Interpolation for the Local Newton estimates?
+      [[nodiscard]] bool use_adaptive_estimate_interp() const
+      {
+        return use_adaptive_estimate_interp_;
+      }
 
      private:
       //! ID of the viscoplasticity law
@@ -468,6 +481,12 @@ namespace Mat
       //! get error registration settings for the constitutive update
       const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
           error_registration_settings_;
+      //! use Adaptive Estimate Interpolation for the Local Newton estimates
+      const bool use_adaptive_estimate_interp_;
+
+      //! Adaptive Estimate Interpolation parameters
+      const InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationParams
+          adaptive_estimate_interp_params_;
     };
   }  // namespace PAR
 

@@ -477,6 +477,108 @@ namespace
   }
 
 
+  Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::AdaptiveEstimateInterpolationParams
+  retrieve_aei_params(const Core::Mat::PAR::Parameter::Data& matdata)
+  {
+    // first determine if the AEI is even used; if not, set up dummy parameters
+    if (!matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<bool>("USE_ADAPTIVE_ESTIMATE_INTERP"))
+    {
+      const ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams dummy_hardening_params =
+          ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams{
+              .method = ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod::use_previous,
+              .allow_integration_failure = false,
+              .relative_overstress_tol = 0.0,
+              .max_iter_integration = 0,
+              .tol_integration = 0.0,
+          };
+
+      return {.starting_point_type =
+                  ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType::user_set,
+          .user_set_starting_point = 0.0,
+          .plastic_pred_elastic_stretch_eigenval_type =
+              ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType::scale_unit,
+          .plastic_pred_elastic_stretch_eigenvect_type =
+              ViscoplastUtils::PlasticPredictorElasticStretchEigenvectType::from_elastic_predictor,
+          .plastic_pred_elastic_rotation_type =
+              ViscoplastUtils::PlasticPredictorElasticRotationType::from_elastic_predictor,
+          .max_num_plastic_pred_construct_iters = 0,
+          .relative_understress_tol = 0.0,
+          .max_num_estimate_interp_iters = 0,
+          .min_interp_interval = 0.0,
+          .interval_scanning_param = 0.0,
+          .max_num_reestimations = 0,
+          .min_reestimation_interval = 0.0,
+          .precondition_elastic_pred = false,
+          .tol_precondition_elastic_pred = 0.0,
+          .bound_stress_by_elastic_predictor = false,
+          .hardening_params = dummy_hardening_params};
+    }
+
+
+    const ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams hardening_params =
+        ViscoplastUtils::AdaptiveEstimateInterpolationHardeningParams{
+            .method = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .group("HARDENING_PARAMS")
+                .get<ViscoplastUtils::AdaptiveEstimateInterpolationHardeningMethod>("METHOD"),
+            .allow_integration_failure = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .group("HARDENING_PARAMS")
+                .get<bool>("ALLOW_INTEGRATION_FAILURE"),
+            .relative_overstress_tol = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .group("HARDENING_PARAMS")
+                .get<double>("RELATIVE_OVERSTRESS_TOL"),
+            .max_iter_integration =
+                static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                        .group("HARDENING_PARAMS")
+                        .get<int>("MAX_ITER_INTEGRATION")),
+            .tol_integration = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .group("HARDENING_PARAMS")
+                .get<double>("TOL_INTEGRATION"),
+        };
+
+    return {.starting_point_type = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .get<ViscoplastUtils::AdaptiveEstimateInterpolationStartingPointType>(
+                    "STARTING_POINT_TYPE"),
+        .user_set_starting_point = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<double>("USER_SET_STARTING_POINT"),
+        .plastic_pred_elastic_stretch_eigenval_type =
+            matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .get<ViscoplastUtils::PlasticPredictorElasticStretchEigenvalType>(
+                    "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVAL_TYPE"),
+        .plastic_pred_elastic_stretch_eigenvect_type =
+            matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                .get<ViscoplastUtils::PlasticPredictorElasticStretchEigenvectType>(
+                    "PLASTIC_PRED_ELASTIC_STRETCH_EIGENVECT_TYPE"),
+        .plastic_pred_elastic_rotation_type = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<ViscoplastUtils::PlasticPredictorElasticRotationType>(
+                "PLASTIC_PRED_ELASTIC_ROTATION_TYPE"),
+        .max_num_plastic_pred_construct_iters =
+            static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                    .get<int>("MAX_NUM_PLASTIC_PRED_CONSTRUCT_ITERS")),
+        .relative_understress_tol = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<double>("RELATIVE_UNDERSTRESS_TOL"),
+        .max_num_estimate_interp_iters =
+            static_cast<unsigned int>(matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+                    .get<int>("MAX_NUM_ESTIMATE_INTERP_ITERS")),
+        .min_interp_interval =
+            matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP").get<double>("MIN_INTERP_INTERVAL"),
+        .interval_scanning_param = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<double>("INTERVAL_SCANNING_PARAM"),
+        .max_num_reestimations = static_cast<unsigned int>(
+            matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP").get<int>("MAX_NUM_REESTIMATIONS")),
+        .min_reestimation_interval = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<double>("MIN_REESTIMATION_INTERVAL"),
+        .precondition_elastic_pred = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<bool>("PRECONDITION_ELASTIC_PRED"),
+        .tol_precondition_elastic_pred = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<double>("TOL_PRECONDITION_ELASTIC_PRED"),
+        .bound_stress_by_elastic_predictor = matdata.parameters.group("ADAPTIVE_ESTIMATE_INTERP")
+            .get<bool>("BOUND_STRESS_BY_ELASTIC_PREDICTOR"),
+        .hardening_params = hardening_params};
+  }
+
+
+
   bool show_warnings(const unsigned int ele_gid)
   {
     // get structure discretization

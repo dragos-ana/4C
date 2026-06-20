@@ -1052,6 +1052,180 @@ namespace Mat
       Core::LinAlg::Matrix<3, 3> elastic_predictor_elastic_defgrad;
     };
 
+    //! plastic predictor within the adaptive estimate interpolation: strategies for choosing the
+    //! elastic stretch eigenvalues \f$
+    //! \boldsymbol{\Lambda} \f$
+    enum class PlasticPredictorElasticStretchEigenvalType
+    {
+      scale_unit,  ///< the unit tensor is scaled with the deformation gradient determinant to
+                   ///< maintain plastic incompressibility
+    };
+
+
+    //! plastic predictor within the adaptive estimate interpolation: strategies for choosing the
+    //! elastic stretch eigenvectors \f$
+    //! \boldsymbol{Q} \f$
+    enum class PlasticPredictorElasticStretchEigenvectType
+    {
+      from_elastic_predictor,  ///< the elastic stretch eigenvectors are taken directly from the
+                               ///< elastic predictor, which is a consistent assumption for
+                               ///< isotropic material behavior
+    };
+
+    //! plastic predictor within the adaptive estimate interpolation: strategies for choosing the
+    //! elastic stretch rotations \f$
+    //! \boldsymbol{R} \f$
+    enum class PlasticPredictorElasticRotationType
+    {
+      from_elastic_predictor,  ///< the elastic rotation is taken directly from the
+                               ///< elastic predictor, which is a consistent assumption for
+                               ///< isotropic material behavior
+    };
+
+
+    //! starting point type to be used for the adaptive estimate interpolation
+    enum class AdaptiveEstimateInterpolationStartingPointType
+    {
+      user_set,                  ///< user-set constant factor
+      last_interpolation_point,  ///< takes the interpolation point from the last global iteration
+                                 ///< of the previous timestep, which resulted in a valid initial
+                                 ///< guess, as the starting point for the interpolation within
+                                 ///< the current timestep
+      optimal_equiv_stress       ///< computes the interpolation factor based on the equivalent
+                                 ///< stress from the previous timestep with respect to the its
+                                 ///< corresponding elastic and plastic predictors.
+    };
+
+
+    //! struct: input for the optimal interpolation point determination based on the equivalent
+    //! stress of the solution, between both predictors (adaptive estimate interpolation)
+    struct OptimalEquivStressStartingPointInput
+    {
+      //! equivalent stress of the solution: \f$ \overline{\sigma}_{n} \f$
+      double equiv_stress_solution;
+
+      //! equivalent stress of the elastic predictor: \f$ \overline{\sigma}_{n}^{\text{E}} \f$
+      double equiv_stress_elast_pred;
+
+      //! equivalent stress of the plastic predictor: \f$ \overline{\sigma}_{n}^{\text{P}} \f$
+      double equiv_stress_plast_pred;
+    };
+
+    //! enum class: method to be used for handling hardening variables within the adaptive
+    //! estimate interpolation algorithm
+    enum class AdaptiveEstimateInterpolationHardeningMethod
+    {
+      use_previous,            ///< use hardening variables from the previously converged time step
+      integrate_via_evol_eqs,  ///< integrate the hardening variables via their dedicated
+                               ///< evolution equations, using the interpolated elastic
+                               ///< deformation gradient as input --> "smaller local Newton"
+    };
+
+
+    //! struct containing information required for integrating the hardening variables according to
+    //! their evolution equations (currently only the equivalent plastic strain) within the adaptive
+    //! estimate interpolation
+    struct HardeningIntegrationInput
+    {
+      //! interpolated equivalent stress \f$ \overline_{\sigma}(\xi) \f$
+      double interp_equiv_stress;
+
+      //! previous plastic strain \f$ \varepsilon_{\text{p}}(\xi) \f$
+      double last_plastic_strain;
+
+      //! integration time step / substep \f$ \Delta t \f$
+      double dt;
+    };
+
+    //! struct containing parameters dedicated to handling the hardening variables within
+    //! the adaptive estimate interpolation
+    struct AdaptiveEstimateInterpolationHardeningParams
+    {  //! method to use
+      const AdaptiveEstimateInterpolationHardeningMethod method;
+
+      //! should failure of hardening integration (via evolution equations) be allowed?
+      //! if so, the mechanical state is marked with an error status depending on the location
+      //! of the stress state w.r.t. yield surface and the estimate interpolation continues;
+      //! otherwise, an error is thrown
+      const bool allow_integration_failure;
+
+      //! relative overstress tolerance within the integration failure strategy, deciding
+      //! whether the state shifted too much towards the elastic predictor or
+      //! towards the plastic predictor
+      const double relative_overstress_tol;
+
+      //! maximum number of iterations for hardening integration
+      const unsigned int max_iter_integration;
+
+      //! tolerance for hardening integration
+      const double tol_integration;
+    };
+
+
+    //! struct: parameters used for the adaptive estimate interpolation (AEI)
+    struct AdaptiveEstimateInterpolationParams
+    {
+      //! starting point type to be used for the adaptive estimate interpolation
+      const AdaptiveEstimateInterpolationStartingPointType starting_point_type;
+
+      //! specified starting point in case that the starting point is user_set
+      const double user_set_starting_point;
+
+      //! elastic stretch eigenvalue specification for the plastic predictor to be used within the
+      //! adaptive estimate interpolation
+      const PlasticPredictorElasticStretchEigenvalType plastic_pred_elastic_stretch_eigenval_type;
+
+      //! elastic stretch eigenvector specification for the plastic predictor to be used within the
+      //! adaptive estimate interpolation
+      const PlasticPredictorElasticStretchEigenvectType plastic_pred_elastic_stretch_eigenvect_type;
+
+      //! elastic rotation specification for the plastic predictor to be used within the adaptive
+      //! estimate interpolation
+      const PlasticPredictorElasticRotationType plastic_pred_elastic_rotation_type;
+
+      //! maximum number of plastic predictor construction iterations \f$ i_{\text{C,max}} \f$
+      const unsigned int max_num_plastic_pred_construct_iters;
+
+      //! relative understress tolerance for \f$
+      //! \overline{\sigma} / \sigma_{\text{Y}} - 1 \f$ used to construct the plastic predictor
+      const double relative_understress_tol;
+
+      //! maximum number of estimate interpolation iterations \f$ i_{\text{EI,max}} \f$
+      const unsigned int max_num_estimate_interp_iters;
+
+      //! minimum interval length \f$ ( \xi_{\text{P}} - \xi_{\text{E}} )_{\text{min}} \f$ for
+      //! estimate interpolation
+      const double min_interp_interval;
+
+      //! interval scanning parameter (bisection: = 1/2) used for plastic predictor construction and
+      //! estimate interpolation
+      const double interval_scanning_param;
+
+      //! maximum number of adaptive re-estimations allowed
+      const unsigned int max_num_reestimations;
+
+      //! minimum interval \f$ \xi -  \xi_{\text{E}} \f$ required for verifying the intermediate
+      //! point \f$ \xi_{\text{I}} = 1 / 2 (\xi + \xi_{\text{E}}) \f$ as an updated estimate
+      //! candidate within the re-estimation procedure
+      const double min_reestimation_interval;
+
+      //! precondition the elastic deformation gradient within the elastic predictor to
+      //! stabilize interpolation, i.e., components smaller than a set tolerance are set to 0.0 to
+      //! avoid unnecessary, "numerical" rotations
+      const bool precondition_elastic_pred;
+
+      //! tolerance for preconditioning the elastic deformation gradient within the elastic
+      //! predictor to stabilize interpolation
+      const double tol_precondition_elastic_pred;
+
+      //! should the equivalent stress of estimates be capped by the elastic predictor stress state
+      //! as an upper bound, i.e. \f$ \overline{\sigma}(\xi) < \overline{\sigma}^{(\text{E})} \f$?
+      const bool bound_stress_by_elastic_predictor;
+
+      //! hardening parameters
+      const AdaptiveEstimateInterpolationHardeningParams hardening_params;
+    };
+
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
 }  // namespace Mat
