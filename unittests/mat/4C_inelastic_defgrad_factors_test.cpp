@@ -168,25 +168,24 @@ namespace
     material_data.group("LOCAL_SUBSTEPPING").add("USE_SUBSTEPPING", setup.use_substepping);
     material_data.group("LOCAL_SUBSTEPPING")
         .add("MAX_SUBSTEPPING_HALVE_NUM", static_cast<int>(setup.max_substepping_halve_num));
-    material_data.group("LOCAL_NEWTON").add("CONV_CHECK", setup.local_newton_params.conv_check);
-    material_data.group("LOCAL_NEWTON").add("DIVER_CONT", setup.local_newton_params.diver_cont);
-    material_data.group("LOCAL_NEWTON").add("INCR_TOL", setup.local_newton_params.incr_tol);
-    material_data.group("LOCAL_NEWTON").add("RES_TOL", setup.local_newton_params.res_tol);
-    material_data.group("LOCAL_NEWTON")
-        .add("MAX_ITER", static_cast<int>(setup.local_newton_params.max_iter));
-    material_data.group("LOCAL_NEWTON")
-        .add("MAX_EXCEEDANCE_FACT_RES_TOL", setup.local_newton_params.max_exceedance_fact_res_tol);
-    material_data.group("LOCAL_NEWTON")
-        .add(
-            "MAX_EXCEEDANCE_FACT_INCR_TOL", setup.local_newton_params.max_exceedance_fact_incr_tol);
-    material_data.group("ERROR_REGISTRATION_SETTINGS")
-        .add("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW", true);
-    material_data.group("ERROR_REGISTRATION_SETTINGS")
-        .add("REGISTER_PLASTIC_STRAIN_DERIV_INCR_OVERFLOW", false);
-    material_data.group("ERROR_REGISTRATION_SETTINGS")
-        .add("MAX_PLASTIC_STRAIN_INCR", std::exp(30.0));
-    material_data.group("ERROR_REGISTRATION_SETTINGS")
-        .add("MAX_PLASTIC_STRAIN_DERIV_INCR", std::exp(30.0));
+    const auto local_newton_params =
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams{
+            .res_tol = setup.local_newton_params.res_tol,
+            .incr_tol = setup.local_newton_params.incr_tol,
+            .conv_check = setup.local_newton_params.conv_check,
+            .diver_cont = setup.local_newton_params.diver_cont,
+            .max_iter = setup.local_newton_params.max_iter,
+            .max_exceedance_fact_res_tol = setup.local_newton_params.max_exceedance_fact_res_tol,
+            .max_exceedance_fact_incr_tol = setup.local_newton_params.max_exceedance_fact_incr_tol,
+        };
+    material_data.add("LOCAL_NEWTON", local_newton_params);
+    const auto error_registration_settings =
+        Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings{
+            .register_plastic_strain_incr_overflow = true,
+            .max_plastic_strain_incr = std::exp(30.0),
+            .register_plastic_strain_deriv_incr_overflow = false,
+            .max_plastic_strain_deriv_incr = std::exp(30.0)};
+    material_data.add("ERROR_REGISTRATION_SETTINGS", error_registration_settings);
 
 
 
@@ -239,7 +238,7 @@ namespace
             Core::Materials::MaterialType::mvl_reformulated_Johnson_Cook, viscoplastic_law_data));
 
     auto viscoplastic_law = std::make_shared<Mat::Viscoplastic::ReformulatedJohnsonCook>(
-        problem.materials()->parameter_by_id(viscoplastic_law_id));
+        problem.materials()->parameter_by_id(viscoplastic_law_id), error_registration_settings);
 
     std::vector<std::shared_ptr<Mat::Elastic::Summand>> pot_sum_el;
     pot_sum_el.emplace_back(Mat::Elastic::Summand::factory(200));

@@ -1554,18 +1554,6 @@ namespace Mat
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
         int gp, int eleGID) override;
 
-    /*!
-     * Perform all preparation tasks for the constitutive update in the current timestep.
-     * In contrast to the pre_evaluate method, these tasks shall not be repeated in case of the
-     * redundant evaluate call, see Issue #121 at https://github.com/4C-multiphysics/4C/issues/121.
-     * This means that the current, public pre-evaluate method performs only the safely repeatable
-     * pre-evaluation tasks. This also means that we prepare and perform the constitutive update
-     * within evaluate_inverse_inelastic_defgrad only if we are not in the redundant call (see
-     * quick-fix PR #131 at https://github.com/4C-multiphysics/4C/pull/131).
-     *
-     */
-    void prepare_constitutive_update();
-
     void update() override;
 
     void pack_inelastic(Core::Communication::PackBuffer& data) const override;
@@ -2004,7 +1992,7 @@ namespace Mat
      */
     void manage_evaluation(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
+        InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action) const;
 
     /*!
      * @brief Evaluate the additional cmat stiffness tensor using a perturbation-based approach, if
@@ -2086,16 +2074,16 @@ namespace Mat
      * @param[in] deftensors deformation tensors used for local time integration
      * @param[in] last_plastic_strain equivalent plastic strain at the previously converged
      * time instant
-     * @param[out] err_status error status after the procedure
+     * @param[in] err_status error status after the procedure
      * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and
      * the equivalent plastic strain (component 9) for the Local Newton within this time step /
      * substep
      */
-    Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(const double dt,
+    [[nodiscard]] Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(const double dt,
         const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
             deftensors,
         const double last_plastic_strain,
-        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+        const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const;
   };
 }  // namespace Mat
 

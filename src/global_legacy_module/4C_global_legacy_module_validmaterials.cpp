@@ -11,6 +11,7 @@
 #include "4C_inpar_structure.hpp"
 #include "4C_io_input_field.hpp"
 #include "4C_io_input_spec_builders.hpp"
+#include "4C_io_input_spec_storage.hpp"
 #include "4C_io_input_spec_validators.hpp"
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_linalg_utils_densematrix_funct.hpp"
@@ -2951,20 +2952,31 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                 {.description = "Settings for the usage of local substepping to integrate the "
                                 "viscoplastic evolution equations",
                     .required = false}),
-            group("LOCAL_NEWTON",
+            group<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams>(
+                "LOCAL_NEWTON",
                 {parameter<
                      Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck>(
                      "CONV_CHECK",
                      {.description = "convergence check type",
                          .default_value = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                             LocalNewtonConvCheck::residual_and_increment_ratio}),
-                    parameter<int>("MAX_ITER", {.description = "maximum number of iterations",
-                                                   .default_value = 100,
-                                                   .validator = positive<int>()}),
-                    parameter<double>(
-                        "RES_TOL", {.description = "residual tolerance (absolute residual 2-norm)",
-                                       .default_value = 1.0e-8,
-                                       .validator = positive<double>()}),
+                             LocalNewtonConvCheck::residual_and_increment_ratio,
+                         .store =
+                             in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                     LocalNewtonParams::conv_check)}),
+                    parameter<int>("MAX_ITER",
+                        {.description = "maximum number of iterations",
+                            .default_value = 100,
+                            .validator = positive<int>(),
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        LocalNewtonParams::max_iter)}),
+                    parameter<double>("RES_TOL",
+                        {.description = "residual tolerance (absolute residual 2-norm)",
+                            .default_value = 1.0e-8,
+                            .validator = positive<double>(),
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        LocalNewtonParams::res_tol)}),
                     parameter<double>("MAX_EXCEEDANCE_FACT_RES_TOL",
                         {.description =
                                 "maximum exceedance factor for the specified residual tolerance "
@@ -2972,12 +2984,20 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "continuing the simulation, if specified by the user via "
                                 "DIVER_CONT)",
                             .default_value = 1.0e1,
-                            .validator = positive_or_zero<double>()}),
-                    parameter<double>(
-                        "INCR_TOL", {.description = "increment tolerance ("
-                                                    "ratio of |increment| / |solution|)",
-                                        .default_value = 1.0e-8,
-                                        .validator = positive<double>()}),
+                            .validator = positive_or_zero<double>(),
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        LocalNewtonParams::max_exceedance_fact_res_tol)}),
+                    parameter<double>("INCR_TOL",
+                        {.description = "increment tolerance ("
+                                        "ratio of |increment| / |solution|)",
+                            .default_value = 1.0e-8,
+                            .validator = positive<double>(),
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        LocalNewtonParams::incr_tol)
+
+                        }),
                     parameter<double>("MAX_EXCEEDANCE_FACT_INCR_TOL",
                         {.description =
                                 "maximum exceedance factor for the specified increment tolerance "
@@ -2985,40 +3005,66 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                 "continuing the simulation, if specified by the user via "
                                 "DIVER_CONT)",
                             .default_value = 1.0e1,
-                            .validator = positive_or_zero<double>()}),
+                            .validator = positive_or_zero<double>(),
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        LocalNewtonParams::max_exceedance_fact_incr_tol)
+
+                        }),
                     parameter<Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
                             LocalNewtonDiverCont>("DIVER_CONT",
                         {.description = "strategy to deal with divergence in the Local Newton Loop",
                             .default_value =
                                 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
-                                    LocalNewtonDiverCont::stop})
+                                    LocalNewtonDiverCont::stop,
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        LocalNewtonParams::diver_cont)
+
+                        })
 
                 },
                 {.description = "Parameters used in the Local Newton--Raphson procedure "
                                 "(viscoplastic corrector stage)",
                     .required = false}),
-            group("ERROR_REGISTRATION_SETTINGS",
+            group<
+                Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings>(
+                "ERROR_REGISTRATION_SETTINGS",
                 {parameter<bool>("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW",
                      {.description = "should overflow error be registered via ErrorType when the "
                                      "plastic strain increment exceeds the specified tolerance?",
-                         .default_value = true}),
+                         .default_value = true,
+                         .store =
+                             in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                     ErrorRegistrationSettings::
+                                         register_plastic_strain_incr_overflow)}),
                     parameter<double>("MAX_PLASTIC_STRAIN_INCR",
                         {.description = "maximum evaluable plastic strain increment "
                                         "used for registering overflow errors",
                             .default_value = std::exp(30.0),
-                            .validator = positive<double>()}),
+                            .validator = positive<double>(),
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        ErrorRegistrationSettings::max_plastic_strain_incr)}),
                     parameter<bool>("REGISTER_PLASTIC_STRAIN_DERIV_INCR_OVERFLOW",
                         {.description = "should overflow error be registered via ErrorType when "
                                         "any of the plastic strain derivative increments exceeds "
                                         "the specified tolerance?",
-                            .default_value = false}),
+                            .default_value = false,
+                            .store =
+                                in_struct(&Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                        ErrorRegistrationSettings::
+                                            register_plastic_strain_deriv_incr_overflow)}),
                     parameter<double>("MAX_PLASTIC_STRAIN_DERIV_INCR",
                         {.description = "maximum evaluable increment of the plastic strain "
                                         "derivatives w.r.t. plastic strain and equivalent "
                                         "stress, used for registering "
                                         "overflow errors",
                             .default_value = std::exp(30.0),
-                            .validator = positive<double>()})},
+                            .validator = positive<double>(),
+                            .store = in_struct(
+                                &Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::
+                                    ErrorRegistrationSettings::max_plastic_strain_deriv_incr)})},
                 {.description = "Settings for registering errors within the procedures used for "
                                 "constitutive update",
                     .required = false})},

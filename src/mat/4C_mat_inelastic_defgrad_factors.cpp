@@ -476,43 +476,6 @@ namespace
         Core::LinAlg::EigenvalInterpolationType::LOG, interp_param_list};
   }
 
-  Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams
-  retrieve_local_newton_params(const Core::Mat::PAR::Parameter::Data& matdata)
-  {
-    const auto local_newton_params = ViscoplastUtils::LocalNewtonParams{
-        .res_tol = matdata.parameters.group("LOCAL_NEWTON").get<double>("RES_TOL"),
-        .incr_tol = matdata.parameters.group("LOCAL_NEWTON").get<double>("INCR_TOL"),
-        .conv_check = matdata.parameters.group("LOCAL_NEWTON")
-            .get<ViscoplastUtils::LocalNewtonConvCheck>("CONV_CHECK"),
-        .diver_cont = matdata.parameters.group("LOCAL_NEWTON")
-            .get<ViscoplastUtils::LocalNewtonDiverCont>("DIVER_CONT"),
-        .max_iter = static_cast<unsigned int>(
-            matdata.parameters.group("LOCAL_NEWTON").get<int>("MAX_ITER")),
-        .max_exceedance_fact_res_tol =
-            matdata.parameters.group("LOCAL_NEWTON").get<double>("MAX_EXCEEDANCE_FACT_RES_TOL"),
-        .max_exceedance_fact_incr_tol =
-            matdata.parameters.group("LOCAL_NEWTON").get<double>("MAX_EXCEEDANCE_FACT_INCR_TOL"),
-    };
-
-    return local_newton_params;
-  }
-
-  Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
-  retrieve_error_registration_settings(const Core::Mat::PAR::Parameter::Data& matdata)
-  {
-    return ViscoplastUtils::ErrorRegistrationSettings{
-        .register_plastic_strain_incr_overflow =
-            matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
-                .get<bool>("REGISTER_PLASTIC_STRAIN_INCR_OVERFLOW"),
-        .max_plastic_strain_incr = matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
-            .get<double>("MAX_PLASTIC_STRAIN_INCR"),
-        .register_plastic_strain_deriv_incr_overflow =
-            matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
-                .get<bool>("REGISTER_PLASTIC_STRAIN_DERIV_INCR_OVERFLOW"),
-        .max_plastic_strain_deriv_incr = matdata.parameters.group("ERROR_REGISTRATION_SETTINGS")
-            .get<double>("MAX_PLASTIC_STRAIN_DERIV_INCR")};
-  }
-
 
   bool show_warnings(const unsigned int ele_gid)
   {
@@ -733,8 +696,11 @@ Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast::
       mat_log_deriv_calc_method_(
           matdata.parameters.get<Core::LinAlg::GenMatrixLogFirstDerivCalcMethod>(
               "MATRIX_LOG_DERIV_CALC_METHOD")),
-      local_newton_params_(retrieve_local_newton_params(matdata)),
-      error_registration_settings_(retrieve_error_registration_settings(matdata))
+      local_newton_params_(
+          matdata.parameters.get<ViscoplastUtils::LocalNewtonParams>("LOCAL_NEWTON")),
+      error_registration_settings_(
+          matdata.parameters.get<ViscoplastUtils::ErrorRegistrationSettings>(
+              "ERROR_REGISTRATION_SETTINGS"))
 {
   // consistency check: yield parameters in case of transversely-isotropic behavior
   const bool all_yield_cond_param_specified =
@@ -861,7 +827,8 @@ std::shared_ptr<Mat::InelasticDefgradFactors> Mat::InelasticDefgradFactors::fact
           dynamic_cast<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast*>(current_material);
 
       // create viscoplastic law
-      auto viscoplastic_law = Mat::Viscoplastic::Law::factory(params->viscoplastic_law_id());
+      auto viscoplastic_law = Mat::Viscoplastic::Law::factory(
+          params->viscoplastic_law_id(), params->error_registration_settings());
 
       // construct fiber reader
       auto* fiber_reader_params = Global::Problem::instance(probinst)->materials()->parameter_by_id(
@@ -1896,18 +1863,6 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-void Mat::InelasticDefgradTransvIsotropElastViscoplast::prepare_constitutive_update()
-{
-  // pre-evaluate viscoplastic law
-  viscoplastic_law_->pre_evaluate(params_, gp_);
-
-  // set plastic flow to false for now! We set it to true if the elastic predictor step fails
-  is_plastic_gp_[gp_] = false;
-}
-
-
-/*--------------------------------------------------------------------*
- *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::calculate_gamma_delta(
     const Core::LinAlg::Matrix<3, 3>& CeM, Core::LinAlg::Matrix<3, 1>& gamma,
     Core::LinAlg::Matrix<8, 1>& delta) const
@@ -2100,8 +2055,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantities(
 
   // calculate equivalent plastic strain rate using the viscoplastic law
   state_quantities.curr_equiv_plastic_strain_rate = viscoplastic_law_->evaluate_plastic_strain_rate(
-      state_quantities.curr_equiv_stress, plastic_strain, dt,
-      parameter()->error_registration_settings(), err_status, update_hist_var_);
+      state_quantities.curr_equiv_stress, plastic_strain, dt, err_status, update_hist_var_);
 
   if (eval_type == ViscoplastUtils::StateQuantityEvalType::plastic_strain_rate_only)
   {
@@ -2579,7 +2533,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_state_quantity_deriv
   // compute the relevant derivatives of the plastic strain rate
   InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs evoEqFunctionDers =
       viscoplastic_law_->evaluate_derivatives_of_plastic_strain_rate(
-          equiv_stress, plastic_strain, dt, parameter()->error_registration_settings(), err_status);
+          equiv_stress, plastic_strain, dt, err_status);
 
   // return if we get an error, all other calculations are useless since substepping is
   // triggered
@@ -3218,7 +3172,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::constitutive_update(
   // perform non-repeatable pre-evaluation tasks (non-repeatable: not
   // called in the redundant evaluate call, which is already handled -> direct return
   // without calling this function)
-  prepare_constitutive_update();
+  viscoplastic_law_->pre_evaluate(params_, gp_);
+  is_plastic_gp_[gp_] = false;
 
   // set predictor: assume purely elastic behavior in this time step
   Core::LinAlg::Matrix<3, 3> iFinM_pred(Core::LinAlg::Initialization::zero);
@@ -3717,7 +3672,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::viscoplastic_correction(
             extract_inverse_inelastic_defgrad(sol);
         time_step_quantities_.last_substep_plastic_strain[gp_] = sol(9);
         // update last substep history variables of the viscoplastic flow rule
-        viscoplastic_law_->update_gp_state(gp_);
+        viscoplastic_law_->update_gp_state_after_substep(gp_);
       }
       else
       {
@@ -4449,7 +4404,7 @@ Mat::HeatSource Mat::InelasticDefgradTransvIsotropElastViscoplast::
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
     const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
-    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action)
+    InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action) const
 {
   // default evaluation action: continue iteration
   eval_action = InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction::
@@ -4679,7 +4634,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::determine_local_newton_init_e
     const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors&
         deftensors,
     const double last_plastic_strain,
-    InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status)
+    const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status) const
 {
   ensure_error_free_evaluation(err_status);
 

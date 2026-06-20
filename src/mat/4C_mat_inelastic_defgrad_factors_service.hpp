@@ -166,19 +166,19 @@ namespace Mat
     {
       //! should overflow error be registered via ErrorType when the plastic strain increment
       //! exceeds the specified tolerance?
-      const bool register_plastic_strain_incr_overflow;
+      bool register_plastic_strain_incr_overflow;
 
       //! maximum, numerically evaluable plastic strain increment before overflow error is
       //! registered?
-      const double max_plastic_strain_incr;
+      double max_plastic_strain_incr;
 
       //! should overflow error be registered via ErrorType when any of the plastic strain
       //! derivative increments exceeds the specified tolerance?
-      const bool register_plastic_strain_deriv_incr_overflow;
+      bool register_plastic_strain_deriv_incr_overflow;
 
       //! maximum, numerically evaluable increment of plastic strain derivatives (time_step *
       //! derivative)
-      const double max_plastic_strain_deriv_incr;
+      double max_plastic_strain_deriv_incr;
     };
 
     /// enum class for evaluation management actions in the iterations of the
@@ -852,29 +852,29 @@ namespace Mat
     struct LocalNewtonParams
     {
       //! convergence tolerance: absolute residual value
-      const double res_tol;
+      double res_tol;
 
       //! convergence tolerance: ratio of solution increment to current solution
-      const double incr_tol;
+      double incr_tol;
 
       //! convergence check strategy
-      const LocalNewtonConvCheck conv_check;
+      LocalNewtonConvCheck conv_check;
 
       //! strategy for dealing with divergence
-      const LocalNewtonDiverCont diver_cont;
+      LocalNewtonDiverCont diver_cont;
 
       //! maximum number of local iterations
-      const unsigned int max_iter;
+      int max_iter;
 
       //! maximum exceedance factor for the residual tolerance (to be used when
       //! employing the divergence management strategy for continuation with
       //! safeguard)
-      const double max_exceedance_fact_res_tol;
+      double max_exceedance_fact_res_tol;
 
       //! maximum exceedance factor for the solution increment tolerance (to be used when
       //! employing the divergence management strategy for continuation with
       //! safeguard)
-      const double max_exceedance_fact_incr_tol;
+      double max_exceedance_fact_incr_tol;
     };
 
     //! class for managing the Local Newton loop, containing the utilized parameters and iteration
@@ -949,7 +949,10 @@ namespace Mat
 
 
       /// is the maximum number of iterations reached?
-      [[nodiscard]] bool is_max_iter_reached() { return iter_ >= params_.max_iter; }
+      [[nodiscard]] bool is_max_iter_reached()
+      {
+        return iter_ >= static_cast<unsigned int>(params_.max_iter);
+      }
 
 
       /// increment iteration counter

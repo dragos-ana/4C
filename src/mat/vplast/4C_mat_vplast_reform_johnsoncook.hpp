@@ -104,7 +104,9 @@ namespace Mat
     class ReformulatedJohnsonCook : public Law
     {
      public:
-      explicit ReformulatedJohnsonCook(Core::Mat::PAR::Parameter* params);
+      explicit ReformulatedJohnsonCook(Core::Mat::PAR::Parameter* params,
+          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
+              error_registration_settings);
 
       [[nodiscard]] Mat::Viscoplastic::PAR::ReformulatedJohnsonCook* parameter() const override
       {
@@ -127,16 +129,12 @@ namespace Mat
 
       double evaluate_plastic_strain_rate(const double equiv_stress,
           const double equiv_plastic_strain, const double dt,
-          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings&
-              error_registration_settings,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var) override;
 
       InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs
       evaluate_derivatives_of_plastic_strain_rate(const double equiv_stress,
           const double equiv_plastic_strain, const double dt,
-          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings&
-              error_registration_settings,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var) override;
 
@@ -148,7 +146,7 @@ namespace Mat
 
       void update(const unsigned int gp) override {};
 
-      void update_gp_state(const unsigned int gp) override {};
+      void update_gp_state_after_substep(const unsigned int gp) override {};
 
       void pack_viscoplastic_law(Core::Communication::PackBuffer& data) const override;
 

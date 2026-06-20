@@ -61,8 +61,10 @@ namespace Mat
     class Law
     {
      public:
-      /// construct viscoplastic laws with specific material params
-      explicit Law(Core::Mat::PAR::Parameter* params);
+      /// construct viscoplastic laws with specific material params and error registration settings
+      explicit Law(Core::Mat::PAR::Parameter* params,
+          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
+              error_registration_settings);
       /// construct empty viscoplastic law
       Law();
 
@@ -73,9 +75,13 @@ namespace Mat
        * @brief create object by input parameter ID
        *
        * @param[in] matnum  material ID
+       * @param[in] error_registration_settings  error registration settings for plastic strain
+       * increments and derivative increments
        * @return pointer to material that is defined by material ID
        */
-      static std::shared_ptr<Law> factory(int matnum);
+      static std::shared_ptr<Law> factory(int matnum,
+          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
+              error_registration_settings);
 
       /// provide material type
       [[nodiscard]] virtual Core::Materials::MaterialType material_type() const = 0;
@@ -132,14 +138,11 @@ namespace Mat
        * @param[in] equiv_stress Equivalent stress \f$ \overline{\sigma}  \f$
        * @param[in] equiv_plastic_strain Equivalent plastic strain \f$ \varepsilon^{\text{p}}\f$
        * @param[in] dt Time step size (used solely for overflow error checking, see @note)
-       * @param[in] error_registration_settings Settings used for error registration.
        * @param[out] err_status Output variable: error due the term considered in @note?
        * @return Equivalent plastic strain rate \f$ \dot{\varepsilon}^{\text{p}} \f$
        */
       virtual double evaluate_plastic_strain_rate(const double equiv_stress,
           const double equiv_plastic_strain, const double dt,
-          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings&
-              error_registration_settings,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var = true) = 0;
 
@@ -157,7 +160,6 @@ namespace Mat
        * @param[in] equiv_plastic_strain Equivalent plastic strain \f$ \varepsilon^{\text{p}}\f$
        * @param[in] dt Time step size (used solely for overflow error checking, see @note of
        * evaluate_plastic_strain_rate)
-       * @param[in] error_registration_settings Settings used for error registration.
        * @param[out] err_status Output variable: error of the terms considered in @note?
        * @return Derivatives of the equivalent plastic strain rate w.r.t. the equivalent stress,
        *         plastic strain, and temperature.
@@ -165,8 +167,6 @@ namespace Mat
       virtual InelasticDefgradTransvIsotropElastViscoplastUtils::PlasticStrainRateDerivs
       evaluate_derivatives_of_plastic_strain_rate(const double equiv_stress,
           const double equiv_plastic_strain, const double dt,
-          const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings&
-              error_registration_settings,
           Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
           const bool update_hist_var = true) = 0;
 
@@ -205,7 +205,7 @@ namespace Mat
        *
        * @param[in] gp      Gauss point
        */
-      virtual void update_gp_state(const unsigned int gp) = 0;
+      virtual void update_gp_state_after_substep(const unsigned int gp) = 0;
 
       virtual void pack_viscoplastic_law(Core::Communication::PackBuffer& data) const = 0;
 
@@ -241,6 +241,11 @@ namespace Mat
      protected:
       /// Gauss point index
       int gp_;
+
+      /// error registration settings for the plastic strain increments and the derivative
+      /// increments
+      const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorRegistrationSettings
+          error_registration_settings_;
 
 
      private:
