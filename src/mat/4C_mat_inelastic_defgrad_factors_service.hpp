@@ -12,6 +12,7 @@
 
 #include "4C_comm_utils.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
+#include "4C_linalg_utils_scalar_interpolation.hpp"
 #include "4C_utils_exceptions.hpp"
 
 #include <format>
@@ -1225,6 +1226,171 @@ namespace Mat
       //! hardening parameters
       const AdaptiveEstimateInterpolationHardeningParams hardening_params;
     };
+
+
+    //! class: interpolator of elastic deformation gradients between the elastic and plastic
+    //! predictors as presented in Ana, Schmidt, Wall: Adaptive
+    //! Estimate Interpolation: Accelerating Local Newton-Raphson Schemes in Computational
+    //! (Visco)Plasticity (Preprint). This class stores the values of the involved quantities at
+    //! all Gauss points.
+    class PredictorInterpolator
+    {
+     public:
+      /*!
+       * @brief Constructor
+       *
+       */
+      PredictorInterpolator();
+
+      //! resizing based on a given number of Gauss points
+      void resize(const unsigned int numgp);
+
+      //! pack method
+      void pack(Core::Communication::PackBuffer& data) const;
+
+      //! unpack method
+      void unpack(Core::Communication::UnpackBuffer& buffer);
+
+      /*!
+       * @brief Constructs a preliminary plastic predictor.
+       *
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] elastic_defgrad_elastic_pred elastic deformation gradient within the elastic
+       * predictor
+       * @param[in] aei_params parameters for the AEI procedure (containing plastic predictor
+       * specifications)
+       * @param[in] last_elastic_defgrad elastic deformation gradient at the previous time instant
+       * \f$ t_{n} \f$
+       */
+      void construct_prelim_plastic_pred(const unsigned int gp,
+          const Core::LinAlg::Matrix<3, 3>& elastic_defgrad_elastic_pred,
+          const AdaptiveEstimateInterpolationParams& aei_params);
+
+
+      /*!
+       * @brief Interpolates an elastic deformation gradient based on the stored predictor
+       * quantities
+       *
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_loc location used for interpolation; either \f$ \tau \f$ (plastic
+       * predictor construction) or \f$ \xi \f$ estimate interpolation
+       */
+      Core::LinAlg::Matrix<3, 3> interpolate_elastic_defgrad(
+          const unsigned int gp, const double interp_loc) const;
+
+
+      /*!
+       * @brief Sets the plastic predictor quantities using a given interpolation location, based
+       * on the plastic predictor construction algorithm
+       *
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] plastic_pred_loc location \f$ \tau \f$ determined in the plastic
+       * predictor construction
+       */
+      void set_plastic_predictor_after_construction_algo(
+          const unsigned int gp, const double plastic_pred_loc);
+
+     private:
+      /*!
+       * @brief Interpolates eigenvalues and rotational contributions based on the stored
+       * predictor quantities
+       *
+       *
+       * @param[in] gp Gauss point index
+       * @param[in] interp_loc location used for interpolation; either \f$ \tau \f$ (plastic
+       * predictor construction) or \f$ \xi \f$ estimate interpolation
+       */
+      void interpolate_elastic_defgrad_contributions(const unsigned int gp, const double interp_loc,
+          std::vector<double>& interp_eigenval,
+          Core::LinAlg::Matrix<4, 1>& interp_rel_eigenvect_rot_quat,
+          Core::LinAlg::Matrix<4, 1>& interp_rel_rot_quat) const;
+
+      //! elastic predictor: elastic eigenvalues \f$ \lambda_{\mathrm{elast}, i} \f$ for all Gauss
+      //! points
+      std::vector<Core::LinAlg::Matrix<3, 3>> eigenval_elast_pred_;
+      //! plastic predictor: elastic eigenvalues \f$ \lambda_{\mathrm{plast}, i} \f$ for all Gauss
+      //! points
+      std::vector<Core::LinAlg::Matrix<3, 3>> eigenval_plast_pred_;
+      //! eigenvalue data for all Gauss points used
+      //! directly in the scalar interpolator; contains all eigenvalues of the elastic predictor
+      //! in the first item of the Gauss point data, and all eigenvalues of the plastic predictor in
+      //! the second item
+      std::vector<std::vector<std::vector<double>>> scalar_interp_eigenval_;
+      //! interpolation locations for the elastic and plastic predictor, saved to be directly used
+      //! within the interpolator
+      const std::vector<Core::LinAlg::Matrix<1, 1>> ref_predictor_locs_;
+      //! elastic predictor: elastic eigenvector rotation matrix \f$ \mathbf{Q}_{\mathrm{elast}}
+      //! \f$ for all Gauss points
+      std::vector<Core::LinAlg::Matrix<3, 3>> eigenvect_rot_elast_pred_;
+      //! plastic predictor: relative elastic eigenvector quaternion \f$
+      //! \mathbf{q}_{\mathbf{Q}_{\mathrm{plast,rel}}} \f$  associated with \f$
+      //! \mathbf{Q}_{\mathrm{plast,rel}} =  \mathbf{Q}_{\mathrm{elast}}^{T}
+      //! \mathbf{Q}_{\mathrm{plast}}
+      //! \f$ for all Gauss points
+      std::vector<Core::LinAlg::Matrix<4, 1>> rel_eigenvect_rot_plast_pred_;
+      //! elastic predictor: elastic rotation matrix \f$ \mathbf{R}_{\mathrm{elast}} \f$ for all
+      //! Gauss points
+      std::vector<Core::LinAlg::Matrix<3, 3>> rot_elast_pred_;
+      //! plastic predictor: relative elastic rotation quaternion \f$
+      //! \mathbf{q}_{\mathbf{R}_{\mathrm{plast,rel}}}
+      //! \f$ associated with \f$ \mathbf{R}_{\mathrm{plast,rel}} =
+      //! \mathbf{R}_{\mathrm{elast}}^{T} \mathbf{R}_{\mathrm{plast}}\f$ for all Gauss points
+      std::vector<Core::LinAlg::Matrix<4, 1>> rel_rot_plast_pred_;
+      //! eigenvalue interpolator
+      Core::LinAlg::ScalarInterpolator<1> eigenval_interpolator_;
+      //! tracks whether the resizing function has been called, to set the current number of Gauss
+      //! points exactly once!
+      bool resize_called_{false};
+    };
+
+    //! struct: container of interpolation points / bounds for all Gauss points used in the adaptive
+    //! estimate interpolation, as presented in Ana, Schmidt, Wall: Adaptive
+    //! Estimate Interpolation: Accelerating Local Newton-Raphson Schemes in Computational
+    //! (Visco)Plasticity (Preprint). This class stores the values of the involved quantities at
+    //! all Gauss points.
+    struct InterpolationPointContainer
+    {
+     public:
+      /*!
+       * @brief Constructor
+       *
+       * @param[in] aei_params parameters for adaptive estimate interpolation
+       */
+      InterpolationPointContainer(const AdaptiveEstimateInterpolationParams& aei_params);
+
+      //! reset interpolation interval and set the current interpolation point to its saved
+      //! starting point at a given Gauss point
+      void reset_bounds_and_current_interp_point(const unsigned int gp);
+
+      //! resizing based on a given number of Gauss points
+      void resize(const unsigned int numgp);
+
+      //! pack method
+      void pack(Core::Communication::PackBuffer& data) const;
+
+      //! unpack method
+      void unpack(Core::Communication::UnpackBuffer& buffer);
+
+      //! current interpolation point \f$ \xi \f$ for all Gauss points
+      std::vector<double> current_interp_points;
+
+      //! lower interpolation bound \f$ \xi_{\text{E}} \f$ for all Gauss points
+      std::vector<double> lower_interp_bounds;
+
+      //! upper interpolation bound \f$ \xi_{\text{P}} \f$ for all Gauss points
+      std::vector<double> upper_interp_bounds;
+
+      //! starting points for interpolation \f$ \hat{\xi} \f$ for all Gauss points
+      std::vector<double> starting_points;
+
+      //! tracks whether the resizing function has been called, to set the current number of
+      //! Gauss points exactly once!
+      bool resize_called{false};
+    };
+
 
   }  // namespace InelasticDefgradTransvIsotropElastViscoplastUtils
 
