@@ -753,9 +753,9 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager:
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
-Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformationTensors::
-    LocalIntegrationDeformationTensors(
-        const Core::LinAlg::Matrix<3, 3>& F, const Core::LinAlg::Matrix<3, 3>& last_iFp)
+Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput::
+    LocalIntegrationInput(const Core::LinAlg::Matrix<3, 3>& F, const double T,
+        const Core::LinAlg::Matrix<3, 3>& last_iFp, const double last_epsp)
 {
   defgrad = F;
   inv_defgrad.invert(defgrad);
@@ -763,6 +763,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationDeformat
   elastic_predictor_inverse_plastic_defgrad = last_iFp;
   elastic_predictor_elastic_defgrad.multiply(
       1.0, defgrad, elastic_predictor_inverse_plastic_defgrad, 0.0);
+  temperature = T;
+  last_plastic_strain = last_epsp;
 }
 
 /*--------------------------------------------------------------------*
@@ -1180,7 +1182,7 @@ bool AEINamespace::AEIManager::is_reestimation_possible(const unsigned int gp)
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void AEINamespace::AEIManager::reset_and_construct_prelim_plastic_pred(
-    const unsigned int gp, const LocalIntegrationDeformationTensors& deftensors)
+    const unsigned int gp, const LocalIntegrationInput& local_integration_input)
 {
   // reset tracking variables
   num_plastic_pred_construct_iters_ = 0;
@@ -1192,7 +1194,7 @@ void AEINamespace::AEIManager::reset_and_construct_prelim_plastic_pred(
 
   // construct the preliminary predictor
   predictor_interpolator_.construct_prelim_plastic_pred(
-      gp, deftensors.elastic_predictor_elastic_defgrad, params_);
+      gp, local_integration_input.elastic_predictor_elastic_defgrad, params_);
 }
 
 /*--------------------------------------------------------------------*

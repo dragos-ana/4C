@@ -9,6 +9,7 @@
 
 #include "4C_fem_general_largerotations.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
+#include "4C_mat_elast_summand.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_unittest_utils_assertions_test.hpp"
 #include "4C_utils_singleton_owner.hpp"
@@ -31,9 +32,9 @@ namespace
     Core::Utils::SingletonOwnerRegistry::ScopeGuard guard;
   };
 
-  /// tests the LocalIntegrationDeformationTensors of
+  /// tests the LocalIntegrationInput of
   /// InelasticDefgradTransvIsotropElastViscoplast
-  TEST_F(InelasticDefgradFactorsServiceTest, TestLocalIntegrationDeformationTensors)
+  TEST_F(InelasticDefgradFactorsServiceTest, TestLocalIntegrationInput)
   {
     // setup input
     Core::LinAlg::Matrix<3, 3> defgrad{Core::LinAlg::Initialization::zero};
@@ -110,15 +111,23 @@ namespace
     elastic_predictor_elastic_defgrad_ref(2, 1) = 0.7307524651000326;
     elastic_predictor_elastic_defgrad_ref(2, 2) = 0.5290836326068751;
 
-    // initialize LocalIntegrationDeformationTensors and perform checks for the saved quantities
-    ViscoplastUtils::LocalIntegrationDeformationTensors deftensors(defgrad, last_iFin);
-    FOUR_C_EXPECT_NEAR(deftensors.defgrad, defgrad, 1.0e-15);
-    FOUR_C_EXPECT_NEAR(deftensors.inv_defgrad, inv_defgrad_ref, 1.0e-15);
-    FOUR_C_EXPECT_NEAR(deftensors.right_cg, right_cg_ref, 1.0e-15);
-    FOUR_C_EXPECT_NEAR(deftensors.elastic_predictor_elastic_defgrad,
+    const double temperature = 293.15;
+    const double last_plastic_strain = 0.0;
+
+
+
+    // initialize LocalIntegrationInput and perform checks for the saved quantities
+    ViscoplastUtils::LocalIntegrationInput local_integration_input(
+        defgrad, temperature, last_iFin, last_plastic_strain);
+    FOUR_C_EXPECT_NEAR(local_integration_input.defgrad, defgrad, 1.0e-15);
+    FOUR_C_EXPECT_NEAR(local_integration_input.inv_defgrad, inv_defgrad_ref, 1.0e-15);
+    FOUR_C_EXPECT_NEAR(local_integration_input.right_cg, right_cg_ref, 1.0e-15);
+    FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad,
         elastic_predictor_elastic_defgrad_ref, 1.0e-15);
-    FOUR_C_EXPECT_NEAR(deftensors.elastic_predictor_inverse_plastic_defgrad,
+    FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_inverse_plastic_defgrad,
         elastic_predictor_inverse_plastic_defgrad_ref, 1.0e-15);
+    EXPECT_EQ(local_integration_input.temperature, temperature);
+    EXPECT_EQ(local_integration_input.last_plastic_strain, last_plastic_strain);
   }
 
 
@@ -476,6 +485,10 @@ namespace
     Core::LinAlg::Matrix<3, 3> unit_3x3{Core::LinAlg::Initialization::zero};
     unit_3x3(0, 0) = unit_3x3(1, 1) = unit_3x3(2, 2) = 1.0;
 
+    // setup temperature and last plastic strain
+    const double temperature = 293.15;
+    const double last_plastic_strain = 0.0;
+
     // setup previous inelastic defgrad: unit tensor
     Core::LinAlg::Matrix<3, 3> last_inv_inelastic_defgrad{unit_3x3};
 
@@ -544,17 +557,17 @@ namespace
     FOUR_C_EXPECT_NEAR(defgrad, lambda, 1.0e-15);
 
     // check the elastic predictor
-    ViscoplastUtils::LocalIntegrationDeformationTensors aei_deftensors(
-        defgrad, last_inv_inelastic_defgrad);
-    FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
+    ViscoplastUtils::LocalIntegrationInput local_integration_input(
+        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
     pred_interpolator.construct_prelim_plastic_pred(
-        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params);
+        gp, local_integration_input.elastic_predictor_elastic_defgrad, aei_params);
 
     // verify whether both predictors are initialized consistently
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
-        aei_deftensors.elastic_predictor_elastic_defgrad, 1.0e-15);
+        local_integration_input.elastic_predictor_elastic_defgrad, 1.0e-15);
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 1.0),
         compute_full_defgrad(R, Q, scaled_unit), 1.0e-15);
 
@@ -589,17 +602,17 @@ namespace
     FOUR_C_EXPECT_NEAR(defgrad, ref_defgrad, 1.0e-15);
 
     // check elastic predictor
-    aei_deftensors =
-        ViscoplastUtils::LocalIntegrationDeformationTensors(defgrad, last_inv_inelastic_defgrad);
-    FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
+    local_integration_input = ViscoplastUtils::LocalIntegrationInput(
+        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
     pred_interpolator.construct_prelim_plastic_pred(
-        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params);
+        gp, local_integration_input.elastic_predictor_elastic_defgrad, aei_params);
 
     // verify whether both predictors are initialized consistently
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
-        aei_deftensors.elastic_predictor_elastic_defgrad, 1.0e-15);
+        local_integration_input.elastic_predictor_elastic_defgrad, 1.0e-15);
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 1.0),
         compute_full_defgrad(R, Q, scaled_unit), 1.0e-15);
 
@@ -626,17 +639,17 @@ namespace
     FOUR_C_EXPECT_NEAR(defgrad, ref_defgrad, 1.0e-15);
 
     // check elastic predictor
-    aei_deftensors =
-        ViscoplastUtils::LocalIntegrationDeformationTensors(defgrad, last_inv_inelastic_defgrad);
-    FOUR_C_EXPECT_NEAR(aei_deftensors.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
+    local_integration_input = ViscoplastUtils::LocalIntegrationInput(
+        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
     pred_interpolator.construct_prelim_plastic_pred(
-        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params);
+        gp, local_integration_input.elastic_predictor_elastic_defgrad, aei_params);
 
     // verify whether both predictors are initialized consistently
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
-        aei_deftensors.elastic_predictor_elastic_defgrad, 1.0e-15);
+        local_integration_input.elastic_predictor_elastic_defgrad, 1.0e-15);
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 1.0),
         compute_full_defgrad(R, Q, scaled_unit), 1.0e-15);
 
@@ -720,21 +733,25 @@ namespace
     defgrad(1, 1) = defgrad(2, 2) = 1.0;
     defgrad(0, 1) = defgrad(1, 0) = 1.0e-9;
 
+    // setup temperature and previous plastic strain
+    const double temperature = 293.15;
+    const double last_plastic_strain = 0.0;
+
     // determine the elastic predictor
-    ViscoplastUtils::LocalIntegrationDeformationTensors aei_deftensors(
-        defgrad, last_inv_inelastic_defgrad);
+    ViscoplastUtils::LocalIntegrationInput local_integration_input(
+        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
 
     // construct preliminary plastic predictor and verify interpolated matrix at point 0.0 (=elastic
     // predictor)
-    pred_interpolator.construct_prelim_plastic_pred(
-        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params_no_preconditioning);
+    pred_interpolator.construct_prelim_plastic_pred(gp,
+        local_integration_input.elastic_predictor_elastic_defgrad, aei_params_no_preconditioning);
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
-        aei_deftensors.elastic_predictor_elastic_defgrad, 1.0e-15);
+        local_integration_input.elastic_predictor_elastic_defgrad, 1.0e-15);
     Core::LinAlg::Matrix<3, 3> preconditioned_elastic_defgrad_elastic_predictor{
-        aei_deftensors.elastic_predictor_elastic_defgrad};
+        local_integration_input.elastic_predictor_elastic_defgrad};
 
     pred_interpolator.construct_prelim_plastic_pred(
-        gp, aei_deftensors.elastic_predictor_elastic_defgrad, aei_params_preconditioning);
+        gp, local_integration_input.elastic_predictor_elastic_defgrad, aei_params_preconditioning);
     preconditioned_elastic_defgrad_elastic_predictor(0, 1) =
         preconditioned_elastic_defgrad_elastic_predictor(1, 0) = 0.0;
     FOUR_C_EXPECT_NEAR(pred_interpolator.interpolate_elastic_defgrad(gp, 0.0),
@@ -869,11 +886,16 @@ namespace
     last_inv_inelastic_defgrad(0, 0) = 1.0;
     last_inv_inelastic_defgrad(1, 1) = 1.0;
     last_inv_inelastic_defgrad(2, 2) = 1.0;
-    ViscoplastUtils::LocalIntegrationDeformationTensors aei_deftensors(
-        defgrad, last_inv_inelastic_defgrad);
+    // setup temperature and previous plastic strain
+    const double temperature = 293.15;
+    const double last_plastic_strain = 0.0;
+
+
+    ViscoplastUtils::LocalIntegrationInput local_integration_input(
+        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
 
     // test bookkeeping for plastic predictor construction
-    aei_manager.reset_and_construct_prelim_plastic_pred(gp, aei_deftensors);
+    aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     EXPECT_TRUE(aei_manager.is_plastic_pred_construct_possible(gp));  // 0 iterations -> true
     aei_manager.increment_num_plastic_pred_construct_iters();
     EXPECT_TRUE(aei_manager.is_plastic_pred_construct_possible(gp));  // 1 iterations -> true
@@ -881,7 +903,7 @@ namespace
     EXPECT_FALSE(aei_manager.is_plastic_pred_construct_possible(gp));  // 2 iterations -> false
 
     // test bookkeeping for estimate interpolation
-    aei_manager.reset_and_construct_prelim_plastic_pred(gp, aei_deftensors);
+    aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     EXPECT_TRUE(aei_manager.is_estimate_interp_possible(gp));  // 0 iterations -> true
     aei_manager.increment_num_estimate_interp_iters();
     EXPECT_TRUE(aei_manager.is_estimate_interp_possible(gp));  // 1 iterations -> true
@@ -891,7 +913,7 @@ namespace
 
     // test bookkeeping for re-estimations
     // 1. using the number of re-estimations
-    aei_manager.reset_and_construct_prelim_plastic_pred(gp, aei_deftensors);
+    aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     EXPECT_TRUE(aei_manager.is_reestimation_possible(gp));  // 0 re-estimations -> true
     aei_manager.increment_num_reestimations();
     EXPECT_TRUE(aei_manager.is_reestimation_possible(gp));  // 1 re-estimation -> true
@@ -899,7 +921,7 @@ namespace
     EXPECT_FALSE(aei_manager.is_reestimation_possible(gp));  // 2 iterations -> false
 
     // 2. using the re-estimation disabling function
-    aei_manager.reset_and_construct_prelim_plastic_pred(gp, aei_deftensors);
+    aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     EXPECT_TRUE(aei_manager.is_reestimation_possible(gp));  // 0 re-estimations -> true
     aei_manager.disable_further_reestimations();
     EXPECT_FALSE(aei_manager.is_reestimation_possible(gp));  // re-estimations disabled
@@ -962,16 +984,21 @@ namespace
     last_inv_inelastic_defgrad(0, 0) = 1.0;
     last_inv_inelastic_defgrad(1, 1) = 1.0;
     last_inv_inelastic_defgrad(2, 2) = 1.0;
-    ViscoplastUtils::LocalIntegrationDeformationTensors aei_deftensors(
-        defgrad, last_inv_inelastic_defgrad);
+    // setup temperature and previous plastic strain
+    const double temperature = 293.15;
+    const double last_plastic_strain = 0.0;
+
+
+    ViscoplastUtils::LocalIntegrationInput local_integration_input(
+        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
 
 
     // construct preliminary plastic predictor, and verify endpoints
-    aei_manager.reset_and_construct_prelim_plastic_pred(gp, aei_deftensors);
+    aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     aei_manager.set_current_interp_point(
         gp, AEINamespace::CurrentInterpPointPreset::elastic_predictor);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         last_inv_inelastic_defgrad, 1.0e-15);
 
     aei_manager.set_current_interp_point(
@@ -982,13 +1009,13 @@ namespace
     Core::LinAlg::Matrix<3, 3> inv_inelastic_defgrad_plastic_pred_ref{
         Core::LinAlg::Initialization::zero};
     inv_inelastic_defgrad_plastic_pred_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, elastic_defgrad_plastic_pred, 0.0);
+        1.0, local_integration_input.inv_defgrad, elastic_defgrad_plastic_pred, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         inv_inelastic_defgrad_plastic_pred_ref,
         1.0e-15);  // check using the saved current interpolation point
-    FOUR_C_EXPECT_NEAR(
-        aei_manager.get_inverse_inelastic_defgrad_plastic_pred(gp, aei_deftensors.inv_defgrad),
+    FOUR_C_EXPECT_NEAR(aei_manager.get_inverse_inelastic_defgrad_plastic_pred(
+                           gp, local_integration_input.inv_defgrad),
         inv_inelastic_defgrad_plastic_pred_ref,
         1.0e-15);  // check using the dedicated plastic predictor recovery method
 
@@ -1005,7 +1032,7 @@ namespace
     aei_manager.set_current_interp_point(
         gp, AEINamespace::CurrentInterpPointPreset::elastic_predictor);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         last_inv_inelastic_defgrad, 1.0e-15);
 
     aei_manager.set_current_interp_point(
@@ -1015,13 +1042,13 @@ namespace
     elastic_defgrad_plastic_pred(1, 1) = 1.122462048309373;
     elastic_defgrad_plastic_pred(2, 2) = 1.122462048309373;
     inv_inelastic_defgrad_plastic_pred_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, elastic_defgrad_plastic_pred, 0.0);
+        1.0, local_integration_input.inv_defgrad, elastic_defgrad_plastic_pred, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         inv_inelastic_defgrad_plastic_pred_ref,
         1.0e-15);  // check using the saved current interpolation point
-    FOUR_C_EXPECT_NEAR(
-        aei_manager.get_inverse_inelastic_defgrad_plastic_pred(gp, aei_deftensors.inv_defgrad),
+    FOUR_C_EXPECT_NEAR(aei_manager.get_inverse_inelastic_defgrad_plastic_pred(
+                           gp, local_integration_input.inv_defgrad),
         inv_inelastic_defgrad_plastic_pred_ref,
         1.0e-15);  // check using the dedicated plastic predictor recovery method
 
@@ -1040,9 +1067,9 @@ namespace
     interp_elastic_defgrad_ref(1, 1) = 1.0594630943592953;
     interp_elastic_defgrad_ref(2, 2) = 1.0594630943592953;
     interp_inv_inelastic_defgrad_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
+        1.0, local_integration_input.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         interp_inv_inelastic_defgrad_ref,
         1.0e-15);  // check using the saved current interpolation point
 
@@ -1056,9 +1083,9 @@ namespace
     interp_elastic_defgrad_ref(1, 1) = 1.0594630943592953;
     interp_elastic_defgrad_ref(2, 2) = 1.0594630943592953;
     interp_inv_inelastic_defgrad_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
+        1.0, local_integration_input.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         interp_inv_inelastic_defgrad_ref,
         1.0e-15);  // check using the saved current interpolation point
 
@@ -1070,9 +1097,9 @@ namespace
     interp_elastic_defgrad_ref(1, 1) = 1.0116194403019225;
     interp_elastic_defgrad_ref(2, 2) = 1.0116194403019225;
     interp_inv_inelastic_defgrad_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
+        1.0, local_integration_input.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         interp_inv_inelastic_defgrad_ref,
         1.0e-15);  // check using the saved current interpolation point
 
@@ -1085,9 +1112,9 @@ namespace
     interp_elastic_defgrad_ref(1, 1) = 1.0057929410678534;
     interp_elastic_defgrad_ref(2, 2) = 1.0057929410678534;
     interp_inv_inelastic_defgrad_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
+        1.0, local_integration_input.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         interp_inv_inelastic_defgrad_ref,
         1.0e-15);  // check using the saved current interpolation point
 
@@ -1102,9 +1129,9 @@ namespace
     interp_elastic_defgrad_ref(1, 1) = 1.0625273666151527;
     interp_elastic_defgrad_ref(2, 2) = 1.0625273666151527;
     interp_inv_inelastic_defgrad_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
+        1.0, local_integration_input.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         interp_inv_inelastic_defgrad_ref,
         1.0e-15);  // check using the saved current interpolation point
 
@@ -1118,9 +1145,9 @@ namespace
     interp_elastic_defgrad_ref(1, 1) = 1.033771021567608;
     interp_elastic_defgrad_ref(2, 2) = 1.033771021567608;
     interp_inv_inelastic_defgrad_ref.multiply(
-        1.0, aei_deftensors.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
+        1.0, local_integration_input.inv_defgrad, interp_elastic_defgrad_ref, 0.0);
     FOUR_C_EXPECT_NEAR(
-        aei_manager.interpolate_inverse_inelastic_defgrad(gp, aei_deftensors.inv_defgrad),
+        aei_manager.interpolate_inverse_inelastic_defgrad(gp, local_integration_input.inv_defgrad),
         interp_inv_inelastic_defgrad_ref,
         1.0e-15);  // check using the saved current interpolation point
   }
@@ -1146,12 +1173,16 @@ namespace
       last_inv_inelastic_defgrad(0, 0) = 1.0;
       last_inv_inelastic_defgrad(1, 1) = 1.0;
       last_inv_inelastic_defgrad(2, 2) = 1.0;
-      ViscoplastUtils::LocalIntegrationDeformationTensors aei_deftensors(
-          defgrad, last_inv_inelastic_defgrad);
+      // setup temperature and previous plastic strain
+      const double temperature = 293.15;
+      const double last_plastic_strain = 0.0;
+
+      ViscoplastUtils::LocalIntegrationInput local_integration_input(
+          defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
 
       // reset all interpolation points (also sets the starting point) and construct plastic
       // predictor
-      input_aei_manager.reset_and_construct_prelim_plastic_pred(gp, aei_deftensors);
+      input_aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     };
 
     // setup building blocks for the AEI parameters

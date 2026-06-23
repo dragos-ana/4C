@@ -1025,20 +1025,23 @@ namespace Mat
       bool resize_called_{false};
     };
 
-    //! helper struct containing deformation tensors passed as input
-    //! for the local time integration
-    struct LocalIntegrationDeformationTensors
+    //! helper struct containing the relevant input for the local time integration via the Local
+    //! Newton-Raphson
+    struct LocalIntegrationInput
     {
       /*!
        * @brief constructor
        *
        * @param[in] F deformation gradient \f$ \mathbf{F}_{n+1} \f$
+       * @param[in] T absolute temperature \f$ T_{n+1} \f$
        * @param[in] last_iFp previous inverse inelastic/plastic deformation gradient \f$
        \mathbf{F}_{\text{p},n}^{-1} \f$
+       * @param[in] last_epsp previous plastic strain \f$
+       \varepsilon_{\text{p},n} \f$
        *
        */
-      LocalIntegrationDeformationTensors(
-          const Core::LinAlg::Matrix<3, 3>& F, const Core::LinAlg::Matrix<3, 3>& last_iFp);
+      LocalIntegrationInput(const Core::LinAlg::Matrix<3, 3>& F, const double T,
+          const Core::LinAlg::Matrix<3, 3>& last_iFp, const double last_epsp);
 
       //! deformation gradient \f$ \mathbf{F}_{n+1} \f$
       Core::LinAlg::Matrix<3, 3> defgrad;
@@ -1056,6 +1059,12 @@ namespace Mat
       //! elastic deformation gradient within the elastic predictor \f$
       //! \mathbf{F}_{\mathrm{e},n+1}^{(\mathrm{E})} \f$
       Core::LinAlg::Matrix<3, 3> elastic_predictor_elastic_defgrad;
+
+      //! absolute temperature \f$ T_{n+1} \f$
+      double temperature;
+
+      //! accumulated plastic strain at the previous time instant \f$ \varepsilon_{\mathrm{P},n} \f$
+      double last_plastic_strain;
     };
 
     //! namespace containing utilities dedicated to the Adaptive Estimate Interpolation algorithm,
@@ -1517,10 +1526,10 @@ namespace Mat
          * predictor at a given Gauss point
          *
          * @param[in] gp Gauss point index
-         * @param[in] deftensors deformation tensors used for local time integration
+         * @param[in] local_integration_input deformation tensors used for local time integration
          */
         void reset_and_construct_prelim_plastic_pred(
-            const unsigned int gp, const LocalIntegrationDeformationTensors& deftensors);
+            const unsigned int gp, const LocalIntegrationInput& local_integration_input);
 
 
         //! pack method
