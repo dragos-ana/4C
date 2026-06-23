@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "4C_global_data.hpp"
+#include "4C_inelastic_defgrad_factors_test_utils.hpp"
 #include "4C_io_input_parameter_container.templates.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_fixedsizematrix_generators.hpp"
@@ -38,7 +39,6 @@
 #include <optional>
 
 
-
 namespace
 {
   using namespace FourC;
@@ -59,86 +59,6 @@ namespace
     double temperature_sens = 1.03;
   };
 
-  struct AEIParamsConfig
-  {
-    std::optional<bool> use_adaptive_estimate_interpolation;
-    std::optional<AEINamespace::PlasticPredictorConstructionParams> plastic_predictor_construction;
-    std::optional<AEINamespace::EstimateInterpolationParams> estimate_interpolation;
-    std::optional<AEINamespace::HardeningParams> hardening;
-    std::optional<AEINamespace::ReestimationParams> reestimation;
-    std::optional<bool> precondition_elastic_pred;
-    std::optional<double> tol_precondition_elastic_pred;
-  };
-
-  AEINamespace::AEIParams set_up_aei_params(const AEIParamsConfig& cfg)
-  {
-    // setup building blocks for the parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 50,
-        .relative_understress_tol = 1.0e-6,
-        .interval_scanning_param = 0.5,
-    };
-    if (cfg.plastic_predictor_construction.has_value())
-    {
-      ppc_params = cfg.plastic_predictor_construction.value();
-    }
-
-    AEINamespace::EstimateInterpolationParams ei_params{
-        ViscoplastUtils::AdaptiveEstimateInterpolation::EstimateInterpolationParams{
-            .starting_point_type =
-                ViscoplastUtils::AdaptiveEstimateInterpolation::StartingPointType::user_set,
-            .user_set_starting_point = 0.5,
-            .max_iter = 50,
-            .interval_scanning_param = 0.5},
-    };
-    if (cfg.estimate_interpolation.has_value())
-    {
-      ei_params = cfg.estimate_interpolation.value();
-    }
-
-    AEINamespace::HardeningParams hardening_params{
-        ViscoplastUtils::AdaptiveEstimateInterpolation::HardeningParams{
-            .method = AEINamespace::HardeningMethod::integrate_via_evol_eqs,
-            .max_iter_integration = 50,
-            .tol_integration = 1.0e-8,
-        },
-    };
-    if (cfg.hardening.has_value())
-    {
-      hardening_params = cfg.hardening.value();
-    }
-
-    AEINamespace::ReestimationParams reestim_params{
-        ViscoplastUtils::AdaptiveEstimateInterpolation::ReestimationParams{
-            .max_num_reestimations = 50,
-            .interval_scanning_param = 0.5,
-        },
-    };
-    if (cfg.reestimation.has_value())
-    {
-      reestim_params = cfg.reestimation.value();
-    }
-
-
-    AEINamespace::AEIParams aei_params{.use_adaptive_estimate_interpolation =
-                                           cfg.use_adaptive_estimate_interpolation.value_or(false),
-        .precondition_elastic_pred = cfg.precondition_elastic_pred.value_or(true),
-        .tol_precondition_elastic_pred = cfg.tol_precondition_elastic_pred.value_or(1.0e-13),
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params};
-
-
-    return aei_params;
-  }
-
 
   struct ViscoplasticMaterialSetup
   {
@@ -154,7 +74,10 @@ namespace
     };
     bool use_substepping = false;
     unsigned int max_substepping_halve_num = 0;
-    AEINamespace::AEIParams adaptive_estimate_interp_params = set_up_aei_params(AEIParamsConfig{});
+    AEINamespace::AEIParams adaptive_estimate_interp_params =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.use_adaptive_estimate_interpolation =
+                    false});  // no usage of AEI by default in the subsequent tests
     ViscoplastUtils::LinearizationType linearization_type =
         ViscoplastUtils::LinearizationType::analytic;
     std::optional<double> yield_cond_a = 1.0;
@@ -2451,12 +2374,9 @@ namespace
 
 
     // setup adaptive estimate interpolation with hardening integration
-    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast> material_params_aei;
-    AEIParamsConfig cfg_hardening_integration;
-    cfg_hardening_integration.use_adaptive_estimate_interpolation = std::make_optional(true);
-    AEINamespace::AEIParams aei_params_hardening = set_up_aei_params(cfg_hardening_integration);
-
-
+    AEINamespace::AEIParams aei_params_hardening =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.use_adaptive_estimate_interpolation = true});  // default: hardening integration
     auto material_adaptive_estimate_interp =
         set_up_viscoplastic_material({.local_newton_params = local_newton_params,
                                          .use_substepping = false,
@@ -2475,11 +2395,12 @@ namespace
 
 
     // repeat test without hardening integration within the adaptive estimate interpolation
-    std::shared_ptr<Mat::PAR::InelasticDefgradTransvIsotropElastViscoplast>
-        material_params_aei_no_hardening;
-    AEIParamsConfig cfg_fixed_hardening;
-    cfg_hardening_integration.use_adaptive_estimate_interpolation = std::make_optional(true);
-    AEINamespace::AEIParams aei_params_fixed_hardening = set_up_aei_params(cfg_fixed_hardening);
+    AEINamespace::AEIParams aei_params_fixed_hardening =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.use_adaptive_estimate_interpolation = true,
+                .hardening = {.method = AEINamespace::HardeningMethod::use_previous,
+                    .max_iter_integration = 0,
+                    .tol_integration = 0.0}});
 
     auto material_adaptive_estimate_interp_fixed_hardening = set_up_viscoplastic_material(
         {.local_newton_params = local_newton_params,
@@ -2523,8 +2444,7 @@ namespace
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material_adaptive_estimate_interp_fixed_hardening->evaluate_inverse_inelastic_def_grad(
             &FM, iFin_other, iFin_result),
-        Core::Exception,
-        "Local Newton evaluation has failed and there is no evaluation management strategy");
+        Core::Exception, "The re-estimation procedure has failed!");
   }
 
 

@@ -8,11 +8,15 @@
 #include <gtest/gtest.h>
 
 #include "4C_fem_general_largerotations.hpp"
+#include "4C_inelastic_defgrad_factors_test_utils.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_mat_elast_summand.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
 #include "4C_unittest_utils_assertions_test.hpp"
 #include "4C_utils_singleton_owner.hpp"
+
+#include <optional>
+#include <set>
 
 
 namespace
@@ -113,12 +117,16 @@ namespace
 
     const double temperature = 293.15;
     const double last_plastic_strain = 0.0;
-
+    const double timestep = 0.1;
 
 
     // initialize LocalIntegrationInput and perform checks for the saved quantities
-    ViscoplastUtils::LocalIntegrationInput local_integration_input(
-        defgrad, temperature, last_iFin, last_plastic_strain);
+    ViscoplastUtils::LocalIntegrationInput local_integration_input{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_iFin,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
     FOUR_C_EXPECT_NEAR(local_integration_input.defgrad, defgrad, 1.0e-15);
     FOUR_C_EXPECT_NEAR(local_integration_input.inv_defgrad, inv_defgrad_ref, 1.0e-15);
     FOUR_C_EXPECT_NEAR(local_integration_input.right_cg, right_cg_ref, 1.0e-15);
@@ -128,6 +136,7 @@ namespace
         elastic_predictor_inverse_plastic_defgrad_ref, 1.0e-15);
     EXPECT_EQ(local_integration_input.temperature, temperature);
     EXPECT_EQ(local_integration_input.last_plastic_strain, last_plastic_strain);
+    EXPECT_EQ(local_integration_input.timestep, timestep);
   }
 
 
@@ -442,52 +451,19 @@ namespace
     AEINamespace::PredictorInterpolator pred_interpolator{};
     const unsigned int gp = 0;
 
-
-    // setup building blocks for the AEI parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 0,  // no need for realistic values here; we use dummy values subsequently
-        .relative_understress_tol = 0.0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::EstimateInterpolationParams ei_params{
-        .starting_point_type = AEINamespace::StartingPointType::user_set,
-        .user_set_starting_point = 0.0,
-        .max_iter = 0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::HardeningParams hardening_params{
-        .method = AEINamespace::HardeningMethod::use_previous,
-        .max_iter_integration = 0,
-        .tol_integration = 0.0,
-    };
-    AEINamespace::ReestimationParams reestim_params{
-        .max_num_reestimations = 0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::AEIParams aei_params{
-        .use_adaptive_estimate_interpolation = false,
-        .precondition_elastic_pred = false,
-        .tol_precondition_elastic_pred = 0.0,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
+    // setup AEI parameters
+    AEINamespace::AEIParams aei_params =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params();  // dummy parameters work here
 
 
     // auxiliaries
     Core::LinAlg::Matrix<3, 3> unit_3x3{Core::LinAlg::Initialization::zero};
     unit_3x3(0, 0) = unit_3x3(1, 1) = unit_3x3(2, 2) = 1.0;
 
-    // setup temperature and last plastic strain
+    // setup dummy temperature, last plastic strain, and timestep
     const double temperature = 293.15;
     const double last_plastic_strain = 0.0;
+    const double timestep = 0.1;
 
     // setup previous inelastic defgrad: unit tensor
     Core::LinAlg::Matrix<3, 3> last_inv_inelastic_defgrad{unit_3x3};
@@ -557,8 +533,12 @@ namespace
     FOUR_C_EXPECT_NEAR(defgrad, lambda, 1.0e-15);
 
     // check the elastic predictor
-    ViscoplastUtils::LocalIntegrationInput local_integration_input(
-        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    ViscoplastUtils::LocalIntegrationInput local_integration_input{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
     FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
@@ -602,8 +582,12 @@ namespace
     FOUR_C_EXPECT_NEAR(defgrad, ref_defgrad, 1.0e-15);
 
     // check elastic predictor
-    local_integration_input = ViscoplastUtils::LocalIntegrationInput(
-        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    local_integration_input = ViscoplastUtils::LocalIntegrationInput{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
     FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
@@ -639,8 +623,12 @@ namespace
     FOUR_C_EXPECT_NEAR(defgrad, ref_defgrad, 1.0e-15);
 
     // check elastic predictor
-    local_integration_input = ViscoplastUtils::LocalIntegrationInput(
-        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    local_integration_input = ViscoplastUtils::LocalIntegrationInput{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
     FOUR_C_EXPECT_NEAR(local_integration_input.elastic_predictor_elastic_defgrad, defgrad, 1.0e-15);
 
     // construct preliminary plastic predictor
@@ -669,57 +657,12 @@ namespace
     AEINamespace::PredictorInterpolator pred_interpolator{};
     const unsigned int gp = 0;
 
-
-    // setup building blocks for the AEI parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 0,  // no need for realistic values here; we use dummy values subsequently
-        .relative_understress_tol = 0.0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::EstimateInterpolationParams ei_params{
-        .starting_point_type = AEINamespace::StartingPointType::user_set,
-        .user_set_starting_point = 0.0,
-        .max_iter = 0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::HardeningParams hardening_params{
-        .method = AEINamespace::HardeningMethod::use_previous,
-        .max_iter_integration = 0,
-        .tol_integration = 0.0,
-    };
-    AEINamespace::ReestimationParams reestim_params{
-        .max_num_reestimations = 0,
-        .interval_scanning_param = 0.0,
-    };
-
-
     // initialize AEI parameters with and without preconditioning
-    AEINamespace::AEIParams aei_params_no_preconditioning{
-        .use_adaptive_estimate_interpolation = false,
-        .precondition_elastic_pred = false,
-        .tol_precondition_elastic_pred = 0.0,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
-
-    AEINamespace::AEIParams aei_params_preconditioning{
-        .use_adaptive_estimate_interpolation = false,
-        .precondition_elastic_pred = true,
-        .tol_precondition_elastic_pred = 1.0e-8,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
-
+    AEINamespace::AEIParams aei_params_preconditioning =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.precondition_elastic_pred = true, .tol_precondition_elastic_pred = 1.0e-8});
+    AEINamespace::AEIParams aei_params_no_preconditioning =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params({.precondition_elastic_pred = false});
 
 
     // auxiliaries
@@ -733,13 +676,18 @@ namespace
     defgrad(1, 1) = defgrad(2, 2) = 1.0;
     defgrad(0, 1) = defgrad(1, 0) = 1.0e-9;
 
-    // setup temperature and previous plastic strain
+    // setup dummy temperature, last plastic strain, and timestep
     const double temperature = 293.15;
     const double last_plastic_strain = 0.0;
+    const double timestep = 0.1;
 
     // determine the elastic predictor
-    ViscoplastUtils::LocalIntegrationInput local_integration_input(
-        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    auto local_integration_input = ViscoplastUtils::LocalIntegrationInput{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
 
     // construct preliminary plastic predictor and verify interpolated matrix at point 0.0 (=elastic
     // predictor)
@@ -764,42 +712,14 @@ namespace
   /// within the Adaptive Estimate Interpolation
   TEST_F(InelasticDefgradFactorsServiceTest, TestInterpolationPointContainer)
   {
-    // setup building blocks for the AEI parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 0,  // no need for realistic values here; we use dummy values subsequently
-        .relative_understress_tol = 0.0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::EstimateInterpolationParams ei_params{
-        .starting_point_type = AEINamespace::StartingPointType::user_set,
-        .user_set_starting_point = 0.2,
-        .max_iter = 0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::HardeningParams hardening_params{
-        .method = AEINamespace::HardeningMethod::use_previous,
-        .max_iter_integration = 0,
-        .tol_integration = 0.0,
-    };
-    AEINamespace::ReestimationParams reestim_params{
-        .max_num_reestimations = 0,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::AEIParams aei_params{
-        .use_adaptive_estimate_interpolation = false,
-        .precondition_elastic_pred = false,
-        .tol_precondition_elastic_pred = 0.0,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
+    // setup Adaptive Estimate Interpolation parameters
+    AEINamespace::AEIParams aei_params = InelasticDefgradFactorsTestUtils::set_up_aei_params(
+        {.estimate_interpolation = {
+             .starting_point_type = AEINamespace::StartingPointType::user_set,
+             .user_set_starting_point = 0.2,
+             .max_iter = 0,
+             .interval_scanning_param = 0.0,
+         }});
 
     // construct interpolation point container with a single Gauss point
     AEINamespace::InterpolationPointContainer interp_point_container{aei_params};
@@ -837,42 +757,31 @@ namespace
     // consider a single Gauss point
     const unsigned int gp = 0;
 
-    // setup building blocks for the AEI parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 2,
-        .relative_understress_tol = 0.0,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::EstimateInterpolationParams ei_params{
-        .starting_point_type = AEINamespace::StartingPointType::user_set,
-        .user_set_starting_point = 0.5,
-        .max_iter = 2,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::HardeningParams hardening_params{
-        .method = AEINamespace::HardeningMethod::use_previous,
-        .max_iter_integration = 0,
-        .tol_integration = 0.0,
-    };
-    AEINamespace::ReestimationParams reestim_params{
-        .max_num_reestimations = 2,
-        .interval_scanning_param = 0.0,
-    };
-    AEINamespace::AEIParams aei_params{
-        .use_adaptive_estimate_interpolation = true,
-        .precondition_elastic_pred = false,
-        .tol_precondition_elastic_pred = 0.0,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
+    // setup Adaptive Estimate Interpolation parameters
+    AEINamespace::AEIParams aei_params = InelasticDefgradFactorsTestUtils::set_up_aei_params(
+        {.plastic_predictor_construction =
+                {
+                    .elastic_stretch_eigenval_type = AEINamespace::PrelimPlasticPredictor::
+                        ElasticStretchEigenvalType::scale_unit,
+                    .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
+                        ElasticStretchEigenvectType::from_elastic_predictor,
+                    .elastic_rotation_type = AEINamespace::PrelimPlasticPredictor::
+                        ElasticRotationType::from_elastic_predictor,
+                    .max_iter = 2,
+                    .relative_understress_tol = 0.0,
+                    .interval_scanning_param = 0.5,
+                },
+            .estimate_interpolation =
+                {
+                    .starting_point_type = AEINamespace::StartingPointType::user_set,
+                    .user_set_starting_point = 0.5,
+                    .max_iter = 2,
+                    .interval_scanning_param = 0.5,
+                },
+            .reestimation = {
+                .max_num_reestimations = 2,
+                .interval_scanning_param = 0.0,
+            }});
 
     // setup manager
     AEINamespace::AEIManager aei_manager(aei_params);
@@ -886,13 +795,19 @@ namespace
     last_inv_inelastic_defgrad(0, 0) = 1.0;
     last_inv_inelastic_defgrad(1, 1) = 1.0;
     last_inv_inelastic_defgrad(2, 2) = 1.0;
-    // setup temperature and previous plastic strain
+    // setup dummy temperature, last plastic strain and timestep
     const double temperature = 293.15;
     const double last_plastic_strain = 0.0;
+    const double timestep = 0.1;
 
 
-    ViscoplastUtils::LocalIntegrationInput local_integration_input(
-        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    // determine the elastic predictor
+    auto local_integration_input = ViscoplastUtils::LocalIntegrationInput{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
 
     // test bookkeeping for plastic predictor construction
     aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
@@ -934,42 +849,21 @@ namespace
     // consider a single Gauss point
     const unsigned int gp = 0;
 
-    // setup building blocks for the AEI parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 0,
-        .relative_understress_tol = 0.0,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::EstimateInterpolationParams ei_params{
-        .starting_point_type = AEINamespace::StartingPointType::user_set,
-        .user_set_starting_point = 0.1,
-        .max_iter = 0,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::HardeningParams hardening_params{
-        .method = AEINamespace::HardeningMethod::use_previous,
-        .max_iter_integration = 0,
-        .tol_integration = 0.0,
-    };
-    AEINamespace::ReestimationParams reestim_params{
-        .max_num_reestimations = 0,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::AEIParams aei_params{
-        .use_adaptive_estimate_interpolation = true,
-        .precondition_elastic_pred = true,
-        .tol_precondition_elastic_pred = 1.0e-13,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
+
+    // setup Adaptive Estimate Interpolation parameters
+    AEINamespace::AEIParams aei_params = InelasticDefgradFactorsTestUtils::set_up_aei_params(
+        {.estimate_interpolation =
+                {
+                    .starting_point_type = AEINamespace::StartingPointType::user_set,
+                    .user_set_starting_point = 0.1,
+                    .max_iter = 0,
+                    .interval_scanning_param = 0.5,
+                },
+            .reestimation = {
+                .max_num_reestimations = 0,
+                .interval_scanning_param = 0.5,
+            }});
+
 
     // setup manager
     AEINamespace::AEIManager aei_manager(aei_params);
@@ -984,13 +878,18 @@ namespace
     last_inv_inelastic_defgrad(0, 0) = 1.0;
     last_inv_inelastic_defgrad(1, 1) = 1.0;
     last_inv_inelastic_defgrad(2, 2) = 1.0;
-    // setup temperature and previous plastic strain
+    // setup dummy temperature, last plastic strain and timestep
     const double temperature = 293.15;
     const double last_plastic_strain = 0.0;
+    const double timestep = 0.1;
 
 
-    ViscoplastUtils::LocalIntegrationInput local_integration_input(
-        defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+    auto local_integration_input = ViscoplastUtils::LocalIntegrationInput{
+        ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+            .temperature = temperature,
+            .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+            .last_plastic_strain = last_plastic_strain,
+            .timestep = timestep}};
 
 
     // construct preliminary plastic predictor, and verify endpoints
@@ -1173,61 +1072,44 @@ namespace
       last_inv_inelastic_defgrad(0, 0) = 1.0;
       last_inv_inelastic_defgrad(1, 1) = 1.0;
       last_inv_inelastic_defgrad(2, 2) = 1.0;
-      // setup temperature and previous plastic strain
+
+      // setup dummy temperature, last plastic strain and timestep
       const double temperature = 293.15;
       const double last_plastic_strain = 0.0;
+      const double timestep = 0.1;
 
-      ViscoplastUtils::LocalIntegrationInput local_integration_input(
-          defgrad, temperature, last_inv_inelastic_defgrad, last_plastic_strain);
+
+      // determine the elastic predictor
+      auto local_integration_input = ViscoplastUtils::LocalIntegrationInput{
+          ViscoplastUtils::LocalIntegrationInputConfig{.defgrad = defgrad,
+              .temperature = temperature,
+              .last_inv_inelastic_defgrad = last_inv_inelastic_defgrad,
+              .last_plastic_strain = last_plastic_strain,
+              .timestep = timestep}};
+
 
       // reset all interpolation points (also sets the starting point) and construct plastic
       // predictor
       input_aei_manager.reset_and_construct_prelim_plastic_pred(gp, local_integration_input);
     };
 
-    // setup building blocks for the AEI parameters
-    AEINamespace::PlasticPredictorConstructionParams ppc_params{
-        .elastic_stretch_eigenval_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticStretchEigenvalType::scale_unit,
-        .elastic_stretch_eigenvect_type = AEINamespace::PrelimPlasticPredictor::
-            ElasticStretchEigenvectType::from_elastic_predictor,
-        .elastic_rotation_type =
-            AEINamespace::PrelimPlasticPredictor::ElasticRotationType::from_elastic_predictor,
-        .max_iter = 0,
-        .relative_understress_tol = 0.0,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::EstimateInterpolationParams ei_params{
-        .starting_point_type = AEINamespace::StartingPointType::user_set,
-        .user_set_starting_point = 0.1,
-        .max_iter = 0,
-        .interval_scanning_param = 0.5,
-    };
-    AEINamespace::HardeningParams hardening_params{
-        .method = AEINamespace::HardeningMethod::use_previous,
-        .max_iter_integration = 0,
-        .tol_integration = 0.0,
-    };
-    AEINamespace::ReestimationParams reestim_params{
-        .max_num_reestimations = 0,
-        .interval_scanning_param = 0.0,
-    };
 
-    // set adaptive estimate interpolation manager with user-set starting point
-    AEINamespace::AEIParams aei_params_user_set{
-        .use_adaptive_estimate_interpolation = true,
-        .precondition_elastic_pred = false,
-        .tol_precondition_elastic_pred = 0.0,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
+
+    // create AEI manager with set starting point
+    AEINamespace::AEIParams aei_params_user_set =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.estimate_interpolation = {
+                 .starting_point_type = AEINamespace::StartingPointType::user_set,
+                 .user_set_starting_point = 0.1,
+                 .max_iter = 0,
+                 .interval_scanning_param = 0.5,
+             }});
     AEINamespace::AEIManager aei_manager_user_set(aei_params_user_set);
 
     construct_plastic_predictor_and_set_starting_point(aei_manager_user_set);
     EXPECT_EQ(aei_manager_user_set.current_interp_point(gp), 0.1);  // user set starting point
-    // setting up the starting point using the equivalent stress input should not be possible
+    // setting up the starting point using the equivalent stress input should not be
+    // possible
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         aei_manager_user_set.set_starting_point(
             gp, AEINamespace::InputEquivStressStartingPoint{.equiv_stress_solution = 0.0,
@@ -1238,26 +1120,22 @@ namespace
     EXPECT_EQ(aei_manager_user_set.starting_point(gp), 0.1);
 
 
-    // set adaptive estimate interpolation manager with a starting point based on the evolution of
-    // the equivalent stress
-    AEINamespace::EstimateInterpolationParams ei_params_equiv_stress_starting_point = ei_params;
-    ei_params_equiv_stress_starting_point.starting_point_type =
-        AEINamespace::StartingPointType::equiv_stress_history;
-    auto aei_params_equiv_stress_starting_point = AEINamespace::AEIParams{
-        .use_adaptive_estimate_interpolation = true,
-        .precondition_elastic_pred = false,
-        .tol_precondition_elastic_pred = 0.0,
-        .plastic_predictor_construction = ppc_params,
-        .estimate_interpolation = ei_params_equiv_stress_starting_point,
-        .hardening = hardening_params,
-        .reestimation = reestim_params,
-    };
+    // create AEI manager with a starting point based on the evolution of the equivalent stress
+    AEINamespace::AEIParams aei_params_equiv_stress_starting_point =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.estimate_interpolation = {
+                 .starting_point_type = AEINamespace::StartingPointType::equiv_stress_history,
+                 .user_set_starting_point = 0.0,
+                 .max_iter = 0,
+                 .interval_scanning_param = 0.5,
+             }});
+
     AEINamespace::AEIManager aei_manager_equiv_stress_starting_point(
         aei_params_equiv_stress_starting_point);
     construct_plastic_predictor_and_set_starting_point(aei_manager_equiv_stress_starting_point);
     EXPECT_EQ(aei_manager_equiv_stress_starting_point.starting_point(gp),
-        0.5);  // matches the interval scanning parameter, as the interpolation point container is
-               // initialized so
+        0.5);  // matches the interval scanning parameter, as the interpolation point
+               // container is initialized so
     EXPECT_EQ(aei_manager_equiv_stress_starting_point.current_interp_point(gp), 0.5);
     // input must be provided
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
@@ -1265,8 +1143,8 @@ namespace
         Core::Exception,
         "No input has been provided for calculating the interpolation point based on the "
         "equivalent stress!");
-    // set starting point using stress input, and see whether this has also translated to the
-    // current interpolation point
+    // set starting point using stress input, and see whether this has also translated to
+    // the current interpolation point
     aei_manager_equiv_stress_starting_point.set_starting_point(
         gp, AEINamespace::InputEquivStressStartingPoint{.equiv_stress_solution = 2.5,
                 .equiv_stress_elast_pred = 10.0,

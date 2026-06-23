@@ -1863,14 +1863,13 @@ namespace Mat
      * solution of a single substep in the substep loop.
      *
      * @param[in] local_integration_input input for the local time integration
-     * @param[in] dt time step size to use for evaluation
      * @param[out] err_status error status
      * @return solution of the Local Newton Loop
      */
     Core::LinAlg::Matrix<10, 1> local_newton_loop(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
-        const double dt, InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
+        InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
 
 
     /*!
@@ -2014,14 +2013,12 @@ namespace Mat
      *
      * @param[in] err_status error status
      * @param[in] local_integration_input input for the local time integration
-     * @param[in] dt time step / substep size
      * @param[out] eval_action action to be performed subsequently in the Local Newton Loop
      */
     void manage_evaluation(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status,
         const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
-        const double dt,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
 
     /*!
@@ -2100,14 +2097,13 @@ namespace Mat
      * If adaptive estimate interpolation is used, this method also prepares everything for the
      * further re-estimations.
      *
-     * @param[in] dt time step / substep size
      * @param[in] local_integration_input input for the local time integration
      * @param[out] err_status error status after the procedure
      * @return initial estimate containing the inverse inelastic defgrad (components 0 - 8), and
      * the equivalent plastic strain (component 9) for the Local Newton within this time step /
      * substep
      */
-    [[nodiscard]] Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(const double dt,
+    [[nodiscard]] Core::LinAlg::Matrix<10, 1> determine_local_newton_init_estimate(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
@@ -2116,11 +2112,10 @@ namespace Mat
      * @brief Construct the plastic predictor for the Adaptive Estimate Interpolation algorithm,
      via the dedicated manager.
      *
-     * @param[in] dt time step / substep size
      * @param[in] local_integration_input input for the local time integration
      * @param[out] err_status error status after the procedure
      */
-    void construct_plastic_predictor(const double dt,
+    void construct_plastic_predictor(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
@@ -2129,12 +2124,11 @@ namespace Mat
      * @brief Interpolates initial / updated estimates for the Local Newton loop, between the
      * elastic and plastic predictors according to the Adaptive Estimate Interpolation algorithm
      *
-     * @param[in] dt time step / substep size
      * @param[in] local_integration_input input for the local time integration
      * @param[out] err_status error status after the procedure
      * @return initial / updated estimate to be used within the Local Newton
      */
-    Core::LinAlg::Matrix<10, 1> interpolate_estimate(const double dt,
+    Core::LinAlg::Matrix<10, 1> interpolate_estimate(
         const InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
         InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType& err_status);
@@ -2160,14 +2154,13 @@ namespace Mat
      * 2. It exhibits plastic flow, i.e, the resulting stress state resides "above" the yield
      * surface.
      *
-     * @param[in] dt time step / substep size
      * @param[in] local_integration_input input for local time integration
      * @param[in] iFin_candidate estimate candidate: inverse plastic deformation gradient
      * @param[in] plastic_strain_candidate estimate candidate: equivalent plastic strain
      * @return error status; no_errors means that this is a valid estimate for the local Newton
      */
     [[nodiscard]] InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType
-    verify_estimate_candidate(const double dt,
+    verify_estimate_candidate(
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
         const Core::LinAlg::Matrix<3, 3>& iFin_candidate, const double plastic_strain_candidate);
@@ -2177,12 +2170,11 @@ namespace Mat
      * @brief Perform the re-estimation procedure of the Adaptive Estimate Interpolation
      * algorithm, to effectively restart the local Newton loop
      *
-     * @param[in] dt time step / substep size
      * @param[in] local_integration_input input for the local time integration
      * @param[out] eval_action action to be performed subsequently in the Local Newton
      * @return updated estimate for the local Newton
      */
-    Core::LinAlg::Matrix<10, 1> reestimate_to_restart_local_newton(const double dt,
+    Core::LinAlg::Matrix<10, 1> reestimate_to_restart_local_newton(
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);
@@ -2194,12 +2186,11 @@ namespace Mat
      * @note Helper function to be called within the re-estimation procedure of the Adaptive
      * Estimate Interpolation
      *
-     * @param[in] dt time step / substep size
      * @param[in] local_integration_input input for the local time integration
      * @param[out] eval_action action to be performed subsequently in the local Newton
      * @return updated estimate for the local Newton
      */
-    Core::LinAlg::Matrix<10, 1> reinterpolate_with_updated_bounds(const double dt,
+    Core::LinAlg::Matrix<10, 1> reinterpolate_with_updated_bounds(
         const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput&
             local_integration_input,
         InelasticDefgradTransvIsotropElastViscoplastUtils::EvaluationAction& eval_action);

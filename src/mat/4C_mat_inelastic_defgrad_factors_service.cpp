@@ -754,17 +754,19 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonManager:
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInput::
-    LocalIntegrationInput(const Core::LinAlg::Matrix<3, 3>& F, const double T,
-        const Core::LinAlg::Matrix<3, 3>& last_iFp, const double last_epsp)
+    LocalIntegrationInput(
+        const Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalIntegrationInputConfig&
+            cfg)
 {
-  defgrad = F;
+  defgrad = cfg.defgrad;
   inv_defgrad.invert(defgrad);
   right_cg.multiply_tn(1.0, defgrad, defgrad, 0.0);
-  elastic_predictor_inverse_plastic_defgrad = last_iFp;
+  elastic_predictor_inverse_plastic_defgrad = cfg.last_inv_inelastic_defgrad;
   elastic_predictor_elastic_defgrad.multiply(
       1.0, defgrad, elastic_predictor_inverse_plastic_defgrad, 0.0);
-  temperature = T;
-  last_plastic_strain = last_epsp;
+  temperature = cfg.temperature;
+  last_plastic_strain = cfg.last_plastic_strain;
+  timestep = cfg.timestep;
 }
 
 /*--------------------------------------------------------------------*

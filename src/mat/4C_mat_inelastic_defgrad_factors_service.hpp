@@ -12,8 +12,8 @@
 
 #include "4C_comm_utils.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
-#include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_linalg_utils_scalar_interpolation.hpp"
+#include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
@@ -1025,23 +1025,34 @@ namespace Mat
       bool resize_called_{false};
     };
 
+
+    //! configuration struct for LocalIntegrationInput, which stores relevant input for the local
+    //! time integration via the Local Newton--Raphson scheme
+    struct LocalIntegrationInputConfig
+    {
+      //! deformation gradient \f$ \boldsymbol{F}_{n+1} \f$
+      Core::LinAlg::Matrix<3, 3> defgrad;
+
+      //! absolute temperature \f$ T_{n+1} \f$
+      double temperature;
+
+      //! previous inverse inelastic/plastic deformation gradient \f$ \mathbf{F}_{\text{p},n}^{-1}
+      //! \f$
+      Core::LinAlg::Matrix<3, 3> last_inv_inelastic_defgrad;
+
+      //! previous plastic strain \f$ \varepsilon_{\text{p},n} \f$
+      double last_plastic_strain;
+
+      //! timestep / substep size
+      double timestep;
+    };
+
     //! helper struct containing the relevant input for the local time integration via the Local
     //! Newton-Raphson
     struct LocalIntegrationInput
     {
-      /*!
-       * @brief constructor
-       *
-       * @param[in] F deformation gradient \f$ \mathbf{F}_{n+1} \f$
-       * @param[in] T absolute temperature \f$ T_{n+1} \f$
-       * @param[in] last_iFp previous inverse inelastic/plastic deformation gradient \f$
-       \mathbf{F}_{\text{p},n}^{-1} \f$
-       * @param[in] last_epsp previous plastic strain \f$
-       \varepsilon_{\text{p},n} \f$
-       *
-       */
-      LocalIntegrationInput(const Core::LinAlg::Matrix<3, 3>& F, const double T,
-          const Core::LinAlg::Matrix<3, 3>& last_iFp, const double last_epsp);
+      //! constructor based on a given config
+      explicit LocalIntegrationInput(const LocalIntegrationInputConfig& cfg);
 
       //! deformation gradient \f$ \mathbf{F}_{n+1} \f$
       Core::LinAlg::Matrix<3, 3> defgrad;
@@ -1065,6 +1076,9 @@ namespace Mat
 
       //! accumulated plastic strain at the previous time instant \f$ \varepsilon_{\mathrm{P},n} \f$
       double last_plastic_strain;
+
+      //! timestep / substep size
+      double timestep;
     };
 
     //! namespace containing utilities dedicated to the Adaptive Estimate Interpolation algorithm,
