@@ -1890,33 +1890,27 @@ void ScaTra::ScaTraTimIntImpl::collect_runtime_output_data()
   // generate output for simplified growth conditions
   if (has_simplified_growth_conditions_)
   {
-    // convert vector to multi vector
-    auto simplified_growth =
-        Core::LinAlg::MultiVector<double>(*discret_->node_row_map(), nsd_, true);
-    for (int inode = 0; inode < discret_->num_my_row_nodes(); ++inode)
-    {
-      for (int dim = 0; dim < nsd_; ++dim)
-      {
-        simplified_growth.get_vector(dim).get_values()[inode] =
-            simplgrowthnp_->local_values_as_span()[inode * nsd_ + dim];
-      }
-    }
+    auto simplified_growth = discret_->get_state(nds_growth(), "simplified growth");
+    if (simplified_growth == nullptr) FOUR_C_THROW("Cannot get state vector simplified growth");
+
+    // convert dof-based vector into node-based multi-vector for postprocessing
+    auto simplified_growth_multi = Core::IO::convert_dof_vector_to_node_based_multi_vector(
+        *discret_, *simplified_growth, nds_growth(), nsd_);
+
+    std::vector<std::optional<std::string>> context(nsd_, "simplified_growth");
+    visualization_writer_->append_result_data_vector_with_context(
+        *simplified_growth_multi, Core::IO::OutputEntity::node, context);
+  }
 
 
-    // generate output for surface normals
-    if (has_simplified_growth_conditions_)
-    {
-      auto simplified_growth = discret_->get_state(nds_growth(), "simplified growth");
-      if (simplified_growth == nullptr) FOUR_C_THROW("Cannot get state vector simplified growth");
+  // generate output for surface normals
+  {
+    std::vector<std::string> condnames = {"S2IKinetics"};
+    auto nvector = compute_normal_vectors(condnames);
 
-      // convert dof-based vector into node-based multi-vector for postprocessing
-      auto simplified_growth_multi = Core::IO::convert_dof_vector_to_node_based_multi_vector(
-          *discret_, *simplified_growth, nds_growth(), nsd_);
-
-      std::vector<std::optional<std::string>> context(nsd_, "simplified_growth");
-      visualization_writer_->append_result_data_vector_with_context(
-          *simplified_growth_multi, Core::IO::OutputEntity::node, context);
-    }
+    std::vector<std::optional<std::string>> context(nsd_, "normals");
+    visualization_writer_->append_result_data_vector_with_context(
+        *nvector, Core::IO::OutputEntity::node, context);
   }
 }
 
