@@ -1902,11 +1902,21 @@ void ScaTra::ScaTraTimIntImpl::collect_runtime_output_data()
       }
     }
 
-    // output target state vector of discrete scatra-scatra interface
-    // layer thicknesses (simplified growth modeling)
-    std::vector<std::optional<std::string>> simplified_growth_context(nsd_, "simplified_growth");
-    visualization_writer().append_result_data_vector_with_context(
-        simplified_growth, Core::IO::OutputEntity::node, simplified_growth_context);
+
+    // generate output for surface normals
+    if (has_simplified_growth_conditions_)
+    {
+      auto simplified_growth = discret_->get_state(nds_growth(), "simplified growth");
+      if (simplified_growth == nullptr) FOUR_C_THROW("Cannot get state vector simplified growth");
+
+      // convert dof-based vector into node-based multi-vector for postprocessing
+      auto simplified_growth_multi = Core::IO::convert_dof_vector_to_node_based_multi_vector(
+          *discret_, *simplified_growth, nds_growth(), nsd_);
+
+      std::vector<std::optional<std::string>> context(nsd_, "simplified_growth");
+      visualization_writer_->append_result_data_vector_with_context(
+          *simplified_growth_multi, Core::IO::OutputEntity::node, context);
+    }
   }
 }
 
@@ -1968,9 +1978,12 @@ void ScaTra::ScaTraTimIntImpl::set_initial_field(
         if (lstsolver == (-1))
         {
           FOUR_C_THROW(
-              "no linear solver defined for least square NURBS problem. Please set LINEAR_SOLVER "
-              "in SCALAR TRANSPORT DYNAMIC to a valid number! Note: this solver block is misused "
-              "for the least square problem. Maybe one should add a separate parameter for this.");
+              "no linear solver defined for least square NURBS problem. Please set "
+              "LINEAR_SOLVER "
+              "in SCALAR TRANSPORT DYNAMIC to a valid number! Note: this solver block is "
+              "misused "
+              "for the least square problem. Maybe one should add a separate parameter for "
+              "this.");
         }
 
         Core::FE::Nurbs::apply_nurbs_initial_condition(*discret_,
@@ -2658,12 +2671,13 @@ void ScaTra::ScaTraTimIntImpl::apply_neumann_bc(
   // specific parameters
   add_problem_specific_parameters_and_vectors(condparams);
 
-  // set time for evaluation of point Neumann conditions as parameter depending on time integration
-  // scheme line/surface/volume Neumann conditions use the time stored in the time parameter class
+  // set time for evaluation of point Neumann conditions as parameter depending on time
+  // integration scheme line/surface/volume Neumann conditions use the time stored in the time
+  // parameter class
   set_time_for_neumann_evaluation(condparams);
 
-  // evaluate Neumann boundary conditions at time t_{n+alpha_F} (generalized alpha) or time t_{n+1}
-  // (otherwise)
+  // evaluate Neumann boundary conditions at time t_{n+alpha_F} (generalized alpha) or time
+  // t_{n+1} (otherwise)
   discret_->evaluate_neumann(condparams, *neumann_loads);
 }
 
@@ -2840,6 +2854,8 @@ void ScaTra::ScaTraTimIntImpl::assemble_mat_and_rhs()
 
   // evaluate solution-depending boundary and interface conditions
   evaluate_solution_depending_conditions(sysmat_, residual_);
+  if (has_simplified_growth_conditions_)
+    discret_->set_state(nds_growth(), "simplified growth", *simplgrowthnp_);
 
   // finalize assembly of system matrix
   sysmat_->complete();
@@ -3020,11 +3036,13 @@ void ScaTra::ScaTraTimIntImpl::nonlinear_solve()
 
       solver_->reset_tolerance();
 
-      // end time measurement for solver and take average over all processors via communication
+      // end time measurement for solver and take average over all processors via
+      // communication
       double mydtsolve = Teuchos::Time::wallTime() - tcpusolve;
       dtsolve_ = Core::Communication::max_all(mydtsolve, discret_->get_comm());
 
-      // output performance statistics associated with linear solver into text file if applicable
+      // output performance statistics associated with linear solver into text file if
+      // applicable
       if (params_->get<bool>("OUTPUTLINSOLVERSTATS"))
         output_lin_solver_stats(strategy_->solver(), dtsolve_, step(), iternum_,
             strategy_->dof_row_map().num_global_elements());
@@ -3074,8 +3092,8 @@ void ScaTra::ScaTraTimIntImpl::nonlinear_multi_scale_solve()
       // backup macro-scale state vector
       const std::shared_ptr<Core::LinAlg::Vector<double>> phinp = phinp_;
 
-      // replace macro-scale state vector by relaxed macro-scale state vector as input for micro
-      // scale
+      // replace macro-scale state vector by relaxed macro-scale state vector as input for
+      // micro scale
       phinp_ = phinp_relaxed;
 
       // solve micro-scale problems
@@ -3107,7 +3125,8 @@ void ScaTra::ScaTraTimIntImpl::nonlinear_multi_scale_solve()
     if (solvtype_ == ScaTra::solvertype_nonlinear_multiscale_macrotomicro_aitken or
         solvtype_ == ScaTra::solvertype_nonlinear_multiscale_macrotomicro_aitken_dofsplit)
     {
-      // compute difference between current and previous increments of macro-scale state vector
+      // compute difference between current and previous increments of macro-scale state
+      // vector
       Core::LinAlg::Vector<double> phinp_inc_diff(*phinp_inc_);
       phinp_inc_diff.update(-1., *phinp_inc_old_, 1.);
 
@@ -3413,8 +3432,8 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               // compute and store micro-scale coupling flux
               q_ = (*permeabilities)[0] * (phinp_->local_values_as_span()[lid] - phinp_macro_[0]);
 
-              // compute and store derivative of micro-scale coupling flux w.r.t. macro-scale state
-              // variable
+              // compute and store derivative of micro-scale coupling flux w.r.t. macro-scale
+              // state variable
               dq_dphi_[0] = -(*permeabilities)[0];
 
               // assemble contribution from macro-micro coupling into global residual vector
@@ -3461,7 +3480,8 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               }
               if (stoichiometries->size() != 1)
                 FOUR_C_THROW(
-                    "Number of stoichiometric coefficients does not match number of scalars!");
+                    "Number of stoichiometric coefficients does not match number of "
+                    "scalars!");
               if ((*stoichiometries)[0] != -1) FOUR_C_THROW("Invalid stoichiometric coefficient!");
               const double faraday =
                   Global::Problem::instance(0)->elch_control_params().get<double>(
@@ -3485,10 +3505,11 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               const double cmax = matelectrode->c_max();
               if (cmax < 1.e-12)
                 FOUR_C_THROW(
-                    "Saturation value c_max of intercalated lithium concentration is too small!");
+                    "Saturation value c_max of intercalated lithium concentration is too "
+                    "small!");
 
-              // extract electrode-side and electrolyte-side concentration values at multi-scale
-              // coupling point
+              // extract electrode-side and electrolyte-side concentration values at
+              // multi-scale coupling point
               const double conc_ed = phinp_->local_values_as_span()[lid];
               const double conc_el = phinp_macro_[0];
 
@@ -3507,8 +3528,8 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               // no deformation available
               const double dummy_detF(1.0);
 
-              // equilibrium electric potential difference and its derivative w.r.t. concentration
-              // at electrode surface
+              // equilibrium electric potential difference and its derivative w.r.t.
+              // concentration at electrode surface
               const double epd =
                   matelectrode->compute_open_circuit_potential(conc_ed, faraday, frt, dummy_detF);
               const double epdderiv =
@@ -3548,7 +3569,8 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               // assemble contribution from macro-micro coupling into global residual vector
               (*residual_).get_values()[lid] -= timefacrhsfac * q_;
 
-              // assemble contribution from macro-micro coupling into micro global system matrix
+              // assemble contribution from macro-micro coupling into micro global system
+              // matrix
               sysmat_->assemble(timefacfac * dj_dc_ed, gid, gid);
 
               break;
@@ -3606,12 +3628,12 @@ void ScaTra::ScaTraTimIntImpl::setup_matrix_block_maps()
     std::vector<std::shared_ptr<const Core::LinAlg::Map>> node_block_maps;
     build_block_maps(partitioningconditions, dof_block_maps, node_block_maps);
 
-    // initialize a full map extractor associated with the degrees of freedom inside the blocks of
-    // global system matrix
+    // initialize a full map extractor associated with the degrees of freedom inside the
+    // blocks of global system matrix
     dof_block_maps_ = std::make_shared<Core::LinAlg::MultiMapExtractor>(
         *(discret_->dof_row_map()), dof_block_maps);
-    // initialize a full map extractor associated with the nodes inside the blocks of global system
-    // matrix
+    // initialize a full map extractor associated with the nodes inside the blocks of global
+    // system matrix
     node_block_maps_ = std::make_shared<Core::LinAlg::MultiMapExtractor>(
         *discret_->node_row_map(), node_block_maps);
 
@@ -3673,8 +3695,8 @@ void ScaTra::ScaTraTimIntImpl::post_setup_matrix_block_maps() const
   // now build the null spaces
   build_block_null_spaces(*solver(), 0);
 
-  // in case of an extended solver for scatra-scatra interface meshtying including interface growth
-  // we need to equip it with the null space information generated above
+  // in case of an extended solver for scatra-scatra interface meshtying including interface
+  // growth we need to equip it with the null space information generated above
   if (s2i_meshtying()) strategy_->equip_extended_solver_with_null_space_info();
 }
 
@@ -3699,8 +3721,8 @@ void ScaTra::ScaTraTimIntImpl::build_block_null_spaces(
       block_smoother_parameters.sublist("Belos Parameters");
       block_smoother_parameters.sublist("MueLu Parameters");
 
-      // equip smoother for the current matrix block with null space associated with all degrees of
-      // freedom on discretization
+      // equip smoother for the current matrix block with null space associated with all
+      // degrees of freedom on discretization
       Core::FE::compute_null_space_if_necessary(*discret_, block_smoother_parameters);
     }
     // Implementation for Teko and MueLu
@@ -3727,7 +3749,8 @@ void ScaTra::ScaTraTimIntImpl::build_block_null_spaces(
           *discret_, block_smoother_parameters);
     }
 
-    // reduce full null space to match degrees of freedom associated with the current matrix block
+    // reduce full null space to match degrees of freedom associated with the current matrix
+    // block
     Core::LinearSolver::Parameters::fix_null_space("Block " + std::to_string(block_id),
         *discret_->dof_row_map(), *dof_block_maps()->map(iblock - init_block_number),
         block_smoother_parameters);
@@ -3765,8 +3788,8 @@ void ScaTra::ScaTraTimIntImpl::setup_matrix_block_maps_and_meshtying()
       // setup the meshtying
       strategy_->setup_meshtying();
 
-      // do some post-setup matrix block map operations after the call to setup_meshtying, as they
-      // rely on the fact that the interface maps have already been built
+      // do some post-setup matrix block map operations after the call to setup_meshtying, as
+      // they rely on the fact that the interface maps have already been built
       post_setup_matrix_block_maps();
 
       break;
@@ -3808,7 +3831,8 @@ std::shared_ptr<Core::LinAlg::SparseOperator> ScaTra::ScaTraTimIntImpl::init_sys
     default:
     {
       FOUR_C_THROW(
-          "Type of global system matrix for scatra-scatra interface coupling not recognized!");
+          "Type of global system matrix for scatra-scatra interface coupling not "
+          "recognized!");
     }
   }
 
@@ -3893,8 +3917,8 @@ void ScaTra::ScaTraTimIntImpl::calc_mean_micro_concentration()
   // nodes with 2 dofs
   std::set<int> other_nodes;
 
-  // loop over all element and search for nodes that are on elements with 2 dof on one side and 3
-  // dofs at the other side
+  // loop over all element and search for nodes that are on elements with 2 dof on one side
+  // and 3 dofs at the other side
   for (int ele_lid = 0; ele_lid < discretization()->element_row_map()->num_my_elements(); ++ele_lid)
   {
     const int ele_gid = discretization()->element_row_map()->gid(ele_lid);

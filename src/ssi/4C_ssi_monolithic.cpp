@@ -1189,9 +1189,8 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
   // node-based mapping of growth -> displacement if simplified growth conditions are used
   if (has_simplified_growth_conditions)
   {
-    // store displacement dofset map
+    // store displacement dofset map and get displacement dofset index
     const Core::LinAlg::Map& dispnp_map = structure_field()->dispnp()->get_map();
-    // consistency check: does the dofset map match the dof row map?
     int k_struct = -1;
     for (int k = 0; k < structure_field()->discretization()->num_dof_sets(); ++k)
     {
@@ -1201,9 +1200,8 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
         break;
       }
     }
-    FOUR_C_ASSERT(
+    FOUR_C_ASSERT_ALWAYS(
         k_struct >= 0, "[SSI] Could not determine dofset number of structural displacements!");
-
 
     // store scatra dofset number
     const Core::LinAlg::Vector<double>& simplgrowthnp_vec = scatra_field()->get_simplgrowthnp();
@@ -1229,7 +1227,7 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
     Core::LinAlg::Vector<double> growth_on_struct(dispnp_map);
     growth_on_struct.put_scalar(0.0);
 
-    // loop over nodes and add transfer growth dofs to scatra
+    // loop over nodes and transfer growth dofs to structure
     for (const int& node_gid : scatra_row_nodes)
     {
       // get scatra and structure nodes (SHOULD MATCH! -> MATCHING VOLUMES required!)
