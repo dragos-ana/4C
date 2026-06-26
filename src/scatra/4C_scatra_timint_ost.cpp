@@ -13,6 +13,7 @@
 #include "4C_io.hpp"
 #include "4C_scatra_ele_action.hpp"
 #include "4C_scatra_ele_parameter_timint.hpp"
+#include "4C_scatra_timint_implicit.hpp"
 #include "4C_scatra_timint_meshtying_strategy_base.hpp"
 #include "4C_scatra_turbulence_hit_scalar_forcing.hpp"
 #include "4C_utils_parameter_list.hpp"
@@ -399,7 +400,10 @@ void ScaTra::TimIntOneStepTheta::pre_calc_initial_time_derivative()
 /*----------------------------------------------------------------------*
  *----------------------------------------------------------------------*/
 void ScaTra::TimIntOneStepTheta::post_calc_initial_time_derivative()
-{  // and finally undo our temporary settings
+{
+  ScaTraTimIntImpl::post_calc_initial_time_derivative();
+
+  // and finally undo our temporary settings
   set_element_general_parameters(false);
   set_element_time_parameter(false);
   set_element_turbulence_parameters(false);

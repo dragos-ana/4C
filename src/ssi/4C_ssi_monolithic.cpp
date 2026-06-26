@@ -15,6 +15,7 @@
 #include "4C_fem_discretization_nullspace.hpp"
 #include "4C_fem_general_assemblestrategy.hpp"
 #include "4C_global_data.hpp"
+#include "4C_global_legacy_module_problem_type.hpp"
 #include "4C_io_control.hpp"
 #include "4C_linalg_equilibrate.hpp"
 #include "4C_linalg_mapextractor.hpp"
@@ -23,6 +24,7 @@
 #include "4C_linalg_utils_sparse_algebra_io.hpp"
 #include "4C_linalg_utils_sparse_algebra_manipulation.hpp"
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_linear_solver_method_linalg.hpp"
 #include "4C_linear_solver_method_parameters.hpp"
 #include "4C_scatra_ele_action.hpp"
@@ -44,10 +46,61 @@
 
 #include <Teuchos_TimeMonitor.hpp>
 
+#include <array>
 #include <iostream>
 #include <type_traits>
 
 FOUR_C_NAMESPACE_OPEN
+
+
+namespace
+{
+  // DEBUG
+  void debug_ale(const SSI::SsiMono& ssi)
+  {
+    constexpr int debug_node_gid = 1254;
+
+    const Core::LinAlg::Vector<double>& simplgrowthnp_vec = ssi.scatra_field()->get_simplgrowthnp();
+    const Core::LinAlg::Map& simplgrowthnp_map = simplgrowthnp_vec.get_map();
+    // const Core::LinAlg::Map& dispnp_map = structure_field()->dispnp()->get_map();
+    const Core::LinAlg::Vector<double>& ale_disp_vec =
+        *ssi.scatra_field()->discretization()->get_state(ssi.scatra_field()->nds_disp(), "dispnp");
+
+    if (ssi.scatra_field()->discretization()->have_global_node(debug_node_gid))
+    {
+      const int debug_node_lid =
+          ssi.scatra_field()->discretization()->node_row_map()->lid(debug_node_gid);
+      if (debug_node_lid >= 0)
+      {
+        const Core::Nodes::Node* node_scatra =
+            ssi.scatra_field()->discretization()->l_row_node(debug_node_lid);
+        const Core::Nodes::Node* node_struct =
+            ssi.structure_field()->discretization()->l_row_node(debug_node_lid);
+        // loop over spatial dimensions
+        std::array<double, 3> growth;
+        std::array<double, 3> ale_disp;
+        for (unsigned int ndim = 0; ndim < ssi.structure_field()->discretization()->n_dim(); ++ndim)
+        {
+          const int dof_gid_growth = ssi.scatra_field()->discretization()->dof(
+              ssi.scatra_field()->nds_growth(), node_scatra, static_cast<int>(ndim));
+          const int dof_lid_growth = simplgrowthnp_map.lid(dof_gid_growth);
+          growth[ndim] = simplgrowthnp_vec.local_values_as_span()[dof_lid_growth];
+
+          const int dof_gid_struct =
+              ssi.structure_field()->discretization()->dof(0, node_struct, static_cast<int>(ndim));
+          const int dof_lid_struct = ale_disp_vec.get_map().lid(dof_gid_struct);
+          ale_disp[ndim] = ale_disp_vec.local_values_as_span()[dof_lid_struct];
+        }
+
+        std::cout << std::format("\n growth: {}, {}, {} \n ale_disp: {}, {}, {} \n", growth[0],
+            growth[1], growth[2], ale_disp[0], ale_disp[1], ale_disp[2]);
+      }
+    };
+  }
+
+
+
+}  // namespace
 
 /*--------------------------------------------------------------------------*
  *--------------------------------------------------------------------------*/
@@ -354,6 +407,9 @@ void SSI::SsiMono::evaluate_subproblems()
   // build system matrix and residual for scalar transport field
   evaluate_scatra();
 
+  // apply simplified growth as ALE displacement (to be removed after full implementation)
+  if (scatra_field()->has_simplified_growth_conditions()) apply_simplified_growth_as_ale_disp();
+
   // build system matrix and residual for scalar transport field on manifold
   if (is_scatra_manifold()) evaluate_scatra_manifold();
 
@@ -603,8 +659,16 @@ void SSI::SsiMono::prepare_time_loop()
   // calculate initial potential field if needed
   if (do_calculate_initial_potential_field()) calc_initial_potential_field();
 
+  // DEBUG
+  std::cout << "SSI::SsiMono::prepare_time_loop() -> after calc_initial_potential_field: \n";
+  debug_ale(*this);
+
   // calculate initial time derivatives
   calc_initial_time_derivative();
+
+  // DEBUG
+  std::cout << "SSI::SsiMono::prepare_time_loop() -> after calc_initial_time_derivative: \n";
+  debug_ale(*this);
 
   scatra_field()->prepare_time_loop();
   if (is_scatra_manifold()) scatra_manifold()->prepare_time_loop();
@@ -844,6 +908,7 @@ void SSI::SsiMono::newton_loop()
   // reset counter for Newton-Raphson iteration
   reset_iteration_count();
 
+
   // start Newton-Raphson iteration
   while (true)
   {
@@ -858,28 +923,63 @@ void SSI::SsiMono::newton_loop()
     // set solution from last Newton step to all fields
     distribute_solution_all_fields();
 
+    // DEBUG
+    std::cout << "After distributing all solutions: \n";
+    debug_ale(*this);
+
     // evaluate sub problems and get all matrices and right-hand-sides
     evaluate_subproblems();
+
+    // DEBUG
+    std::cout << "After evaluate_subproblems: \n";
+    debug_ale(*this);
+
+
 
     // complete the sub problem matrices
     complete_subproblem_matrices();
 
+    // DEBUG
+    std::cout << "After complete_subproblem_matrices: \n";
+    debug_ale(*this);
+
+
     // assemble global system of equations
     assemble_mat_and_rhs();
+
+    // DEBUG
+    std::cout << "After assemble_mat_and_rhs: \n";
+    debug_ale(*this);
+
 
     // apply the Dirichlet boundary conditions to global system
     apply_dbc_to_system();
 
+    // DEBUG
+    std::cout << "After apply_dbc_to_system: \n";
+    debug_ale(*this);
+
     // time needed for evaluating elements and assembling global system of equations
     double my_evaluation_time = timer_->wallTime() - time_before_evaluate;
     dt_eval_ = Core::Communication::max_all(my_evaluation_time, get_comm());
+
+    // DEBUG
+    std::cout << "After getting dt_eval_: \n";
+    debug_ale(*this);
 
     // safety check
     if (!ssi_matrices_->system_matrix()->filled())
       FOUR_C_THROW("Complete() has not been called on global system matrix yet!");
 
     // check termination criterion for Newton-Raphson iteration
-    if (strategy_convcheck_->exit_newton_raphson(*this)) break;
+    if (strategy_convcheck_->exit_newton_raphson(*this))
+    {
+      // DEBUG
+      std::cout << "About to exit Newton: \n";
+      debug_ale(*this);
+
+      break;
+    }
 
     // clear the global increment vector
     ssi_vectors_->clear_increment();
@@ -888,6 +988,11 @@ void SSI::SsiMono::newton_loop()
     const double time_before_solving = timer_->wallTime();
 
     solve_linear_system(*solver_);
+
+
+    // DEBUG
+    std::cout << "After solving the linear system: \n";
+    debug_ale(*this);
 
     // time needed for solving global system of equations
     double my_solve_time = timer_->wallTime() - time_before_solving;
@@ -901,8 +1006,36 @@ void SSI::SsiMono::newton_loop()
 
     // update states for next Newton iteration
     update_iter_scatra();
+
+    // DEBUG
+    std::cout << "After updating iter scatra: \n";
+    debug_ale(*this);
+
+
     update_iter_structure();
+
+    // DEBUG
+    std::cout << "After updating iter structure: \n";
+    debug_ale(*this);
+
+
+
+    // reapply simplified growth as ALE displacement (to be removed after full implementation)
+    if (scatra_field()->has_simplified_growth_conditions()) apply_simplified_growth_as_ale_disp();
+
+
+
+    // DEBUG
+    std::cout << "After the final updates: \n";
+    debug_ale(*this);
+    std::cout << std::string(50, '-') << std::endl;
   }
+
+
+
+  // DEBUG
+  std::cout << "AFTER NEWTON LOOP: \n";
+  debug_ale(*this);
 }
 
 /*--------------------------------------------------------------------------*
@@ -950,12 +1083,26 @@ void SSI::SsiMono::timeloop()
  *--------------------------------------------------------------------------------------*/
 void SSI::SsiMono::update()
 {
+  // DEBUG
+  std::cout << "BEFORE UPDATE: \n";
+  debug_ale(*this);
+
   // update scalar transport field
   scatra_field()->update();
   if (is_scatra_manifold()) scatra_manifold()->update();
 
+  // DEBUG
+  std::cout << "UPDATE: scatra: \n";
+  debug_ale(*this);
+
+
+
   // update structure field
   structure_field()->update();
+
+  // DEBUG
+  std::cout << "UPDATE: structure: \n";
+  debug_ale(*this);
 }
 
 /*--------------------------------------------------------------------------------------*
@@ -1137,8 +1284,19 @@ void SSI::SsiMono::evaluate_scatra_manifold() const
  *--------------------------------------------------------------------------------------*/
 void SSI::SsiMono::prepare_output()
 {
+  // DEBUG
+  std::cout << "BEFORE PREPARE OUTPUT: \n";
+  debug_ale(*this);
+
+
   constexpr bool force_prepare = false;
   structure_field()->prepare_output(force_prepare);
+
+  // DEBUG
+  std::cout << "PREPARE OUTPUT: structure \n";
+  debug_ale(*this);
+
+
 
   // prepare output of coupling sctra manifold - scatra
   if (is_scatra_manifold() and manifoldscatraflux_->do_output())
@@ -1146,6 +1304,10 @@ void SSI::SsiMono::prepare_output()
     distribute_solution_all_fields();
     manifoldscatraflux_->evaluate_scatra_manifold_inflow();
   }
+
+  // DEBUG
+  std::cout << "PREPARE OUTPUT: manifold \n";
+  debug_ale(*this);
 }
 
 /*--------------------------------------------------------------------------------------*
@@ -1173,103 +1335,12 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
     structure_field()->set_state(structure_field()->write_access_dispnp());
   }
 
-  // verify whether there are simplified growth conditions
-  bool has_simplified_growth_conditions = false;
-  std::vector<const Core::Conditions::Condition*> conds;
-  scatra_field()->discretization()->get_condition("S2IKinetics", conds);
-  for (const auto* cond : conds)
+
+  // node-based mapping of simplified growth -> ALE displacement if simplified growth conditions are
+  // used
+  if (scatra_field()->has_simplified_growth_conditions())
   {
-    if (cond->parameters().get_or<bool>("MODEL_SIMPLIFIED_GROWTH", false))
-    {
-      has_simplified_growth_conditions = true;
-      break;
-    }
-  }
-
-  // node-based mapping of growth -> displacement if simplified growth conditions are used
-  if (has_simplified_growth_conditions)
-  {
-    // store displacement dofset map and get displacement dofset index
-    const Core::LinAlg::Map& dispnp_map = structure_field()->dispnp()->get_map();
-    int k_struct = -1;
-    for (int k = 0; k < structure_field()->discretization()->num_dof_sets(); ++k)
-    {
-      if (dispnp_map.same_as(*(structure_field()->discretization()->dof_row_map(k))))
-      {
-        k_struct = k;
-        break;
-      }
-    }
-    FOUR_C_ASSERT_ALWAYS(
-        k_struct >= 0, "[SSI] Could not determine dofset number of structural displacements!");
-
-    // store scatra dofset number
-    const Core::LinAlg::Vector<double>& simplgrowthnp_vec = scatra_field()->get_simplgrowthnp();
-    const Core::LinAlg::Map& simplgrowthnp_map = simplgrowthnp_vec.get_map();
-    // consistency check: does the dofset map match the dof row map?
-    int k_growth = -1;
-    for (int k = 0; k < scatra_field()->discretization()->num_dof_sets(); ++k)
-    {
-      if (simplgrowthnp_map.same_as(*scatra_field()->discretization()->dof_row_map(k)))
-      {
-        k_growth = k;
-        break;
-      }
-    }
-    FOUR_C_ASSERT(k_growth >= 0, "[SSI] Could not determine dofset number of simplified growth");
-
-    // get node row map and node gids
-    const auto& scatra_node_row_map = *scatra_field()->discretization()->node_row_map();
-    const std::span<const int> scatra_row_nodes(
-        scatra_node_row_map.my_global_elements(), scatra_node_row_map.num_my_elements());
-
-    // conversion of simplified growth into structure map
-    Core::LinAlg::Vector<double> growth_on_struct(dispnp_map);
-    growth_on_struct.put_scalar(0.0);
-
-    // loop over nodes and transfer growth dofs to structure
-    for (const int& node_gid : scatra_row_nodes)
-    {
-      // get scatra and structure nodes (SHOULD MATCH! -> MATCHING VOLUMES required!)
-      const Core::Nodes::Node* node_scatra = scatra_field()->discretization()->g_node(node_gid);
-      const Core::Nodes::Node* node_struct = structure_field()->discretization()->g_node(node_gid);
-
-      // loop over spatial dimensions
-      for (unsigned int ndim = 0; ndim < structure_field()->discretization()->n_dim(); ++ndim)
-      {
-        const int dof_gid_growth =
-            scatra_field()->discretization()->dof(k_growth, node_scatra, static_cast<int>(ndim));
-        const int dof_lid_growth = simplgrowthnp_map.lid(dof_gid_growth);
-
-        const int dof_gid_struct =
-            structure_field()->discretization()->dof(k_struct, node_struct, static_cast<int>(ndim));
-        const int dof_lid_struct = dispnp_map.lid(dof_gid_struct);
-
-        // update growth dofs on structural map
-        if (dof_lid_growth >= 0)
-        {
-          growth_on_struct.get_values()[dof_lid_struct] =
-              scatra_field()->get_simplgrowthnp().local_values_as_span()[dof_lid_growth];
-        }
-      }
-    }
-
-    // DEBUG
-    // std::cout << "dispnp_map: k = " << k_struct << std::endl;
-    // dispnp_map.print(std::cout);
-    // std::cout << "simplgrowthnp_map: k = " << k_growth << std::endl;
-    // simplgrowthnp_map.print(std::cout);
-    // std::cout << "scatra_node_row_map: " << std::endl;
-    // scatra_node_row_map.print(std::cout);
-    // std::cout << "simplgrowthnp: " << std::endl;
-    // simplgrowthnp_vec.print(std::cout);
-    // std::cout << "growth_on_struct: " << std::endl;
-    // growth_on_struct.print(std::cout);
-
-
-    // distribute states to other fields
-    set_struct_solution(
-        growth_on_struct, structure_field()->velnp(), is_s2i_kinetics_with_pseudo_contact());
+    apply_simplified_growth_as_ale_disp();
   }
   else
   {
@@ -1279,6 +1350,84 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
   set_scatra_solution(scatra_field()->phinp());
   if (is_scatra_manifold()) set_scatra_manifold_solution(*scatra_manifold()->phinp());
 }
+
+/*--------------------------------------------------------------------------------------*
+ *--------------------------------------------------------------------------------------*/
+void SSI::SsiMono::apply_simplified_growth_as_ale_disp()
+{
+  // store displacement dofset map and get displacement dofset index
+  const Core::LinAlg::Map& dispnp_map = structure_field()->dispnp()->get_map();
+  int k_struct = -1;
+  for (int k = 0; k < structure_field()->discretization()->num_dof_sets(); ++k)
+  {
+    if (dispnp_map.same_as(*(structure_field()->discretization()->dof_row_map(k))))
+    {
+      k_struct = k;
+      break;
+    }
+  }
+
+  FOUR_C_ASSERT_ALWAYS(
+      k_struct >= 0, "[SSI] Could not determine dofset number of structural displacements!");
+
+  // store scatra dofset number
+  const Core::LinAlg::Vector<double>& simplgrowthnp_vec = scatra_field()->get_simplgrowthnp();
+  const Core::LinAlg::Map& simplgrowthnp_map = simplgrowthnp_vec.get_map();
+  // consistency check: does the dofset map match the dof row map?
+  int k_growth = -1;
+  for (int k = 0; k < scatra_field()->discretization()->num_dof_sets(); ++k)
+  {
+    if (simplgrowthnp_map.same_as(*scatra_field()->discretization()->dof_row_map(k)))
+    {
+      k_growth = k;
+      break;
+    }
+  }
+  FOUR_C_ASSERT(k_growth >= 0, "[SSI] Could not determine dofset number of simplified growth");
+
+  // get node row map and node gids
+  const auto& scatra_node_row_map = *scatra_field()->discretization()->node_row_map();
+  const std::span<const int> scatra_row_nodes(
+      scatra_node_row_map.my_global_elements(), scatra_node_row_map.num_my_elements());
+
+  // conversion of simplified growth into structure map
+  Core::LinAlg::Vector<double> growth_on_struct(dispnp_map);
+  growth_on_struct.put_scalar(0.0);
+
+
+  // loop over nodes and transfer growth dofs to structure
+  for (const int& node_gid : scatra_row_nodes)
+  {
+    // get scatra and structure nodes (SHOULD MATCH! -> MATCHING VOLUMES required!)
+    const Core::Nodes::Node* node_scatra = scatra_field()->discretization()->g_node(node_gid);
+    const Core::Nodes::Node* node_struct = structure_field()->discretization()->g_node(node_gid);
+
+    // loop over spatial dimensions
+    for (unsigned int ndim = 0; ndim < structure_field()->discretization()->n_dim(); ++ndim)
+    {
+      const int dof_gid_growth =
+          scatra_field()->discretization()->dof(k_growth, node_scatra, static_cast<int>(ndim));
+      const int dof_lid_growth = simplgrowthnp_map.lid(dof_gid_growth);
+
+      const int dof_gid_struct =
+          structure_field()->discretization()->dof(k_struct, node_struct, static_cast<int>(ndim));
+      const int dof_lid_struct = dispnp_map.lid(dof_gid_struct);
+
+
+
+      // update growth dofs on structural map
+      if (dof_lid_growth >= 0)
+      {
+        growth_on_struct.get_values()[dof_lid_struct] =
+            scatra_field()->get_simplgrowthnp().local_values_as_span()[dof_lid_growth];
+      }
+    }
+  }
+  // distribute states to other fields
+  set_struct_solution(
+      growth_on_struct, structure_field()->velnp(), is_s2i_kinetics_with_pseudo_contact());
+}
+
 
 /*--------------------------------------------------------------------------------------*
  *--------------------------------------------------------------------------------------*/
@@ -1389,6 +1538,12 @@ void SSI::SsiMono::calc_initial_potential_field()
 
   scatra_elch->post_calc_initial_potential_field();
   if (is_scatra_manifold()) manifold_elch->post_calc_initial_potential_field();
+
+  // apply 0.0 ALE displacements due to simplified growth
+  if (scatra_field()->has_simplified_growth_conditions())
+  {
+    apply_simplified_growth_as_ale_disp();
+  }
 
   structure_field()->write_access_velnp()->update(1.0, init_velocity, 0.0);
 }
@@ -1659,6 +1814,12 @@ void SSI::SsiMono::calc_initial_time_derivative()
 
   scatra_field()->post_calc_initial_time_derivative();
   if (is_scatra_manifold()) scatra_manifold()->post_calc_initial_time_derivative();
+
+  // apply 0.0 ALE displacements due to simplified growth
+  if (scatra_field()->has_simplified_growth_conditions())
+  {
+    apply_simplified_growth_as_ale_disp();
+  }
 
   structure_field()->write_access_velnp()->update(1.0, init_velocity, 0.0);
 }

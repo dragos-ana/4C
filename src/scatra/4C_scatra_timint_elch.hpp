@@ -198,7 +198,20 @@ namespace ScaTra
 
     //! clean up settings from pre_calc_initial_potential_field() after initial potential field is
     //! calculated
-    virtual void post_calc_initial_potential_field() = 0;
+    virtual void post_calc_initial_potential_field()
+    {
+      // DEBUG
+      std::cout << "post_calc_initial_potential_field called \n";
+
+      // when initializing the potential field, the simplified growth should not be updated
+      if (has_simplified_growth_conditions_)
+      {
+        Core::LinAlg::Vector<double> zero_simpl_growth{simplgrowthnp_->get_map()};
+        set_simplified_growth(zero_simpl_growth);
+        // DEBUG
+        std::cout << "put 0.0 everywhere \n";
+      }
+    };
 
    protected:
     /*========================================================================*/

@@ -12,6 +12,7 @@
 
 #include "4C_adapter_scatra_wrapper.hpp"
 #include "4C_fem_condition.hpp"
+#include "4C_fem_general_node.hpp"
 #include "4C_inpar_fluid.hpp"
 #include "4C_io_discretization_visualization_writer_mesh.hpp"
 #include "4C_io_runtime_csv_writer.hpp"
@@ -259,6 +260,18 @@ namespace ScaTra
 
     void set_mean_concentration(std::shared_ptr<const Core::LinAlg::Vector<double>> MeanConc);
 
+
+    /*!
+     * @brief Computes and updates simplgrowthnp_ given a suitable kinetics condition modeling
+     * simplified growth.
+     * Also sets the state consistently within the discretization.
+     *
+     * @param[in] kinetics_condition_meshtying_slaveside kinetics condition modeling simplified
+     * growth on the slave side
+     * @param[in] master dofs transformed to the slave-side of the scatra-scatra interface
+     */
+    void set_simplified_growth(const Core::LinAlg::Vector<double>& simplified_growth);
+
     void clear_external_concentrations()
     {
       mean_conc_ = nullptr;
@@ -407,7 +420,21 @@ namespace ScaTra
 
     //! clean up settings from pre_calc_initial_time_derivative() after the initial time derivative
     //! is calculated
-    virtual void post_calc_initial_time_derivative() {}
+    virtual void post_calc_initial_time_derivative()
+    {
+      // DEBUG
+      std::cout << "post_calc_initial_time_derivative called \n";
+
+
+      // reset simplified growth
+      if (has_simplified_growth_conditions_)
+      {
+        Core::LinAlg::Vector<double> zero_simpl_growth{simplgrowthnp_->get_map()};
+        set_simplified_growth(zero_simpl_growth);
+        // DEBUG
+        std::cout << "put to 0.0 \n";
+      }
+    }
 
     //! calculate mean concentrations of micro discretization at nodes
     void calc_mean_micro_concentration();
@@ -866,6 +893,12 @@ namespace ScaTra
     //! return true if an external force is applied to the system
     [[nodiscard]] bool has_external_force() const { return has_external_force_; }
 
+    //! return true if there are S2I Kinetics conditions with simplified growth
+    [[nodiscard]] bool has_simplified_growth_conditions() const
+    {
+      return has_simplified_growth_conditions_;
+    }
+
     //! returns if restart information is needed for the current time step
     [[nodiscard]] bool is_restart_step() const
     {
@@ -1318,7 +1351,7 @@ namespace ScaTra
     //! flag for external force
     bool has_external_force_;
 
-    //! flag for simplified growth conditions (scatra-scatra interface Butler-Volmer kinetics)
+    //! flag for simplified growth conditions (S2I Butler-Volmer kinetics)
     bool has_simplified_growth_conditions_;
 
     /*--- query and output ---------------------------------------------------*/

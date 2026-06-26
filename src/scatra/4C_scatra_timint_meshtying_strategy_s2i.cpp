@@ -28,6 +28,7 @@
 #include "4C_linalg_utils_sparse_algebra_assemble.hpp"
 #include "4C_linalg_utils_sparse_algebra_create.hpp"
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_linear_solver_method_linalg.hpp"
 #include "4C_mat_electrode.hpp"
 #include "4C_mat_material_factory.hpp"
@@ -50,6 +51,14 @@
 #include <iostream>
 
 FOUR_C_NAMESPACE_OPEN
+
+
+namespace
+{
+  constexpr int debug_node = 1254;
+
+}  // namespace
+
 
 /*----------------------------------------------------------------------*
  *----------------------------------------------------------------------*/
@@ -344,105 +353,20 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 FOUR_C_THROW(
                     "Wrong kinetic model. Only the reduced Butler-Volmer as KINETIC_MODEL is "
                     "valid.");
+              // DEBUG
+              std::cout << "rank "
+                        << Core::Communication::my_mpi_rank(
+                               scatratimint_->discretization()->get_comm())
+                        << " before set_simplified growth" << std::endl;
 
-              // get parameters
-              const double dt = scatratimint_->dt();
-              const double kr = condition->parameters().get<double>("K_R");
-              const double alphaa = condition->parameters().get<double>("ALPHA_A");
-              const double alphac = condition->parameters().get<double>("ALPHA_C");
-              const double frt = dynamic_cast<ScaTra::ScaTraTimIntElch*>(scatratimint_)->frt();
-              const double faraday =
-                  Discret::Elements::ScaTraEleParameterElch::instance("scatra")->faraday();
-              const double mmass = condition->parameters().get<double>("MOLAR_MASS");
-              const double rho = condition->parameters().get<double>("DENSITY");
-
-              // get simplified growth vectors
-              auto& growthn_vec = scatratimint_->get_simplgrowthn();
-              auto growthn_span = growthn_vec.local_values_as_span();
-              auto& growthnp_vec = scatratimint_->get_simplgrowthnp();
-              auto growthnp_span = growthnp_vec.local_values_as_span();
-
-              // define integration factor: - M_Li / rho_Li / F
-              const double integration_factor = -mmass / (rho * faraday);
-
-              // compute normal vectors of nodes within S2I Kinetics conditions
-              std::vector<std::string> condnames = {"S2IKinetics"};
-              auto nvector = scatratimint_->compute_normal_vectors(condnames);
-
-              if (condnames.empty())
-                FOUR_C_THROW("Could not determine condition name for normal vector computation.");
-
-              // extract nodal cloud from current condition
-              const std::vector<int>* nodegids = condition->get_nodes();
-
-              // loop over all nodes of the current condition
-              for (int nodegid : *nodegids)
-              {
-                if (scatratimint_->discretization()->have_global_node(nodegid))
-                {
-                  const Core::Nodes::Node* const node =
-                      scatratimint_->discretization()->g_node(nodegid);
-
-                  // get node dimension
-                  const int nsd = node->n_dim();
-
-                  if (!node) FOUR_C_THROW("Couldn't retrieve node with gid = {}", nodegid);
-
-                  // computations at the node: integration of plating equation
-                  if (node->owner() ==
-                      Core::Communication::my_mpi_rank(scatratimint_->discretization()->get_comm()))
-                  {
-                    const int doflid_scatra = scatratimint_->discretization()->dof_row_map()->lid(
-                        scatratimint_->discretization()->dof(0, node,
-                            0));  // TODO: or maybe set 0 instead of nds_scatra? But this is not
-                                  // really set, and Rui also did this with a 0
-
-                    if (doflid_scatra < 0)
-                      FOUR_C_THROW(
-                          "Couldn't extract local ID of scalar transport degree of freedom!");
-
-                    const int doflid_growth = scatratimint_->discretization()
-                                                  ->dof_row_map(scatratimint_->nds_growth())
-                                                  ->lid(scatratimint_->discretization()->dof(
-                                                      scatratimint_->nds_growth(), node, 0));
-                    if (doflid_growth < 0)
-                      FOUR_C_THROW(
-                          "Couldn't extract local ID of scatra-scatra interface layer thickness!");
-
-                    // extract potentials on both sides of the interface
-                    // TODO: does this always evaluate gen alpha terms (alpha_f) for integration? It
-                    // should actually not be so; but also done by Rui...
-                    const double slavepot =
-                        scatratimint_->phiafnp()->local_values_as_span()[doflid_scatra + 1];
-                    const double masterpot =
-                        imasterphi_on_slave_side_np_->local_values_as_span()[doflid_scatra + 1];
-
-                    // compute Butler-Volmer current density
-                    const double i0 = kr * faraday;
-                    const double eta = slavepot - masterpot;  // lithium anode for simplified growth
-                                                              // -> potential = 0 by definition
-                    const double iBV =
-                        i0 * (std::exp(alphaa * frt * eta) - std::exp(-alphac * frt * eta));
-
-                    // compute scalar growth increment
-                    const double delta_growth = integration_factor * iBV * dt;
-
-                    // propagate scalar growth into the normal direction
-                    const int node_lid = node->lid();
-                    for (int dim = 0; dim < nsd; ++dim)
-                    {
-                      // get normal vector component for this node
-                      const auto& normal_comp = nvector->get_vector(dim);
-                      const double ncomp = normal_comp.local_values_as_span()[node_lid];
+              scatratimint_->set_simplified_growth(compute_simplified_growth(*condition));
 
 
-                      // compute simplified growth item at time $t_{n+1}$
-                      growthnp_span[doflid_growth + dim] =
-                          growthn_span[doflid_growth + dim] + delta_growth * ncomp;
-                    }
-                  }
-                }
-              }
+              // DEBUG
+              std::cout << "rank "
+                        << Core::Communication::my_mpi_rank(
+                               scatratimint_->discretization()->get_comm())
+                        << "after set_simplified_growth" << std::endl;
             }
           }
           else
@@ -4232,6 +4156,106 @@ void ScaTra::MeshtyingStrategyS2I::fd_check(
   // recompute system matrix and right-hand side vector based on original state variables
   scatratimint_->assemble_mat_and_rhs();
 }
+
+/*-----------------------------------------------------------------------*
+ *-----------------------------------------------------------------------*/
+Core::LinAlg::Vector<double> ScaTra::MeshtyingStrategyS2I::compute_simplified_growth(
+    const FourC::Core::Conditions::Condition& condition_slave_side) const
+{
+  Core::LinAlg::Vector<double> simplified_growth_np{scatratimint_->get_simplgrowthnp().get_map()};
+
+  // get parameters
+  const double dt = scatratimint_->dt();
+  const double kr = condition_slave_side.parameters().get<double>("K_R");
+  const double alphaa = condition_slave_side.parameters().get<double>("ALPHA_A");
+  const double alphac = condition_slave_side.parameters().get<double>("ALPHA_C");
+  const double frt = dynamic_cast<ScaTra::ScaTraTimIntElch*>(scatratimint_)->frt();
+  const double faraday = Discret::Elements::ScaTraEleParameterElch::instance("scatra")->faraday();
+  const double mmass = condition_slave_side.parameters().get<double>("MOLAR_MASS");
+  const double rho = condition_slave_side.parameters().get<double>("DENSITY");
+
+  // define integration factor: - M_Li / rho_Li / F
+  const double integration_factor = -mmass / (rho * faraday);
+
+  // compute normal vectors of nodes within S2I Kinetics conditions
+  std::vector<std::string> condnames = {"S2IKinetics"};
+  auto nvector = scatratimint_->compute_normal_vectors(condnames);
+
+  if (condnames.empty())
+    FOUR_C_THROW("Could not determine condition name for normal vector computation.");
+
+  // extract nodal cloud from current condition
+  const std::vector<int>* nodegids = condition_slave_side.get_nodes();
+
+  // loop over all nodes of the current condition
+  for (int nodegid : *nodegids)
+  {
+    // only perform computations for nodes on this proc
+    if (scatratimint_->discretization()->have_global_node(
+            nodegid))  // TODO: this is maybe overkill and only the lid check above would suffice?
+    {
+      // retrieve node row map lid
+      const int node_lid = scatratimint_->discretization()->node_row_map()->lid(nodegid);
+      if (node_lid >= 0)
+      {
+        const Core::Nodes::Node* const node = scatratimint_->discretization()->l_row_node(node_lid);
+        FOUR_C_ASSERT_ALWAYS(node, "Couldn't retrieve node with gid = {}", nodegid);
+
+        // get node dimension
+        const int nsd = node->n_dim();
+
+        // computations at the node: integration of plating equation
+        const int doflid_scatra = scatratimint_->discretization()->dof_row_map()->lid(
+            scatratimint_->discretization()->dof(0, node,
+                0));  // TODO: or maybe set 0 instead of nds_scatra? But this is not
+                      // really set, and Rui also did this with a 0
+
+        if (doflid_scatra < 0)
+          FOUR_C_THROW("Couldn't extract local ID of scalar transport degree of freedom!");
+
+        const int doflid_growth =
+            scatratimint_->discretization()
+                ->dof_row_map(scatratimint_->nds_growth())
+                ->lid(scatratimint_->discretization()->dof(scatratimint_->nds_growth(), node, 0));
+        if (doflid_growth < 0)
+          FOUR_C_THROW("Couldn't extract local ID of scatra-scatra interface layer thickness!");
+
+        // extract potentials on both sides of the interface
+        // TODO: does this always evaluate gen alpha terms (alpha_f) for integration? It
+        // should actually not be so; but also done by Rui...
+
+        const double slavepot = scatratimint_->phiafnp()->local_values_as_span()[doflid_scatra + 1];
+        const double masterpot =
+            imasterphi_on_slave_side_np_->local_values_as_span()[doflid_scatra + 1];
+
+        // compute Butler-Volmer current density
+        const double i0 = kr * faraday;
+        const double eta = slavepot - masterpot;  // lithium anode for simplified growth
+                                                  // -> potential = 0 by definition
+        const double iBV = i0 * (std::exp(alphaa * frt * eta) - std::exp(-alphac * frt * eta));
+
+        // compute scalar growth increment
+        const double delta_growth = integration_factor * iBV * dt;
+
+        // propagate scalar growth into the normal direction
+        for (int dim = 0; dim < nsd; ++dim)
+        {
+          // get normal vector component for this node
+          const double ncomp = nvector->get_vector(dim).local_values_as_span()[node_lid];
+
+          // compute simplified growth item at time $t_{n+1}$
+          simplified_growth_np.local_values_as_span()[doflid_growth + dim] =
+              scatratimint_->get_simplgrowthn().local_values_as_span()[doflid_growth + dim] +
+              delta_growth * ncomp;
+        }
+      }
+    }
+  }
+
+  return simplified_growth_np;
+}
+
+
 
 /*----------------------------------------------------------------------*
  *----------------------------------------------------------------------*/

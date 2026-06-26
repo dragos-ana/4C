@@ -26,6 +26,7 @@
 #include "4C_io_control.hpp"
 #include "4C_io_pstream.hpp"
 #include "4C_io_visualization_parameters.hpp"
+#include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_krylov_projector.hpp"
 #include "4C_linalg_map.hpp"
 #include "4C_linalg_utils_sparse_algebra_create.hpp"
@@ -39,10 +40,12 @@
 #include "4C_mat_scatra.hpp"
 #include "4C_scatra_ele_action.hpp"
 #include "4C_scatra_ele_boundary_calc_elch_electrode_utils.hpp"
+#include "4C_scatra_ele_parameter_elch.hpp"
 #include "4C_scatra_ele_parameter_std.hpp"
 #include "4C_scatra_ele_parameter_timint.hpp"
 #include "4C_scatra_ele_parameter_turbulence.hpp"
 #include "4C_scatra_resulttest.hpp"
+#include "4C_scatra_timint_elch.hpp"
 #include "4C_scatra_timint_heterogeneous_reaction_strategy.hpp"
 #include "4C_scatra_timint_meshtying_strategy_artery.hpp"
 #include "4C_scatra_timint_meshtying_strategy_fluid.hpp"
@@ -59,12 +62,89 @@
 #include <Teuchos_TimeMonitor.hpp>
 
 #include <cstddef>
+#include <iomanip>
 #include <memory>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 FOUR_C_NAMESPACE_OPEN
+
+namespace
+{
+  void debug_simpl_growth(const ScaTra::ScaTraTimIntImpl& scatra_timint)
+  {
+    /*
+
+    // DEBUG: get normal vector component for this node
+    const int debug_node_gid = 1254;
+
+    if (scatra_timint.discretization()->have_global_node(debug_node_gid))
+    {
+      const int debug_node_lid =
+          scatra_timint.discretization()->node_row_map()->lid(debug_node_gid);
+      if (debug_node_lid >= 0)
+      {
+        const Core::Nodes::Node* const debug_node =
+            scatra_timint.discretization()->l_row_node(debug_node_lid);
+        std::vector<std::string> condnames = {"S2IKinetics"};
+        auto nvector = scatra_timint.compute_normal_vectors(condnames);
+        Core::LinAlg::Matrix<3, 1> debug_normal;
+        Core::LinAlg::Matrix<3, 1> old_vector;
+        Core::LinAlg::Matrix<3, 1> update_vector;
+        Core::LinAlg::Matrix<3, 1> new_vector;
+        auto state_linalg_vec = scatra_timint.discretization()->get_state(
+            scatra_timint.nds_growth(), "simplified growth");
+        Core::LinAlg::Matrix<3, 1> state_vector;
+        // computations at the node: integration of plating equation
+        for (int i = 0; i < 3; ++i)
+        {
+          const int doflid_growth = scatra_timint.discretization()
+                                        ->dof_row_map(scatra_timint.nds_growth())
+                                        ->lid(scatra_timint.discretization()->dof(
+                                            scatra_timint.nds_growth(), debug_node, 0)) +
+                                    i;
+
+          const auto& normal_comp = nvector->get_vector(i);
+          debug_normal(i) = normal_comp.local_values_as_span()[debug_node_lid];
+          old_vector(i) = scatra_timint.get_simplgrowthn().local_values_as_span()[doflid_growth];
+          new_vector(i) = scatra_timint.get_simplgrowthnp().local_values_as_span()[doflid_growth];
+          update_vector(i) = new_vector(i) - old_vector(i);
+          state_vector(i) = state_linalg_vec->local_values_as_span()[doflid_growth];
+        }
+        std::cout << std::setprecision(10);
+        std::cout << std::format(
+            "x: {}, {}, {} \n", debug_node->x()[0], debug_node->x()[1], debug_node->x()[2]);
+        std::cout << "Old: " << std::endl;
+        old_vector.print(std::cout);
+        std::cout << "New: " << std::endl;
+        new_vector.print(std::cout);
+        std::cout << "In state: " << std::endl;
+        new_vector.print(std::cout);
+        std::cout << "Update: " << std::endl;
+        update_vector.print(std::cout);
+        std::cout << "Unscaled normal: " << std::endl;
+        debug_normal.print(std::cout);
+        debug_normal.scale(update_vector.norm2());
+        std::cout << "Scaled normal: " << std::endl;
+        debug_normal.print(std::cout);
+
+*/
+
+    // double min_value = 0.0;
+    // state_linalg_vec->min_value(&min_value);
+    // double max_value = 0.0;
+    // state_linalg_vec->max_value(&max_value);
+    // std::cout << std::format("STATE: ---> min: {}, max: {} \n", min_value, max_value);
+    // scatra_timint.get_simplgrowthnp().min_value(&min_value);
+    // scatra_timint.get_simplgrowthnp().max_value(&max_value);
+    // std::cout << std::format("simplgrowthnp_: ---> min: {}, max: {} \n", min_value,
+    // max_value);
+    //}
+    //}
+  }
+}  // namespace
+
 
 /*----------------------------------------------------------------------*
  *----------------------------------------------------------------------*/
@@ -1096,6 +1176,11 @@ void ScaTra::ScaTraTimIntImpl::prepare_time_loop()
   // provide information about initial field (do not do for restarts!)
   if (step_ == 0)
   {
+    // DEBUG
+    std::cout << "ScaTraTimIntImpl::ScaTraTimIntImpl::prepare_time_loop(): \n";
+    debug_simpl_growth(*this);
+
+
     // write out initial state
     check_and_write_output_and_restart();
 
@@ -1554,12 +1639,21 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
   // prepare time loop
   prepare_time_loop();
 
+  // DEBUG
+  std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+            << " after prepare_time_loop" << std::endl;
+
   while (not_finished())
   {
     // -------------------------------------------------------------------
     // prepare time step
     // -------------------------------------------------------------------
     prepare_time_step();
+
+
+    // DEBUG
+    std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+              << " after prepare_time_step" << std::endl;
 
     // -------------------------------------------------------------------
     //                  solve nonlinear / linear equation
@@ -1570,6 +1664,12 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
     pre_solve();
     solve();
     post_solve();
+
+
+
+    // DEBUG
+    std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+              << " after solve" << std::endl;
 
     // determine time spent by nonlinear solver and take maximum over all processors via
     // communication
@@ -1586,6 +1686,11 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
     // -------------------------------------------------------------------
     update();
 
+
+    // DEBUG
+    std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+              << " after update" << std::endl;
+
     // -------------------------------------------------------------------
     // evaluate error for problems with analytical solution
     // -------------------------------------------------------------------
@@ -1595,6 +1700,11 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
     //                         output of solution
     // -------------------------------------------------------------------
     check_and_write_output_and_restart();
+
+
+    // DEBUG
+    std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+              << " after write output" << std::endl;
 
   }  // while
 }
@@ -1658,6 +1768,10 @@ void ScaTra::ScaTraTimIntImpl::update()
   // update simplified growth variables
   if (has_simplified_growth_conditions_)
   {
+    // DEBUG
+    std::cout << "ScaTraTimIntImpl::ScaTraTimIntImpl::update(): \n";
+    debug_simpl_growth(*this);
+
     simplgrowthn_->update(1.0, *simplgrowthnp_, 0.0);
   }
 }
@@ -1887,30 +2001,54 @@ void ScaTra::ScaTraTimIntImpl::collect_runtime_output_data()
     discret_->evaluate(eleparams, nullptr, nullptr, nullptr, nullptr, nullptr);
   }
 
+
+  // DEBUG
+  std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+            << " about to output simplified_growth" << std::endl;
+
   // generate output for simplified growth conditions
   if (has_simplified_growth_conditions_)
   {
-    auto simplified_growth = discret_->get_state(nds_growth(), "simplified growth");
-    if (simplified_growth == nullptr) FOUR_C_THROW("Cannot get state vector simplified growth");
-
-    // convert dof-based vector into node-based multi-vector for postprocessing
-    auto simplified_growth_multi = Core::IO::convert_dof_vector_to_node_based_multi_vector(
-        *discret_, *simplified_growth, nds_growth(), nsd_);
+    // convert vector to multi vector
+    auto simplified_growth =
+        Core::LinAlg::MultiVector<double>(*discret_->node_row_map(), nsd_, true);
+    for (int inode = 0; inode < discret_->num_my_row_nodes(); ++inode)
+    {
+      for (int dim = 0; dim < nsd_; ++dim)
+      {
+        simplified_growth.get_vector(dim).get_values()[inode] =
+            simplgrowthnp_->local_values_as_span()[inode * nsd_ + dim];
+      }
+    }
 
     std::vector<std::optional<std::string>> context(nsd_, "simplified_growth");
     visualization_writer_->append_result_data_vector_with_context(
-        *simplified_growth_multi, Core::IO::OutputEntity::node, context);
+        simplified_growth, Core::IO::OutputEntity::node, context);
   }
 
 
+  // DEBUG
+  std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+            << " about to output normals" << std::endl;
+
   // generate output for surface normals
   {
+    // DEBUG
+    std::cout << "ScaTraTimIntImpl::ScaTraTimIntImpl::collect_runtime_output_data(): \n";
+    debug_simpl_growth(*this);
+
+
     std::vector<std::string> condnames = {"S2IKinetics"};
     auto nvector = compute_normal_vectors(condnames);
 
     std::vector<std::optional<std::string>> context(nsd_, "normals");
     visualization_writer_->append_result_data_vector_with_context(
         *nvector, Core::IO::OutputEntity::node, context);
+
+
+    // DEBUG
+    std::cout << "rank " << Core::Communication::my_mpi_rank(discretization()->get_comm())
+              << " after writing normals" << std::endl;
   }
 }
 
@@ -2848,8 +2986,6 @@ void ScaTra::ScaTraTimIntImpl::assemble_mat_and_rhs()
 
   // evaluate solution-depending boundary and interface conditions
   evaluate_solution_depending_conditions(sysmat_, residual_);
-  if (has_simplified_growth_conditions_)
-    discret_->set_state(nds_growth(), "simplified growth", *simplgrowthnp_);
 
   // finalize assembly of system matrix
   sysmat_->complete();
@@ -4062,5 +4198,21 @@ void ScaTra::ScaTraTimIntImpl::init_simplified_growth_dofset()
   set_number_of_dof_set_growth(number_dofsets);
 }
 
+
+/*----------------------------------------------------------------------*
+ *----------------------------------------------------------------------*/
+void ScaTra::ScaTraTimIntImpl::set_simplified_growth(
+    const Core::LinAlg::Vector<double>& simplified_growth)
+{
+  FOUR_C_ASSERT_ALWAYS(simplified_growth.get_map().same_as(*discret_->dof_row_map(nds_growth())),
+      "Maps (simplified growth and dof row map) are NOT identical. Emergency!");
+  FOUR_C_ASSERT_ALWAYS(simplified_growth.get_map().same_as(simplgrowthnp_->get_map()),
+      "Maps (simplified growth and dof row map) are NOT identical. Emergency!");
+  simplgrowthnp_->update(1.0, simplified_growth, 0.0);
+
+
+  // update state variable
+  discret_->set_state(nds_growth(), "simplified growth", *simplgrowthnp_);
+}
 
 FOUR_C_NAMESPACE_CLOSE

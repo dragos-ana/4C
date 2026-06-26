@@ -19,6 +19,7 @@
 #include "4C_io_runtime_csv_writer.hpp"
 #include "4C_linalg_fevector.hpp"
 #include "4C_linalg_serialdensevector.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_scatra_input.hpp"
 #include "4C_scatra_s2i_input.hpp"
 #include "4C_scatra_timint_meshtying_strategy_base.hpp"
@@ -698,6 +699,20 @@ namespace ScaTra
         const S2I::InterfaceSides vector1_side,
         const std::shared_ptr<Core::LinAlg::FEVector<double>>& systemvector2,
         const S2I::InterfaceSides vector2_side) const;
+
+
+
+    /*!
+     * @brief Computes the simplified growth given a suitable kinetics condition modeling simplified
+     * growth.
+     *
+     * @param[in] condition_slave_side kinetics condition modeling simplified
+     * growth on the slave side
+     * @return compute simplified growth vector
+     */
+    [[nodiscard]] Core::LinAlg::Vector<double> compute_simplified_growth(
+        const FourC::Core::Conditions::Condition& condition_slave_side) const;
+
 
     //! flag indicating if we have capacitive interface flux contributions
     bool has_capacitive_contributions_;

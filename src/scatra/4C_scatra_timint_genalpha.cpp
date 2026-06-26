@@ -486,6 +486,9 @@ void ScaTra::TimIntGenAlpha::pre_calc_initial_time_derivative()
  *--------------------------------------------------------------------------*/
 void ScaTra::TimIntGenAlpha::post_calc_initial_time_derivative()
 {
+  ScaTraTimIntImpl::post_calc_initial_time_derivative();
+
+
   // and finally undo our temporary settings
   set_element_general_parameters();
   set_element_time_parameter();

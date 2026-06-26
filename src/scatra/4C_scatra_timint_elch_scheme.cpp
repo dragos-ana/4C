@@ -82,7 +82,9 @@ void ScaTra::ScaTraTimIntElchOST::pre_calc_initial_potential_field()
 /*--------------------------------------------------------------------------*
  *--------------------------------------------------------------------------*/
 void ScaTra::ScaTraTimIntElchOST::post_calc_initial_potential_field()
-{  // and finally undo our temporary settings
+{
+  ScaTraTimIntElch::post_calc_initial_potential_field();
+  // and finally undo our temporary settings
   set_element_general_parameters(false);
   set_element_time_parameter(false);
   set_element_turbulence_parameters(false);
