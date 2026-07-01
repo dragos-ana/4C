@@ -206,7 +206,7 @@ namespace Mat
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp,
-        int eleGID) override;
+        int eleGID, const SolidScalarMaterialNodalInput& nodal_input) override;
 
     //! return quick accessible material parameter data
     Core::Mat::PAR::Parameter* parameter() const override { return params_; }

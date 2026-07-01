@@ -328,7 +328,7 @@ namespace
 
 
       // call pre evaluate to have concentration during actual call
-      multiplicative_split_defgrad_->pre_evaluate(params, {}, 0, 0);
+      multiplicative_split_defgrad_->pre_evaluate(params, {}, {}, 0, 0);
     }
 
     void set_ref_values_evaluated_sdi_fin()

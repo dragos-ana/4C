@@ -10,22 +10,114 @@
 
 #include "4C_config.hpp"
 
+#include "4C_art_net_input.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_symmetric_tensor.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.fwd.hpp"
 
+#include <ostream>
 #include <vector>
 
 FOUR_C_NAMESPACE_OPEN
 
 namespace Mat
 {
+
+  //! utility struct to pass nodal information from the solid-scatra elements into the material
+  //! evaluation using (optional) vectors
+  struct SolidScalarMaterialNodalInput
+  {
+    //! nodal scalars (first dimension: node, second dimension: scalars)
+    std::optional<std::vector<std::vector<double>>> nodal_scalars = std::nullopt;
+
+    //! simplified growth at element nodes as specified in the scatra framework (first dimension:
+    //! node, second dimension: direction)
+    std::optional<std::vector<std::vector<double>>> nodal_simplified_growths = std::nullopt;
+
+    //! simplified growth derivative wrt concentration at element nodes as specified in the scatra
+    //! framework (first dimension: node, second dimension: direction)
+    std::optional<std::vector<std::vector<double>>> nodal_simplified_growth_conc_derivs =
+        std::nullopt;
+
+    //! simplified growth derivative wrt potential at element nodes as specified in the scatra
+    //! framework (first dimension: node, second dimension: direction)
+    std::optional<std::vector<std::vector<double>>> nodal_simplified_growth_pot_derivs =
+        std::nullopt;
+
+    //! nodal temperatures
+    std::optional<std::vector<double>> nodal_temperatures = std::nullopt;
+
+    //! shape functions \f$ \mathbf{N} \f$
+    std::vector<double> shape_func;
+
+    //! shape function derivatives wrt reference coordinates \f$ \frac{\mathrm{d}
+    //! \mathbf{N}}{\mathrm{d} \boldsymbol{X}} \f$  (first dimension: node, second dimension:
+    //! direction)
+    std::vector<std::vector<double>> shape_func_derivs_XYZ;
+
+    //! is the struct fully filled, i.e, do the vectors have consistent sizes?
+    bool is_fully_filled = false;
+
+    //! fill function
+    void fill()
+    {
+      FOUR_C_ASSERT(shape_func.size() > 0, "Shape functions must be provided");
+      FOUR_C_ASSERT(
+          shape_func_derivs_XYZ.size() > 0, "Shape function derivatives must be provided");
+      FOUR_C_ASSERT(shape_func.size() == shape_func_derivs_XYZ.size(),
+          "Inconsistent numbers of nodes for shape functions {} and their derivatives {}",
+          shape_func.size(), shape_func_derivs_XYZ.size());
+      for (unsigned n = 0; n < shape_func_derivs_XYZ.size(); ++n)
+      {
+        FOUR_C_ASSERT(shape_func_derivs_XYZ[n].size() == shape_func_derivs_XYZ[0].size(),
+            "Shape function derivatives must be consistent: they are not for dimensions 0: {}, and "
+            "{}: {}",
+            shape_func_derivs_XYZ[0].size(), n, shape_func_derivs_XYZ[n].size());
+      }
+
+      is_fully_filled = true;
+    }
+
+    // DEBUG: print simplified growths
+    void print(std::ostream& os) const
+    {
+      os << std::format("Simplified growths for is_filled = {} \n", is_fully_filled);
+      FOUR_C_ASSERT_ALWAYS(nodal_simplified_growths.has_value(), "Stop");
+      for (unsigned int n = 0; n < nodal_simplified_growths->size(); ++n)
+      {
+        os << "n = " << n << ": " << nodal_simplified_growths->at(n)[0] << ", "
+           << nodal_simplified_growths->at(n)[1] << ", " << nodal_simplified_growths->at(n)[1]
+           << "\n";
+      }
+    }
+  };
+
   class MonolithicSolidScalarMaterial
   {
    public:
     virtual ~MonolithicSolidScalarMaterial() = default;
+
+    /*!
+     * @brief Evaluate the material law, i.e. the stress tensor and the constitutive tensor
+     *
+     * @param[in] defgrad  Deformation gradient
+     * @param[in] glstrain Green-Lagrange strain
+     * @param[in] params   Container for additional information
+     * @param[in] context   Material evaluation context
+     * @param[in] nodal_input   Nodal values for the solid-scatra evaluation
+     * @param[out] stress  2nd Piola-Kirchhoff stresses
+     * @param[out] cmat    Constitutive matrix
+     * @param[in] gp       Current Gauss point
+     * @param[in] eleGID   Global element ID
+     */
+    virtual void evaluate(const Core::LinAlg::Tensor<double, 3, 3>* defgrad,
+        const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
+        const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+        const SolidScalarMaterialNodalInput& nodal_input,
+        Core::LinAlg::SymmetricTensor<double, 3, 3>& stress,
+        Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& cmat, int gp, int eleGID) {};
 
     /*!
      * @brief Evaluates the added derivatives of the stress w.r.t. all scalars
@@ -35,13 +127,14 @@ namespace Mat
      * @param params (in) : ParameterList for additional parameters
      * @param gp (in) : Gauss points
      * @param eleGID (in) : global element id
+     * @param nodal_input (in): nodal input including shape functions and derivatives
      * @return std::vector<std::optional<Core::LinAlg::Matrix<6, 1>>>
      */
     virtual Core::LinAlg::SymmetricTensor<double, 3, 3> evaluate_d_stress_d_scalar(
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp,
-        int eleGID) = 0;
+        int eleGID, const SolidScalarMaterialNodalInput& nodal_input) = 0;
 
     /*!
      * @brief Evaluates dS/dc_k for all scalar DOFs per node.
@@ -55,12 +148,14 @@ namespace Mat
     evaluate_d_stress_d_scalars(const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int num_scalars,
-        int gp, int eleGID)
+        int gp, int eleGID, const SolidScalarMaterialNodalInput& nodal_input)
     {
       FOUR_C_ASSERT(num_scalars > 0, "num_scalars must be positive");
       std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> result(num_scalars);
       for (auto& t : result) t.fill(0.0);
-      result[0] = evaluate_d_stress_d_scalar(defgrad, glstrain, params, context, gp, eleGID);
+      result[0] =
+          evaluate_d_stress_d_scalar(defgrad, glstrain, params, context, gp, eleGID, nodal_input);
+
       return result;
     }
   };

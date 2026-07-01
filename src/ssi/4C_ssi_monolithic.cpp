@@ -52,54 +52,10 @@
 
 FOUR_C_NAMESPACE_OPEN
 
-
 namespace
 {
-  // DEBUG
-  void debug_ale(const SSI::SsiMono& ssi)
-  {
-    constexpr int debug_node_gid = 1254;
-
-    const Core::LinAlg::Vector<double>& simplgrowthnp_vec = ssi.scatra_field()->get_simplgrowthnp();
-    const Core::LinAlg::Map& simplgrowthnp_map = simplgrowthnp_vec.get_map();
-    // const Core::LinAlg::Map& dispnp_map = structure_field()->dispnp()->get_map();
-    const Core::LinAlg::Vector<double>& ale_disp_vec =
-        *ssi.scatra_field()->discretization()->get_state(ssi.scatra_field()->nds_disp(), "dispnp");
-
-    if (ssi.scatra_field()->discretization()->have_global_node(debug_node_gid))
-    {
-      const int debug_node_lid =
-          ssi.scatra_field()->discretization()->node_row_map()->lid(debug_node_gid);
-      if (debug_node_lid >= 0)
-      {
-        const Core::Nodes::Node* node_scatra =
-            ssi.scatra_field()->discretization()->l_row_node(debug_node_lid);
-        const Core::Nodes::Node* node_struct =
-            ssi.structure_field()->discretization()->l_row_node(debug_node_lid);
-        // loop over spatial dimensions
-        std::array<double, 3> growth;
-        std::array<double, 3> ale_disp;
-        for (unsigned int ndim = 0; ndim < ssi.structure_field()->discretization()->n_dim(); ++ndim)
-        {
-          const int dof_gid_growth = ssi.scatra_field()->discretization()->dof(
-              ssi.scatra_field()->nds_growth(), node_scatra, static_cast<int>(ndim));
-          const int dof_lid_growth = simplgrowthnp_map.lid(dof_gid_growth);
-          growth[ndim] = simplgrowthnp_vec.local_values_as_span()[dof_lid_growth];
-
-          const int dof_gid_struct =
-              ssi.structure_field()->discretization()->dof(0, node_struct, static_cast<int>(ndim));
-          const int dof_lid_struct = ale_disp_vec.get_map().lid(dof_gid_struct);
-          ale_disp[ndim] = ale_disp_vec.local_values_as_span()[dof_lid_struct];
-        }
-
-        std::cout << std::format("\n growth: {}, {}, {} \n ale_disp: {}, {}, {} \n", growth[0],
-            growth[1], growth[2], ale_disp[0], ale_disp[1], ale_disp[2]);
-      }
-    };
-  }
-
-
-
+  // DEBUG: remove afterwards
+  constexpr bool apply_simpl_growth_as_ale = false;
 }  // namespace
 
 /*--------------------------------------------------------------------------*
@@ -408,7 +364,8 @@ void SSI::SsiMono::evaluate_subproblems()
   evaluate_scatra();
 
   // apply simplified growth as ALE displacement (to be removed after full implementation)
-  if (scatra_field()->has_simplified_growth_conditions()) apply_simplified_growth_as_ale_disp();
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+    apply_simplified_growth_as_ale_disp();
 
   // build system matrix and residual for scalar transport field on manifold
   if (is_scatra_manifold()) evaluate_scatra_manifold();
@@ -659,16 +616,8 @@ void SSI::SsiMono::prepare_time_loop()
   // calculate initial potential field if needed
   if (do_calculate_initial_potential_field()) calc_initial_potential_field();
 
-  // DEBUG
-  std::cout << "SSI::SsiMono::prepare_time_loop() -> after calc_initial_potential_field: \n";
-  debug_ale(*this);
-
   // calculate initial time derivatives
   calc_initial_time_derivative();
-
-  // DEBUG
-  std::cout << "SSI::SsiMono::prepare_time_loop() -> after calc_initial_time_derivative: \n";
-  debug_ale(*this);
 
   scatra_field()->prepare_time_loop();
   if (is_scatra_manifold()) scatra_manifold()->prepare_time_loop();
@@ -697,6 +646,12 @@ void SSI::SsiMono::prepare_time_step()
   // has to be called AFTER ScaTraField()->prepare_time_step() to ensure
   // consistent scalar transport state vector with valid Dirichlet conditions
   set_scatra_solution(scatra_field()->phinp());
+  if (scatra_field()->has_simplified_growth_conditions())
+  {
+    set_simplified_growth_solution(scatra_field()->get_simplgrowthnp());
+    set_deriv_simplified_growth_conc_solution(scatra_field()->dsimplgrowth_dc_np());
+    set_deriv_simplified_growth_pot_solution(scatra_field()->dsimplgrowth_dpot_np());
+  }
   if (is_scatra_manifold()) set_scatra_manifold_solution(*scatra_manifold()->phinp());
 
   // evaluate temperature from function and set to structural discretization
@@ -923,49 +878,21 @@ void SSI::SsiMono::newton_loop()
     // set solution from last Newton step to all fields
     distribute_solution_all_fields();
 
-    // DEBUG
-    std::cout << "After distributing all solutions: \n";
-    debug_ale(*this);
-
     // evaluate sub problems and get all matrices and right-hand-sides
     evaluate_subproblems();
-
-    // DEBUG
-    std::cout << "After evaluate_subproblems: \n";
-    debug_ale(*this);
-
-
 
     // complete the sub problem matrices
     complete_subproblem_matrices();
 
-    // DEBUG
-    std::cout << "After complete_subproblem_matrices: \n";
-    debug_ale(*this);
-
-
     // assemble global system of equations
     assemble_mat_and_rhs();
-
-    // DEBUG
-    std::cout << "After assemble_mat_and_rhs: \n";
-    debug_ale(*this);
-
 
     // apply the Dirichlet boundary conditions to global system
     apply_dbc_to_system();
 
-    // DEBUG
-    std::cout << "After apply_dbc_to_system: \n";
-    debug_ale(*this);
-
     // time needed for evaluating elements and assembling global system of equations
     double my_evaluation_time = timer_->wallTime() - time_before_evaluate;
     dt_eval_ = Core::Communication::max_all(my_evaluation_time, get_comm());
-
-    // DEBUG
-    std::cout << "After getting dt_eval_: \n";
-    debug_ale(*this);
 
     // safety check
     if (!ssi_matrices_->system_matrix()->filled())
@@ -974,10 +901,6 @@ void SSI::SsiMono::newton_loop()
     // check termination criterion for Newton-Raphson iteration
     if (strategy_convcheck_->exit_newton_raphson(*this))
     {
-      // DEBUG
-      std::cout << "About to exit Newton: \n";
-      debug_ale(*this);
-
       break;
     }
 
@@ -989,10 +912,6 @@ void SSI::SsiMono::newton_loop()
 
     solve_linear_system(*solver_);
 
-
-    // DEBUG
-    std::cout << "After solving the linear system: \n";
-    debug_ale(*this);
 
     // time needed for solving global system of equations
     double my_solve_time = timer_->wallTime() - time_before_solving;
@@ -1007,35 +926,13 @@ void SSI::SsiMono::newton_loop()
     // update states for next Newton iteration
     update_iter_scatra();
 
-    // DEBUG
-    std::cout << "After updating iter scatra: \n";
-    debug_ale(*this);
-
-
     update_iter_structure();
-
-    // DEBUG
-    std::cout << "After updating iter structure: \n";
-    debug_ale(*this);
-
 
 
     // reapply simplified growth as ALE displacement (to be removed after full implementation)
-    if (scatra_field()->has_simplified_growth_conditions()) apply_simplified_growth_as_ale_disp();
-
-
-
-    // DEBUG
-    std::cout << "After the final updates: \n";
-    debug_ale(*this);
-    std::cout << std::string(50, '-') << std::endl;
+    if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+      apply_simplified_growth_as_ale_disp();
   }
-
-
-
-  // DEBUG
-  std::cout << "AFTER NEWTON LOOP: \n";
-  debug_ale(*this);
 }
 
 /*--------------------------------------------------------------------------*
@@ -1083,26 +980,12 @@ void SSI::SsiMono::timeloop()
  *--------------------------------------------------------------------------------------*/
 void SSI::SsiMono::update()
 {
-  // DEBUG
-  std::cout << "BEFORE UPDATE: \n";
-  debug_ale(*this);
-
   // update scalar transport field
   scatra_field()->update();
   if (is_scatra_manifold()) scatra_manifold()->update();
 
-  // DEBUG
-  std::cout << "UPDATE: scatra: \n";
-  debug_ale(*this);
-
-
-
   // update structure field
   structure_field()->update();
-
-  // DEBUG
-  std::cout << "UPDATE: structure: \n";
-  debug_ale(*this);
 }
 
 /*--------------------------------------------------------------------------------------*
@@ -1284,19 +1167,8 @@ void SSI::SsiMono::evaluate_scatra_manifold() const
  *--------------------------------------------------------------------------------------*/
 void SSI::SsiMono::prepare_output()
 {
-  // DEBUG
-  std::cout << "BEFORE PREPARE OUTPUT: \n";
-  debug_ale(*this);
-
-
   constexpr bool force_prepare = false;
   structure_field()->prepare_output(force_prepare);
-
-  // DEBUG
-  std::cout << "PREPARE OUTPUT: structure \n";
-  debug_ale(*this);
-
-
 
   // prepare output of coupling sctra manifold - scatra
   if (is_scatra_manifold() and manifoldscatraflux_->do_output())
@@ -1304,10 +1176,6 @@ void SSI::SsiMono::prepare_output()
     distribute_solution_all_fields();
     manifoldscatraflux_->evaluate_scatra_manifold_inflow();
   }
-
-  // DEBUG
-  std::cout << "PREPARE OUTPUT: manifold \n";
-  debug_ale(*this);
 }
 
 /*--------------------------------------------------------------------------------------*
@@ -1335,10 +1203,9 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
     structure_field()->set_state(structure_field()->write_access_dispnp());
   }
 
-
-  // node-based mapping of simplified growth -> ALE displacement if simplified growth conditions are
-  // used
-  if (scatra_field()->has_simplified_growth_conditions())
+  // TODO: remove this; node-based mapping of simplified growth -> ALE displacement if simplified
+  // growth conditions are used
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
   {
     apply_simplified_growth_as_ale_disp();
   }
@@ -1348,6 +1215,12 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
         is_s2i_kinetics_with_pseudo_contact());
   }
   set_scatra_solution(scatra_field()->phinp());
+  if (scatra_field()->has_simplified_growth_conditions())
+  {
+    set_simplified_growth_solution(scatra_field()->get_simplgrowthnp());
+    set_deriv_simplified_growth_conc_solution(scatra_field()->dsimplgrowth_dc_np());
+    set_deriv_simplified_growth_pot_solution(scatra_field()->dsimplgrowth_dpot_np());
+  }
   if (is_scatra_manifold()) set_scatra_manifold_solution(*scatra_manifold()->phinp());
 }
 
@@ -1540,7 +1413,7 @@ void SSI::SsiMono::calc_initial_potential_field()
   if (is_scatra_manifold()) manifold_elch->post_calc_initial_potential_field();
 
   // apply 0.0 ALE displacements due to simplified growth
-  if (scatra_field()->has_simplified_growth_conditions())
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
   {
     apply_simplified_growth_as_ale_disp();
   }
@@ -1816,7 +1689,7 @@ void SSI::SsiMono::calc_initial_time_derivative()
   if (is_scatra_manifold()) scatra_manifold()->post_calc_initial_time_derivative();
 
   // apply 0.0 ALE displacements due to simplified growth
-  if (scatra_field()->has_simplified_growth_conditions())
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
   {
     apply_simplified_growth_as_ale_disp();
   }

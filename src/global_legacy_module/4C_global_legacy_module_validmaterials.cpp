@@ -2677,6 +2677,17 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                         "tensor"});
   }
 
+
+  /*----------------------------------------------------------------------*/
+  // simple inelastic material law featuring interface growth based on the plating / stripping
+  // current
+  {
+    known_materials[Core::Materials::mfi_simplified_interface_growth] = group(
+        "MAT_InelasticDefgradSimplInterfaceGrowth", {},
+        {.description = "interface growth based on plating / stripping current, calculated using "
+                        "nodal scatra simplified growths"});
+  }
+
   /*----------------------------------------------------------------------*/
   // simple isotropic, volumetric growth; growth is linearly dependent on scalar mapped to material
   // configuration, constant material density

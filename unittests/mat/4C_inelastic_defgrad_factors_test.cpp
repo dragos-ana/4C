@@ -319,8 +319,8 @@ namespace
 
     Teuchos::ParameterList param_list;
     param_list.set<double>("temperature", comparison.temperature);
-    comparison.analytic_material.material->pre_evaluate(param_list, comparison.context, 0, 0);
-    comparison.fd_material.material->pre_evaluate(param_list, comparison.context, 0, 0);
+    comparison.analytic_material.material->pre_evaluate(param_list, comparison.context, {}, 0, 0);
+    comparison.fd_material.material->pre_evaluate(param_list, comparison.context, {}, 0, 0);
 
     comparison.FM(0, 0) = 1.55;
     comparison.FM(1, 1) = 1.0;
@@ -435,7 +435,7 @@ namespace
           params_inelastic_defgrad_lin_scalar_iso_.get());
 
       // call pre_evaluate to set the concentration value
-      lin_scalar_iso_->pre_evaluate(params_lin, {}, 0, 0);
+      lin_scalar_iso_->pre_evaluate(params_lin, {}, {}, 0, 0);
 
       // create InelasticDefgradLinScalarAniso object initialize container for material parameters
       Core::IO::InputParameterContainer inelastic_defgrad_lin_scalar_aniso_data;
@@ -457,7 +457,7 @@ namespace
           params_inelastic_defgrad_lin_scalar_aniso_.get());
 
       // call pre_evaluate to set the concentration value
-      lin_scalar_aniso_->pre_evaluate(params_lin, {}, 0, 0);
+      lin_scalar_aniso_->pre_evaluate(params_lin, {}, {}, 0, 0);
 
       // InelasticDefgradPolyIntercalFracIso object initialize container for required electrode
       // material parameters
@@ -534,7 +534,7 @@ namespace
           params_inelastic_defgrad_poly_intercal_frac_.get());
 
       // call pre_evaluate to set the concentration value
-      poly_intercal_frac_iso_->pre_evaluate(params_poly, {}, 0, 0);
+      poly_intercal_frac_iso_->pre_evaluate(params_poly, {}, {}, 0, 0);
 
       // create InelasticDefgradPolyIntercalFracAniso object initialize container for material
       // parameters
@@ -565,7 +565,7 @@ namespace
           params_inelastic_defgrad_poly_intercal_frac_aniso_.get());
 
       // call pre_evaluate to set the concentration value
-      poly_intercal_frac_aniso_->pre_evaluate(params_poly, {}, 0, 0);
+      poly_intercal_frac_aniso_->pre_evaluate(params_poly, {}, {}, 0, 0);
 
       // create InelasticDefgradLinTempIso object initialize container for material parameters
       Core::IO::InputParameterContainer inelastic_defgrad_temp_iso_data;
@@ -585,7 +585,7 @@ namespace
       Teuchos::ParameterList params_temp{};
       params_temp.set<double>("temperature", 280.0);
       // call pre_evaluate to set the temperature
-      lin_temp_iso_->pre_evaluate(params_temp, {}, 0, 0);
+      lin_temp_iso_->pre_evaluate(params_temp, {}, {}, 0, 0);
 
 
       Core::IO::InputParameterContainer elast_pot_coup_neo_hooke_data;
@@ -1739,8 +1739,8 @@ namespace
         .xi = {},
         .ref_coords = nullptr};
 
-    transv_isotropic_material->pre_evaluate(params_list, context, 0, 0);
-    isotropic_material->pre_evaluate(params_list, context, 0, 0);
+    transv_isotropic_material->pre_evaluate(params_list, context, {}, 0, 0);
+    isotropic_material->pre_evaluate(params_list, context, {}, 0, 0);
 
     // set reference solution for the state quantities
     set_up_state_quantities_solution();
@@ -1838,7 +1838,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
@@ -1879,7 +1879,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
 
 
@@ -1921,7 +1921,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -1972,7 +1972,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2011,7 +2011,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2051,7 +2051,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2090,7 +2090,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2130,7 +2130,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2180,7 +2180,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2220,7 +2220,7 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material->pre_evaluate(params_list, context, 0, 0);
+    material->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2281,8 +2281,8 @@ namespace
         .time_step_size = &time_step_size,
         .xi = {},
         .ref_coords = nullptr};
-    material_one_step->pre_evaluate(params_list, context, 0, 0);
-    material_substepping->pre_evaluate(params_list, context, 0, 0);
+    material_one_step->pre_evaluate(params_list, context, {}, 0, 0);
+    material_substepping->pre_evaluate(params_list, context, {}, 0, 0);
 
     Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
     unit_3x3(0, 0) = 1.0;
@@ -2470,8 +2470,8 @@ namespace
         .xi = {},
         .ref_coords = nullptr};
 
-    transv_isotropic_material->pre_evaluate(params_list, context, 0, 0);
-    isotropic_material->pre_evaluate(params_list, context, 0, 0);
+    transv_isotropic_material->pre_evaluate(params_list, context, {}, 0, 0);
+    isotropic_material->pre_evaluate(params_list, context, {}, 0, 0);
 
     set_up_state_quantity_derivatives_solution();
 
@@ -2798,7 +2798,7 @@ namespace
         .xi = {},
         .ref_coords = nullptr};
     // call pre_evaluate
-    material->pre_evaluate(param_list_thermo_vplast, context, 0, 0);
+    material->pre_evaluate(param_list_thermo_vplast, context, {}, 0, 0);
 
 
     Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType err_status{
@@ -3017,7 +3017,7 @@ namespace
       // pre-evaluate (sets the gauss point index and temperature)
       Teuchos::ParameterList param_list;
       param_list.set<double>("temperature", temperature);
-      material->pre_evaluate(param_list, context, gp, 0);
+      material->pre_evaluate(param_list, context, {}, gp, 0);
 
       SolidEvaluationResults results;
 

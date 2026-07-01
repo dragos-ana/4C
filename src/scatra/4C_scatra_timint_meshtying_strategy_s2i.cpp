@@ -353,20 +353,18 @@ void ScaTra::MeshtyingStrategyS2I::evaluate_meshtying()
                 FOUR_C_THROW(
                     "Wrong kinetic model. Only the reduced Butler-Volmer as KINETIC_MODEL is "
                     "valid.");
-              // DEBUG
-              std::cout << "rank "
-                        << Core::Communication::my_mpi_rank(
-                               scatratimint_->discretization()->get_comm())
-                        << " before set_simplified growth" << std::endl;
 
-              scatratimint_->set_simplified_growth(compute_simplified_growth(*condition));
-
-
-              // DEBUG
-              std::cout << "rank "
-                        << Core::Communication::my_mpi_rank(
-                               scatratimint_->discretization()->get_comm())
-                        << "after set_simplified_growth" << std::endl;
+              Core::LinAlg::Vector<double> simplgrowthnp{
+                  scatratimint_->get_simplgrowthnp().get_map()};
+              Core::LinAlg::Vector<double> dsimplgrowth_dc_np{
+                  scatratimint_->dsimplgrowth_dc_np().get_map()};
+              Core::LinAlg::Vector<double> dsimplgrowth_dpot_np{
+                  scatratimint_->dsimplgrowth_dpot_np().get_map()};
+              compute_simplified_growth_and_derivs(
+                  *condition, simplgrowthnp, dsimplgrowth_dc_np, dsimplgrowth_dpot_np);
+              scatratimint_->set_simplified_growth(simplgrowthnp);
+              scatratimint_->set_deriv_simplified_growth_conc(dsimplgrowth_dc_np);
+              scatratimint_->set_deriv_simplified_growth_pot(dsimplgrowth_dpot_np);
             }
           }
           else
@@ -4159,10 +4157,20 @@ void ScaTra::MeshtyingStrategyS2I::fd_check(
 
 /*-----------------------------------------------------------------------*
  *-----------------------------------------------------------------------*/
-Core::LinAlg::Vector<double> ScaTra::MeshtyingStrategyS2I::compute_simplified_growth(
-    const FourC::Core::Conditions::Condition& condition_slave_side) const
+void ScaTra::MeshtyingStrategyS2I::compute_simplified_growth_and_derivs(
+    const FourC::Core::Conditions::Condition& condition_slave_side,
+    Core::LinAlg::Vector<double>& simplgrowthnp, Core::LinAlg::Vector<double>& dsimplgrowth_dc,
+    Core::LinAlg::Vector<double>& dsimplgrowth_dpot) const
 {
-  Core::LinAlg::Vector<double> simplified_growth_np{scatratimint_->get_simplgrowthnp().get_map()};
+  FOUR_C_ASSERT_ALWAYS(
+      simplgrowthnp.get_map().same_as(scatratimint_->get_simplgrowthnp().get_map()),
+      "Non-matching maps");
+  FOUR_C_ASSERT_ALWAYS(
+      dsimplgrowth_dc.get_map().same_as(scatratimint_->dsimplgrowth_dc_np().get_map()),
+      "Non-matching maps");
+  FOUR_C_ASSERT_ALWAYS(
+      dsimplgrowth_dpot.get_map().same_as(scatratimint_->dsimplgrowth_dpot_np().get_map()),
+      "Non-matching maps");
 
   // get parameters
   const double dt = scatratimint_->dt();
@@ -4235,7 +4243,13 @@ Core::LinAlg::Vector<double> ScaTra::MeshtyingStrategyS2I::compute_simplified_gr
         const double iBV = i0 * (std::exp(alphaa * frt * eta) - std::exp(-alphac * frt * eta));
 
         // compute scalar growth increment
-        const double delta_growth = integration_factor * iBV * dt;
+        const double delta_growth = integration_factor * dt * iBV;
+
+        // compute scalar increment derivatives
+        const double d_delta_growth_dc = 0.0;
+        const double d_delta_growth_dpot =
+            integration_factor * dt * i0 * frt *
+            (alphaa * std::exp(alphaa * frt * eta) + alphac * std::exp(-alphac * frt * eta));
 
         // propagate scalar growth into the normal direction
         for (int dim = 0; dim < nsd; ++dim)
@@ -4244,15 +4258,21 @@ Core::LinAlg::Vector<double> ScaTra::MeshtyingStrategyS2I::compute_simplified_gr
           const double ncomp = nvector->get_vector(dim).local_values_as_span()[node_lid];
 
           // compute simplified growth item at time $t_{n+1}$
-          simplified_growth_np.local_values_as_span()[doflid_growth + dim] =
+          simplgrowthnp.local_values_as_span()[doflid_growth + dim] =
               scatratimint_->get_simplgrowthn().local_values_as_span()[doflid_growth + dim] +
               delta_growth * ncomp;
+
+
+          // compute simplified growth derivative wrt concentration at time $t_{n+1}$
+          dsimplgrowth_dc.local_values_as_span()[doflid_growth + dim] = d_delta_growth_dc * ncomp;
+
+          // compute simplified growth derivative wrt potential at time $t_{n+1}$
+          dsimplgrowth_dpot.local_values_as_span()[doflid_growth + dim] =
+              d_delta_growth_dpot * ncomp;
         }
       }
     }
   }
-
-  return simplified_growth_np;
 }
 
 

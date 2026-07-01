@@ -261,16 +261,10 @@ namespace ScaTra
     void set_mean_concentration(std::shared_ptr<const Core::LinAlg::Vector<double>> MeanConc);
 
 
-    /*!
-     * @brief Computes and updates simplgrowthnp_ given a suitable kinetics condition modeling
-     * simplified growth.
-     * Also sets the state consistently within the discretization.
-     *
-     * @param[in] kinetics_condition_meshtying_slaveside kinetics condition modeling simplified
-     * growth on the slave side
-     * @param[in] master dofs transformed to the slave-side of the scatra-scatra interface
-     */
     void set_simplified_growth(const Core::LinAlg::Vector<double>& simplified_growth);
+
+    void set_deriv_simplified_growth_conc(const Core::LinAlg::Vector<double>& dsimplgrowth_dc_np);
+    void set_deriv_simplified_growth_pot(const Core::LinAlg::Vector<double>& dsimplgrowth_dpot_np);
 
     void clear_external_concentrations()
     {
@@ -296,6 +290,20 @@ namespace ScaTra
     {
       FOUR_C_ASSERT(nds_growth_ == -1, "Don't set 'nds_growth_' twice!");
       nds_growth_ = nds_growth;
+    }
+
+    //! set number of dofset to write interface growth derivatives wrt concentration on
+    void set_number_of_dof_set_d_growth_d_conc(int nds_growth_deriv_conc)
+    {
+      FOUR_C_ASSERT(nds_growth_deriv_conc_ == -1, "Don't set 'nds_d_growth_d_conc_' twice!");
+      nds_growth_deriv_conc_ = nds_growth_deriv_conc;
+    }
+
+    //! set number of dofset to write interface growth derivatives wrt potential on
+    void set_number_of_dof_set_d_growth_d_pot(int nds_growth_deriv_pot)
+    {
+      FOUR_C_ASSERT(nds_growth_deriv_pot_ == -1, "Don't set 'nds_d_growth_d_pot_' twice!");
+      nds_growth_deriv_pot_ = nds_growth_deriv_pot;
     }
 
     //! set number of dofset to write micro scale values on
@@ -431,8 +439,10 @@ namespace ScaTra
       {
         Core::LinAlg::Vector<double> zero_simpl_growth{simplgrowthnp_->get_map()};
         set_simplified_growth(zero_simpl_growth);
-        // DEBUG
-        std::cout << "put to 0.0 \n";
+        Core::LinAlg::Vector<double> zero_simpl_growth_deriv_conc{dsimplgrowth_dc_np_->get_map()};
+        Core::LinAlg::Vector<double> zero_simpl_growth_deriv_pot{dsimplgrowth_dpot_np_->get_map()};
+        set_deriv_simplified_growth_conc(zero_simpl_growth_deriv_conc);
+        set_deriv_simplified_growth_pot(zero_simpl_growth_deriv_pot);
       }
     }
 
@@ -515,6 +525,12 @@ namespace ScaTra
 
     //! return number of dofset associated with interface growth dofs
     [[nodiscard]] int nds_growth() const { return nds_growth_; }
+
+    //! return number of dofset associated with interface growth derivative dofs (wrt concentration)
+    [[nodiscard]] int nds_growth_deriv_conc() const { return nds_growth_deriv_conc_; }
+
+    //! return number of dofset associated with interface growth derivative dofs (wrt potential)
+    [[nodiscard]] int nds_growth_deriv_pot() const { return nds_growth_deriv_pot_; }
 
     //! return number of dofset to store nodal micro quantities on macro discretisation
     [[nodiscard]] int nds_micro() const { return nds_micro_; }
@@ -998,9 +1014,37 @@ namespace ScaTra
     [[nodiscard]] Core::LinAlg::Vector<double>& get_simplgrowthnp() { return *simplgrowthnp_; };
 
 
+    //! simplified growth derivative wrt concentration at time \f$ t_{n+1} \f$ - read-only access
+    [[nodiscard]] const Core::LinAlg::Vector<double>& dsimplgrowth_dc_np() const
+    {
+      return *dsimplgrowth_dc_np_;
+    };
+    //! simplified growth derivative wrt concentration at time \f$ t_{n+1} \f$ - modifiable access
+    [[nodiscard]] Core::LinAlg::Vector<double>& dsimplgrowth_dc_np()
+    {
+      return *dsimplgrowth_dc_np_;
+    };
+
+
+    //! simplified growth derivative wrt potential at time \f$ t_{n+1} \f$ - read-only access
+    [[nodiscard]] const Core::LinAlg::Vector<double>& dsimplgrowth_dpot_np() const
+    {
+      return *dsimplgrowth_dpot_np_;
+    };
+    //! simplified growth derivative wrt potential at time \f$ t_{n+1} \f$ - modifiable access
+    [[nodiscard]] Core::LinAlg::Vector<double>& dsimplgrowth_dpot_np()
+    {
+      return *dsimplgrowth_dpot_np_;
+    };
+
     //! compute outward pointing unit normal vectors for given conditions
     [[nodiscard]] std::shared_ptr<Core::LinAlg::MultiVector<double>> compute_normal_vectors(
         const std::vector<std::string>& condnames) const;
+
+    //! initialize simplified growth (+ specific derivatives) dofsets for scatra-scatra interface
+    //! Butler-Volmer kinetics
+    void init_simplified_growth_dofsets();
+
 
    protected:
     //! create vectors for Krylov projection if necessary
@@ -1056,8 +1100,6 @@ namespace ScaTra
     //! initialize meshtying strategy (including standard case without meshtying)
     virtual void create_meshtying_strategy();
 
-    //! initialize simplified growth dofset for scatra-scatra interface Butler-Volmer kinetics
-    void init_simplified_growth_dofset();
 
     /*--- calculate and update -----------------------------------------------*/
 
@@ -1496,6 +1538,10 @@ namespace ScaTra
     std::shared_ptr<Core::LinAlg::Vector<double>> simplgrowthn_;
     //! simplified growth at time n+1
     std::shared_ptr<Core::LinAlg::Vector<double>> simplgrowthnp_;
+    //! simplified growth derivative wrt concentration at time n+1
+    std::shared_ptr<Core::LinAlg::Vector<double>> dsimplgrowth_dc_np_;
+    //! simplified growth derivative wrt potential at time n+1
+    std::shared_ptr<Core::LinAlg::Vector<double>> dsimplgrowth_dpot_np_;
 
 
     /*========================================================================*/
@@ -1524,6 +1570,12 @@ namespace ScaTra
 
     //! number of dofset associated with interface growth dofs
     int nds_growth_;
+
+    //! number of dofset associated with the derivative of interface growth dofs wrt concentration
+    int nds_growth_deriv_conc_;
+
+    //! number of dofset associated with the derivative of interface growth dofs wrt potential
+    int nds_growth_deriv_pot_;
 
     //! number of dofset to write micro scale values on
     int nds_micro_;

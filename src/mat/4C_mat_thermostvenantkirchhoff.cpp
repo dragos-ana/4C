@@ -261,7 +261,8 @@ Core::LinAlg::SymmetricTensor<double, 3, 3>
 Mat::ThermoStVenantKirchhoff::evaluate_d_stress_d_scalar(
     const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
     const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
-    const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp, int eleGID)
+    const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp, int eleGID,
+    const SolidScalarMaterialNodalInput& nodal_input)
 {
   const double temperature = [&]()
   {

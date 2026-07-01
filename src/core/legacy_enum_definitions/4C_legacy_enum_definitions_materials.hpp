@@ -251,6 +251,8 @@ namespace Core::Materials
                            ///< linear function of the temperature
     mfi_no_growth,  ///< material with no volume change, i.e. inelastic deformation gradient is an
                     ///< identity tensor
+    mfi_simplified_interface_growth,  ///< interface growth based on the plating / stripping
+                                      ///< current, calculated using nodal scatra simplified growths
     mfi_time_funct_aniso,  ///< volume change due to anisotropic inelastic deformation gradient is a
                            ///< function of time
     mfi_time_funct_iso,    ///< volume change due to isotropic inelastic deformation gradient is a

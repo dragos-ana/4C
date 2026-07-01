@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+#include <cstdint>
+
 FOUR_C_NAMESPACE_OPEN
 
 
@@ -45,6 +47,7 @@ namespace Mat
     {
       none,
       concentration,
+      potential,
       temperature
     };
 
@@ -276,17 +279,36 @@ namespace Mat
 
     Core::Mat::PAR::Parameter* parameter() const override { return params_; }
 
+
+    void evaluate(const Core::LinAlg::Tensor<double, 3, 3>* defgrad,
+        const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
+        const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+        const Mat::SolidScalarMaterialNodalInput& nodal_input,
+        Core::LinAlg::SymmetricTensor<double, 3, 3>& stress,
+        Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& cmat, int gp, int eleGID) override;
+
     void evaluate(const Core::LinAlg::Tensor<double, 3, 3>* defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
         Core::LinAlg::SymmetricTensor<double, 3, 3>& stress,
         Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& cmat, int gp, int eleGID) override;
 
+    std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> evaluate_d_stress_d_scalars(
+        const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
+        const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
+        const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int num_scalars,
+        int gp, int eleGID, const SolidScalarMaterialNodalInput& nodal_input) override;
+
     Core::LinAlg::SymmetricTensor<double, 3, 3> evaluate_d_stress_d_scalar(
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp,
-        int eleGID) override;
+        int eleGID, const SolidScalarMaterialNodalInput& nodal_input) override
+    {
+      const auto results = evaluate_d_stress_d_scalars(
+          defgrad, glstrain, params, context, 1, gp, eleGID, nodal_input);
+      return results[0];
+    };
 
     void reinit(const Core::LinAlg::Tensor<double, 3, 3>* defgrd,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain, double temperature,
@@ -568,11 +590,13 @@ namespace Mat
      * @brief pre-evaluation, intended to be used for stuff that have to be done only once
      *
      * @param[in] params  parameter list as handed in from the element
+     * @param[in] context  material evaluation context
+     * @param[in] nodal_input  nodal variables passed from the scalar field as input
      * @param[in] gp      current gauss point
      * @param[in] eleGID  Element ID
      */
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
-        int gp, int eleGID) const;
+        const SolidScalarMaterialNodalInput& nodal_input, int gp, int eleGID) const;
 
     /*!
      * @brief set the gauss point concentration to the respective parameter class of the inelastic

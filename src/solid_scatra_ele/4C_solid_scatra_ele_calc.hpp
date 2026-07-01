@@ -13,9 +13,14 @@
 #include "4C_fem_general_element.hpp"
 #include "4C_fem_general_utils_gausspoints.hpp"
 #include "4C_solid_ele_calc_interface.hpp"
+#include "4C_solid_ele_calc_lib.hpp"
 #include "4C_solid_ele_formulation.hpp"
 #include "4C_solid_scatra_ele_calc_lib_nitsche.hpp"
 #include "4C_structure_new_gauss_point_data_output_manager.hpp"
+#include "4C_utils_exceptions.hpp"
+
+#include <optional>
+#include <vector>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -110,6 +115,8 @@ namespace Discret::Elements
 
     SolidFormulationHistory<SolidFormulation> history_data_{};
   };
+
+
 }  // namespace Discret::Elements
 
 

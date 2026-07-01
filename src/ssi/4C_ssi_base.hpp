@@ -220,6 +220,18 @@ namespace SSI
     /// set scatra solution on other fields
     virtual void set_scatra_solution(std::shared_ptr<const Core::LinAlg::Vector<double>> phi) const;
 
+    /// set scatra simplified growth solution on other fields
+    virtual void set_simplified_growth_solution(
+        const Core::LinAlg::Vector<double>& simpl_growth) const;
+
+    /// set scatra simplified growth derivative solution (wrt concentration) on other fields
+    virtual void set_deriv_simplified_growth_conc_solution(
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dc) const;
+
+    /// set scatra simplified growth derivative solution (wrt potential) on other fields
+    virtual void set_deriv_simplified_growth_pot_solution(
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dpot) const;
+
     /*!
      * @brief set contact states needed for evaluation of ssi contact
      *

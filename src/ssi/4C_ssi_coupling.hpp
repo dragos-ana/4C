@@ -15,6 +15,7 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_scatra_timint_implicit.hpp"
 #include "4C_ssi_base.hpp"
+#include "4C_utils_exceptions.hpp"
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -99,6 +100,33 @@ namespace SSI
     //! set temperature field on structure field
     virtual void set_temperature_field(Core::FE::Discretization& structdis,
         std::shared_ptr<const Core::LinAlg::Vector<double>> temp) = 0;
+
+    //! \brief set simplified growth solution of scatra field on other field
+    //!
+    //! \param dis     discretization to write simplified growth solution on
+    //! \param simpl_growth     simplified growth solution
+    //! \param nds     number of dofset to write simplified growth solution on
+    virtual void set_simplified_growth_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) = 0;
+
+
+    //! \brief set simplified growth derivative solution (wrt concentration) of scatra field on
+    //! other field
+    //!
+    //! \param dis     discretization to write simplified growth solution on
+    //! \param dsimpl_growth_dc     simplified growth derivative wrt concentration
+    //! \param nds     number of dofset to write simplified growth solution on
+    virtual void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) = 0;
+
+    //! \brief set simplified growth derivative solution (wrt potential) of scatra field on
+    //! other field
+    //!
+    //! \param dis     discretization to write simplified growth solution on
+    //! \param dsimpl_growth_dpot     simplified growth derivative wrt potential
+    //! \param nds     number of dofset to write simplified growth solution on
+    virtual void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) = 0;
   };
 
   //! solid-scatra coupling for matching volume meshes
@@ -133,6 +161,14 @@ namespace SSI
 
     void set_temperature_field(Core::FE::Discretization& structdis,
         std::shared_ptr<const Core::LinAlg::Vector<double>> temp) override;
+
+    void set_simplified_growth_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) override;
+    void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) override;
+    void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) override;
+
 
    private:
     //! flag indicating if class is setup
@@ -206,6 +242,25 @@ namespace SSI
     {
       FOUR_C_THROW("only for matching nodes");
     };
+
+    void set_simplified_growth_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) override
+    {
+      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+    }
+
+    void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) override
+    {
+      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+    }
+
+    void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) override
+    {
+      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+    }
+
 
    private:
     //! adapter to mortar framework
@@ -296,6 +351,24 @@ namespace SSI
       FOUR_C_THROW("only for matching nodes");
     };
 
+    void set_simplified_growth_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) override
+    {
+      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+    }
+
+    void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) override
+    {
+      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+    }
+
+    void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) override
+    {
+      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+    }
+
    private:
     //! volume coupling (using mortar) adapter
     std::shared_ptr<Coupling::Adapter::MortarVolCoupl> volcoupl_structurescatra_;
@@ -369,6 +442,13 @@ namespace SSI
 
     void set_temperature_field(Core::FE::Discretization& structdis,
         std::shared_ptr<const Core::LinAlg::Vector<double>> temp) override;
+
+    void set_simplified_growth_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) override;
+    void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) override;
+    void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
+        const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) override;
 
    private:
     //! flag indicating if class is setup

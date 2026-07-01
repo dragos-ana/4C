@@ -208,8 +208,10 @@ namespace ScaTra
       {
         Core::LinAlg::Vector<double> zero_simpl_growth{simplgrowthnp_->get_map()};
         set_simplified_growth(zero_simpl_growth);
-        // DEBUG
-        std::cout << "put 0.0 everywhere \n";
+        Core::LinAlg::Vector<double> zero_simpl_growth_deriv_conc{dsimplgrowth_dc_np_->get_map()};
+        Core::LinAlg::Vector<double> zero_simpl_growth_deriv_pot{dsimplgrowth_dpot_np_->get_map()};
+        set_deriv_simplified_growth_conc(zero_simpl_growth_deriv_conc);
+        set_deriv_simplified_growth_pot(zero_simpl_growth_deriv_pot);
       }
     };
 

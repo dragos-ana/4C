@@ -241,6 +241,8 @@ std::string_view Core::Materials::to_string(Core::Materials::MaterialType materi
       return "MAT_MultiplicativeSplitDefgradElastHyper";
     case mfi_no_growth:
       return "MAT_InelasticDefgradNoGrowth";
+    case mfi_simplified_interface_growth:
+      return "MAT_InelasticDefgradSimplInterfaceGrowth";
     case mfi_lin_scalar_iso:
       return "MAT_InelasticDefgradLinScalarIso";
     case mfi_lin_scalar_aniso:

@@ -12,11 +12,13 @@
 
 #include "4C_comm_pack_buffer.hpp"
 #include "4C_comm_pack_helpers.hpp"
+#include "4C_legacy_enum_definitions_materials.hpp"
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_linalg_utils_tensor_interpolation.hpp"
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_mat_vplast_law.hpp"
@@ -83,6 +85,20 @@ namespace Mat
     {
      public:
       explicit InelasticDefgradNoGrowth(const Core::Mat::PAR::Parameter::Data& matdata);
+
+      std::shared_ptr<Core::Mat::Material> create_material() override { return nullptr; }
+    };
+
+
+    /*----------------------------------------------------------------------
+     *----------------------------------------------------------------------*/
+    /*! \class InelasticDefgradSimplInterfaceGrowth
+     * Parameter class for InelasticDefgradSimplInterfaceGrowth
+     */
+    class InelasticDefgradSimplInterfaceGrowth : public Core::Mat::PAR::Parameter
+    {
+     public:
+      explicit InelasticDefgradSimplInterfaceGrowth(const Core::Mat::PAR::Parameter::Data& matdata);
 
       std::shared_ptr<Core::Mat::Material> create_material() override { return nullptr; }
     };
@@ -681,7 +697,8 @@ namespace Mat
      * @param[in] eleGID  Element ID
      */
     virtual void pre_evaluate(const Teuchos::ParameterList& params,
-        const EvaluationContext<3>& context, int gp, int eleGID) = 0;
+        const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input,
+        int gp, int eleGID) = 0;
 
     /*!
      * @brief set gauss point concentration to parameter class
@@ -791,6 +808,8 @@ namespace Mat
     }
 
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+        const SolidScalarMaterialNodalInput& nodal_input,
+
         int gp, int eleGID) override;
 
     void update() override {}
@@ -808,6 +827,75 @@ namespace Mat
     // identity tensor
     Core::LinAlg::Matrix<3, 3> identity_;
   };
+
+
+  /*--------------------------------------------------------------------*/
+  /*! \class InelasticDefgradSimplInterfaceGrowth
+
+   This class models materials in combination with the multiplicative split material that feature
+   interface growth based on the plating / stripping current, calculated using nodal scatra
+   simplified growths.
+   */
+  class InelasticDefgradSimplInterfaceGrowth : public InelasticDefgradFactors
+  {
+   public:
+    /*!
+     * @brief construct material with required inputs
+     *
+     * @param[in] params           pointer to material specific parameters
+     */
+    explicit InelasticDefgradSimplInterfaceGrowth(Core::Mat::PAR::Parameter* params);
+
+    [[nodiscard]] Core::Materials::MaterialType material_type() const override
+    {
+      return Core::Materials::mfi_simplified_interface_growth;
+    };
+
+    void evaluate_inverse_inelastic_def_grad(const Core::LinAlg::Matrix<3, 3>* defgrad,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, Core::LinAlg::Matrix<3, 3>& iFinM) override;
+
+    void evaluate_additional_cmat(const Core::LinAlg::Matrix<3, 3>* defgrad,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 1>& iCV, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
+        Core::LinAlg::Matrix<6, 6>& cmatadd) override;
+
+    void evaluate_inelastic_def_grad_derivative(
+        double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx) override;
+
+    void evaluate_od_stiff_mat(const Core::LinAlg::Matrix<3, 3>* defgrad,
+        const Core::LinAlg::Matrix<3, 3>& iFin_other, const Core::LinAlg::Matrix<3, 3>& iFinjM,
+        const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 1>& dstressdx) override;
+
+    void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+        const SolidScalarMaterialNodalInput& nodal_input, int gp, int eleGID) override;
+
+    PAR::InelasticSource get_inelastic_source() override;
+
+    void setup(const int numgp, const Discret::Elements::Fibers& fibers,
+        const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
+
+    void update() override;
+
+    void pack_inelastic(Core::Communication::PackBuffer& data) const override;
+
+    void unpack_inelastic(Core::Communication::UnpackBuffer& data) override;
+
+    void register_output_data_names(
+        std::unordered_map<std::string, int>& names_and_size) const override
+    {
+    }
+
+    bool evaluate_output_data(
+        const std::string& name, Core::LinAlg::SerialDenseMatrix& data) const override
+    {
+      return false;
+    }
+
+   private:
+    // nodal input
+    SolidScalarMaterialNodalInput nodal_input_;
+  };
+
 
   /*--------------------------------------------------------------------*/
   /*! \class InelasticDefgradTimeFunct
@@ -849,6 +937,8 @@ namespace Mat
     }
 
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+        const SolidScalarMaterialNodalInput& nodal_input,
+
         int gp, int eleGID) override;
 
     void update() override = 0;
@@ -1024,7 +1114,7 @@ namespace Mat
     [[nodiscard]] Core::Materials::MaterialType material_type() const override = 0;
 
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
-        int gp, int eleGID) override;
+        const SolidScalarMaterialNodalInput& nodal_input, int gp, int eleGID) override;
 
     void set_concentration_gp(double concentration) override;
 
@@ -1437,7 +1527,7 @@ namespace Mat
     }
 
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
-        int gp, int eleGID) override;
+        const SolidScalarMaterialNodalInput& nodal_input, int gp, int eleGID) override;
 
     void update() override {}
 
@@ -1571,7 +1661,7 @@ namespace Mat
         const std::optional<Discret::Elements::CoordinateSystem>& coord_system) override;
 
     void pre_evaluate(const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
-        int gp, int eleGID) override;
+        const SolidScalarMaterialNodalInput& nodal_input, int gp, int eleGID) override;
 
     void update() override;
 

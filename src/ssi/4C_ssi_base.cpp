@@ -175,6 +175,16 @@ void SSI::SSIBase::setup()
       ssicoupling_->set_temperature_field(*problem->get_dis("structure"), temperature_vector_);
     }
 
+    if (scatra_field()->has_simplified_growth_conditions())
+    {
+      ssicoupling_->set_simplified_growth_solution(
+          *problem->get_dis("structure"), scatra_field()->get_simplgrowthnp(), 2);
+      ssicoupling_->set_deriv_simplified_growth_conc_solution(
+          *problem->get_dis("structure"), scatra_field()->dsimplgrowth_dc_np(), 3);
+      ssicoupling_->set_deriv_simplified_growth_pot_solution(
+          *problem->get_dis("structure"), scatra_field()->dsimplgrowth_dpot_np(), 4);
+    }
+
     // set up structural base algorithm
     struct_adapterbase_ptr_->setup();
 
@@ -554,8 +564,51 @@ void SSI::SSIBase::set_scatra_solution(
 
   ssicoupling_->set_scalar_field(*structure_field()->discretization(), phi, 1);
 
+
   // set state for contact evaluation
   if (contact_strategy_nitsche_ != nullptr) set_ssi_contact_states(phi);
+}
+
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+void SSI::SSIBase::set_simplified_growth_solution(
+    const Core::LinAlg::Vector<double>& simpl_growth) const
+{
+  // safety checks
+  check_is_init();
+  check_is_setup();
+
+  ssicoupling_->set_simplified_growth_solution(
+      *structure_field()->discretization(), simpl_growth, 2);
+}
+
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+void SSI::SSIBase::set_deriv_simplified_growth_conc_solution(
+    const Core::LinAlg::Vector<double>& dsimpl_growth_dc) const
+{
+  // safety checks
+  check_is_init();
+  check_is_setup();
+
+  ssicoupling_->set_deriv_simplified_growth_conc_solution(
+      *structure_field()->discretization(), dsimpl_growth_dc, 3);
+}
+
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+void SSI::SSIBase::set_deriv_simplified_growth_pot_solution(
+    const Core::LinAlg::Vector<double>& dsimpl_growth_dpot) const
+{
+  // safety checks
+  check_is_init();
+  check_is_setup();
+
+  ssicoupling_->set_deriv_simplified_growth_pot_solution(
+      *structure_field()->discretization(), dsimpl_growth_dpot, 4);
 }
 
 /*---------------------------------------------------------------------------------*

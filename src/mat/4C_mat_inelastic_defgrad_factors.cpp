@@ -21,6 +21,7 @@
 #include "4C_linalg_symmetric_tensor.hpp"
 #include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_conversion.hpp"
+#include "4C_linalg_tensor_einstein.hpp"
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_linalg_utils_densematrix_funct.hpp"
 #include "4C_linalg_utils_scalar_interpolation.hpp"
@@ -29,6 +30,7 @@
 #include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_electrode.hpp"
 #include "4C_mat_inelastic_defgrad_factors_service.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_par_bundle.hpp"
@@ -44,6 +46,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -520,6 +524,17 @@ Mat::PAR::InelasticDefgradNoGrowth::InelasticDefgradNoGrowth(
   // do nothing here
 }
 
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::PAR::InelasticDefgradSimplInterfaceGrowth::InelasticDefgradSimplInterfaceGrowth(
+    const Core::Mat::PAR::Parameter::Data& matdata)
+    : Parameter(matdata)
+{
+  // do nothing here
+}
+
+
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 Mat::PAR::InelasticDefgradScalar::InelasticDefgradScalar(
@@ -767,6 +782,13 @@ std::shared_ptr<Mat::InelasticDefgradFactors> Mat::InelasticDefgradFactors::fact
 
       return std::make_shared<InelasticDefgradNoGrowth>(params);
     }
+    case Core::Materials::mfi_simplified_interface_growth:
+    {
+      auto* params =
+          dynamic_cast<Mat::PAR::InelasticDefgradSimplInterfaceGrowth*>(current_material);
+
+      return std::make_shared<InelasticDefgradSimplInterfaceGrowth>(params);
+    }
     case Core::Materials::mfi_lin_scalar_aniso:
     {
       // get pointer to parameter class
@@ -890,7 +912,8 @@ Mat::InelasticDefgradScalar::InelasticDefgradScalar(Core::Mat::PAR::Parameter* p
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradScalar::pre_evaluate(const Teuchos::ParameterList& params,
-    const EvaluationContext<3>& context, const int gp, const int eleGID)
+    const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input,
+    const int gp, const int eleGID)
 {
   // store scalars of current gauss point
   concentrations_ = params.get<std::shared_ptr<std::vector<double>>>("scalars");
@@ -1536,7 +1559,8 @@ Mat::InelasticDefgradLinTempIso::InelasticDefgradLinTempIso(Core::Mat::PAR::Para
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradLinTempIso::pre_evaluate(const Teuchos::ParameterList& params,
-    const EvaluationContext<3>& context, const int gp, const int eleGID)
+    const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input,
+    const int gp, const int eleGID)
 {
   temperature_ = params.get<double>("temperature");
 }
@@ -1671,9 +1695,178 @@ Mat::InelasticDefgradNoGrowth::InelasticDefgradNoGrowth(Core::Mat::PAR::Paramete
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradNoGrowth::pre_evaluate(const Teuchos::ParameterList& params,
-    const EvaluationContext<3>& context, const int gp, const int eleGID)
+    const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input,
+    const int gp, const int eleGID)
 {
 }
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::InelasticDefgradSimplInterfaceGrowth::InelasticDefgradSimplInterfaceGrowth(
+    Core::Mat::PAR::Parameter* params)
+    : InelasticDefgradFactors(params), nodal_input_({})
+{
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::evaluate_inverse_inelastic_def_grad(
+    const Core::LinAlg::Matrix<3, 3>* defgrad, const Core::LinAlg::Matrix<3, 3>& iFin_other,
+    Core::LinAlg::Matrix<3, 3>& iFinM)
+{
+  // --> calculation based on simplified growths from nodal input
+  FOUR_C_ASSERT_ALWAYS(nodal_input_.nodal_simplified_growths.has_value(),
+      "Nodal simplified growths must be provided");
+  FOUR_C_ASSERT_ALWAYS(nodal_input_.nodal_simplified_growths->at(0).size() == 3,
+      "Currently, this material is only enabled for 3D formulations, whereas the current dimension "
+      "is {}",
+      nodal_input_.nodal_simplified_growths->at(0).size());
+  Core::LinAlg::Matrix<3, 3> FinM = Core::LinAlg::make_matrix<3, 3>(
+      Core::LinAlg::get_full(Core::LinAlg::TensorGenerators::identity<double, 3, 3>));
+  // loop through nodes
+  for (std::size_t n = 0; n < nodal_input_.shape_func.size(); ++n)
+  {
+    for (std::size_t r = 0; r < nodal_input_.nodal_simplified_growths->at(n).size(); ++r)
+    {
+      FOUR_C_ASSERT(nodal_input_.nodal_simplified_growths->at(n).size() ==
+                        nodal_input_.shape_func_derivs_XYZ[n].size(),
+          "Simplified growths have dim {} while shape function derivatives have dim {}",
+          nodal_input_.nodal_simplified_growths->size(),
+          nodal_input_.shape_func_derivs_XYZ[n].size());
+
+      for (std::size_t c = 0; c < nodal_input_.shape_func_derivs_XYZ[n].size(); ++c)
+      {
+        {
+          FinM(r, c) += nodal_input_.shape_func_derivs_XYZ[n][c] *
+                        nodal_input_.nodal_simplified_growths->at(n)[r];
+        }
+      }
+    }
+  }
+  iFinM.invert(FinM);
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::evaluate_additional_cmat(
+    const Core::LinAlg::Matrix<3, 3>* defgrad, const Core::LinAlg::Matrix<3, 3>& iFin_other,
+    const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 1>& iCV,
+    const Core::LinAlg::Matrix<6, 9>& dSdiFinj, Core::LinAlg::Matrix<6, 6>& cmatadd)
+{
+  // TODO: calculate derivative of normal wrt CG in the future?
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::evaluate_inelastic_def_grad_derivative(
+    double detjacobian, Core::LinAlg::Tensor<double, 3, 3>& dFindx)
+{
+  // loop through nodes
+  for (std::size_t n = 0; n < nodal_input_.shape_func.size(); ++n)
+  {
+    for (std::size_t r = 0; r < nodal_input_.nodal_simplified_growth_pot_derivs->at(n).size(); ++r)
+    {
+      FOUR_C_ASSERT(nodal_input_.nodal_simplified_growth_pot_derivs->at(n).size() ==
+                        nodal_input_.shape_func_derivs_XYZ[n].size(),
+          "Simplified growth potential derivatives have dim {} while shape function derivatives "
+          "have dim {}",
+          nodal_input_.nodal_simplified_growth_pot_derivs->size(),
+          nodal_input_.shape_func_derivs_XYZ[n].size());
+
+      for (std::size_t c = 0; c < nodal_input_.shape_func_derivs_XYZ[n].size(); ++c)
+      {
+        {
+          dFindx(r, c) += nodal_input_.shape_func_derivs_XYZ[n][c] *
+                          nodal_input_.nodal_simplified_growth_pot_derivs->at(n)[r];
+        }
+      }
+    }
+  }
+}
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::evaluate_od_stiff_mat(
+    const Core::LinAlg::Matrix<3, 3>* defgrad, const Core::LinAlg::Matrix<3, 3>& iFin_other,
+    const Core::LinAlg::Matrix<3, 3>& iFinjM, const Core::LinAlg::Matrix<6, 9>& dSdiFinj,
+    Core::LinAlg::Matrix<6, 1>& dstressdx)
+{
+  // TODO: What is the difference to the function above? We now will contract the deriv of the
+  // INVERSE inelastic defgrad with the dSdiFinj -> both methods actually required, but of course we
+  // should reuse the function above
+  auto diFinjdFinj = Core::LinAlg::einsum<"ik", "lj">(
+                         Core::LinAlg::make_tensor(iFinjM), Core::LinAlg::make_tensor(iFinjM)) *
+                     (-1.0);
+
+  const double detjacobian = defgrad->determinant();
+  Core::LinAlg::Tensor<double, 3, 3> dFin_dpot;
+  evaluate_inelastic_def_grad_derivative(detjacobian, dFin_dpot);
+  auto diFinj_dpot = Core::LinAlg::einsum<"ijlk", "lk">(diFinjdFinj, dFin_dpot);
+  Core::LinAlg::Matrix<3, 3> diFinj_dpot_M = Core::LinAlg::make_matrix(diFinj_dpot);
+  Core::LinAlg::Matrix<9, 1> diFinj_dpot_V{Core::LinAlg::Initialization::zero};
+  Core::LinAlg::Voigt::matrix_3x3_to_9x1(diFinj_dpot_M, diFinj_dpot_V);
+  dstressdx.multiply_nn(1.0, dSdiFinj, diFinj_dpot_V, 1.0);
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::pre_evaluate(const Teuchos::ParameterList& params,
+    const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input, int gp,
+    int eleGID)
+{
+  // save nodal input -> this function is called always before any evaluations
+  nodal_input_ = nodal_input;
+
+  // DEBUG
+  if (gp == 0)
+  {
+    // std::cout << "ele_gid: " << eleGID << ": " << std::endl;
+    // nodal_input.print(std::cout);
+  }
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+Mat::PAR::InelasticSource Mat::InelasticDefgradSimplInterfaceGrowth::get_inelastic_source()
+{
+  return PAR::InelasticSource::potential;
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::setup(const int numgp,
+    const Discret::Elements::Fibers& fibers,
+    const std::optional<Discret::Elements::CoordinateSystem>& coord_system)
+{
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::update() {}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::pack_inelastic(
+    Core::Communication::PackBuffer& data) const
+{
+}
+
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::InelasticDefgradSimplInterfaceGrowth::unpack_inelastic(
+    Core::Communication::UnpackBuffer& data)
+{
+}
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -1693,7 +1886,8 @@ Mat::InelasticDefgradTimeFunct::InelasticDefgradTimeFunct(Core::Mat::PAR::Parame
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTimeFunct::pre_evaluate(const Teuchos::ParameterList& params,
-    const EvaluationContext<3>& context, const int gp, const int eleGID)
+    const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input,
+    const int gp, const int eleGID)
 {
   // evaluate function value for current time step.
   const auto& funct = Global::Problem::instance()->function_by_id<Core::Utils::FunctionOfTime>(
@@ -1815,8 +2009,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::InelasticDefgradTransvIsotrop
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::InelasticDefgradTransvIsotropElastViscoplast::pre_evaluate(
-    const Teuchos::ParameterList& params, const EvaluationContext<3>& context, const int gp,
-    const int eleGID)
+    const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+    const SolidScalarMaterialNodalInput& nodal_input, const int gp, const int eleGID)
 {
   // save parameter list
   params_ = params;
@@ -2772,8 +2966,9 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_history_variables_wr
       rhs_iFin_V.update(-time_step_tracker_.dt, state_quantity_derivatives_.curr_dlpdT, 0.0);
 
       // calculate RHS of the equation for the plastic strain
-      /** \f$\texttt{rhs\_epsp\_V} = - \frac{\partial r_{\varepsilon_{\text{p}}}}{\partial T_{n+1}}
-      = \Delta t \cdot \left(\underbrace{\frac{\partial \dot{\varepsilon}_{\text{p}}}{\partial
+      /** \f$\texttt{rhs\_epsp\_V} = - \frac{\partial r_{\varepsilon_{\text{p}}}}{\partial
+      T_{n+1}} = \Delta t \cdot \left(\underbrace{\frac{\partial
+      \dot{\varepsilon}_{\text{p}}}{\partial
       \sigma_{\text{yield}}} \cdot
       \frac{\partial\sigma_{\text{yield}}}{\partial T}}_\texttt{curr\_dpsr\_dT} + \frac{\partial
       v_{\text{p}}}{\partial \sigma_\text{eq}}
@@ -2885,7 +3080,7 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_taylor_quinney_heat_
 
   // set the new temperature and pre-evaluate
   params_.set<double>("temperature", temperature);
-  pre_evaluate(params_, context, gp, eleGID);
+  pre_evaluate(params_, context, {}, gp, eleGID);  // TODO: pass nodal input here as well?
 
   if (parameter()->linearization_type() == ViscoplastUtils::LinearizationType::perturbation_based)
   {
@@ -2922,14 +3117,16 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_taylor_quinney_heat_
   const auto thermo_mechanical_coupling_state = evaluate_thermo_mechanical_coupling_state(
       reduced_kinematics.right_cauchy_green, temperature, err_status);
   FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Could not evaluate thermo-mechanical coupling state for mechanical dissipation evaluation! "
+      "Could not evaluate thermo-mechanical coupling state for mechanical dissipation "
+      "evaluation! "
       "Error: {}",
       ViscoplastUtils::get_detailed_error_message_for_error_type(err_status));
   const auto thermo_mechanical_coupling_state_derivatives =
       evaluate_thermo_mechanical_coupling_state_derivatives(
           reduced_kinematics.right_cauchy_green, temperature, err_status);
   FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors,
-      "Could not evaluate thermo-mechanical coupling state derivatives for mechanical dissipation "
+      "Could not evaluate thermo-mechanical coupling state derivatives for mechanical "
+      "dissipation "
       "evaluation! Error: {}",
       ViscoplastUtils::get_detailed_error_message_for_error_type(err_status));
 
@@ -3486,11 +3683,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::evaluate_local_newton_jacobia
   const double plastic_strain = x(9);
 
   // evaluate state derivatives
-  state_quantity_derivatives_ = evaluate_state_quantity_derivatives(CM, temperature, iFinM,
-      plastic_strain, err_status, dt,
-      ViscoplastUtils::StateQuantityDerivEvalType::full_eval);  // we do not reevaluate the state
-                                                                // quantities, this was done in the
-                                                                // residual computation already
+  state_quantity_derivatives_ =
+      evaluate_state_quantity_derivatives(CM, temperature, iFinM, plastic_strain, err_status, dt,
+          ViscoplastUtils::StateQuantityDerivEvalType::full_eval);  // we do not reevaluate the
+                                                                    // state quantities, this was
+                                                                    // done in the residual
+                                                                    // computation already
 
   // get derivative of update tensor wrt inverse inelastic defgrad (in FourTensor form)
   Core::LinAlg::FourTensor<3> dEpdiFin_FourTensor(true);

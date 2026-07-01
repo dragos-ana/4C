@@ -22,6 +22,7 @@
 #include "4C_mat_elast_couptransverselyisotropic.hpp"
 #include "4C_mat_elasthyper_service.hpp"
 #include "4C_mat_inelastic_defgrad_factors.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_multiplicative_split_defgrad_elasthyper_service.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_mat_service.hpp"
@@ -33,7 +34,9 @@
 
 #include <Teuchos_StandardParameterEntryValidators.hpp>
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -221,12 +224,14 @@ void Mat::MultiplicativeSplitDefgradElastHyper::unpack(Core::Communication::Unpa
   }
 }
 
+
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
     const Core::LinAlg::Tensor<double, 3, 3>* defgrad,
     const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
     const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_input,
     Core::LinAlg::SymmetricTensor<double, 3, 3>& stress,
     Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& cmat, int gp, int eleGID)
 {
@@ -235,7 +240,7 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   Core::LinAlg::Matrix<6, 6> cmat_view = Core::LinAlg::make_stress_like_voigt_view(cmat);
 
   // do all stuff that only has to be done once per evaluate() call
-  pre_evaluate(params, context, gp, eleGID);
+  pre_evaluate(params, context, nodal_input, gp, eleGID);
 
   // compute kinematic quantities
   KinematicQuantities kinematic_quantities =
@@ -296,28 +301,48 @@ void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
   cmat_view.update(1.0, cmatadd, 1.0);
 }
 
-Core::LinAlg::SymmetricTensor<double, 3, 3>
-Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
+
+/*--------------------------------------------------------------------*
+ *--------------------------------------------------------------------*/
+void Mat::MultiplicativeSplitDefgradElastHyper::evaluate(
+    const Core::LinAlg::Tensor<double, 3, 3>* defgrad,
+    const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
+    const Teuchos::ParameterList& params, const EvaluationContext<3>& context,
+    Core::LinAlg::SymmetricTensor<double, 3, 3>& stress,
+    Core::LinAlg::SymmetricTensor<double, 3, 3, 3, 3>& cmat, int gp, int eleGID)
+{
+  // call overload without nodal solid-scatra input
+  evaluate(defgrad, glstrain, params, context, {}, stress, cmat, gp, eleGID);
+}
+
+std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>>
+Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalars(
     const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
     const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
-    const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp, int eleGID)
+    const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int num_scalars,
+    int gp, int eleGID, const SolidScalarMaterialNodalInput& nodal_input)
 {
+  FOUR_C_ASSERT(num_scalars > 0, "num_scalars must be positive");
+  std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> result(num_scalars);
+  for (auto& t : result) t.fill(0.0);
+
   Core::LinAlg::Matrix<3, 3> defgrad_mat = Core::LinAlg::make_matrix_view(defgrad);
   // do all stuff that only has to be done once per evaluate() call
-  pre_evaluate(params, context, gp, eleGID);
+  pre_evaluate(params, context, nodal_input, gp, eleGID);
 
   // get source of deformation for this OD block depending on the differentiation type
-  auto source(PAR::InelasticSource::none);
   const int differentiationtype = get_or<int>(
       params, "differentiationtype", static_cast<int>(Solid::DifferentiationType::none));
+  std::vector<PAR::InelasticSource> sources;
   if (differentiationtype == static_cast<int>(Solid::DifferentiationType::elch))
-    source = PAR::InelasticSource::concentration;
+  {
+    sources.push_back(PAR::InelasticSource::concentration);
+    sources.push_back(PAR::InelasticSource::potential);
+  }
   else if (differentiationtype == static_cast<int>(Solid::DifferentiationType::temp))
-    source = PAR::InelasticSource::temperature;
+    sources.push_back(PAR::InelasticSource::temperature);
   else
     FOUR_C_THROW("unknown scalaratype");
-
-
 
   KinematicQuantities kinematic_quantities =
       evaluate_kinematic_quantities(*this, *inelastic_, defgrad_mat, gp, eleGID);
@@ -340,23 +365,31 @@ Mat::MultiplicativeSplitDefgradElastHyper::evaluate_d_stress_d_scalar(
   Core::LinAlg::Matrix<6, 9> dSdiFin = evaluate_d_stress_d_ifin(
       kinematic_quantities, stress_factors, thermoelastic_stress_contribution.value);
 
-  Core::LinAlg::SymmetricTensor<double, 3, 3> d_stress_d_scalar =
-      make_symmetric_tensor_from_stress_like_voigt_matrix(
-          evaluate_od_stiff_mat(source, &defgrad_mat, dSdiFin));
 
-
-  if (source == PAR::InelasticSource::temperature)
+  for (std::size_t s = 0; s < sources.size(); ++s)
   {
-    // stress depends on temperature not only through the inelastic deformation gradient but also
-    // through thermal expansion
-    d_stress_d_scalar -= Mat::ThermalExpansion::compute_pk2_stress_contribution(
-        thermoelastic_stress_contribution, kinematic_quantities.iFinM)
-                             .temperature_derivative;
+    const auto& source = sources[s];
+
+    Core::LinAlg::SymmetricTensor<double, 3, 3> d_stress_d_scalar =
+        make_symmetric_tensor_from_stress_like_voigt_matrix(
+            evaluate_od_stiff_mat(source, &defgrad_mat, dSdiFin));
+
+    if (source == PAR::InelasticSource::temperature)
+    {
+      // stress depends on temperature not only through the inelastic deformation gradient but also
+      // through thermal expansion
+      d_stress_d_scalar -= Mat::ThermalExpansion::compute_pk2_stress_contribution(
+          thermoelastic_stress_contribution, kinematic_quantities.iFinM)
+                               .temperature_derivative;
+    }
+
+
+    result[s] = d_stress_d_scalar;
   }
 
-
-  return d_stress_d_scalar;
+  return result;
 }
+
 
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
@@ -1182,11 +1215,12 @@ Mat::HeatSource Mat::MultiplicativeSplitDefgradElastHyper::evaluate_additional_h
 /*--------------------------------------------------------------------*
  *--------------------------------------------------------------------*/
 void Mat::MultiplicativeSplitDefgradElastHyper::pre_evaluate(const Teuchos::ParameterList& params,
-    const EvaluationContext<3>& context, const int gp, const int eleGID) const
+    const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input,
+    const int gp, const int eleGID) const
 {
   // loop over all inelastic contributions
   for (int p = 0; p < inelastic_->num_inelastic_def_grad(); ++p)
-    inelastic_->fac_def_grad_in()[p].second->pre_evaluate(params, context, gp, eleGID);
+    inelastic_->fac_def_grad_in()[p].second->pre_evaluate(params, context, nodal_input, gp, eleGID);
 }
 
 /*--------------------------------------------------------------------*
@@ -1244,6 +1278,7 @@ void Mat::InelasticFactorsHandler::assign_to_source(
           (materialtype != Core::Materials::mfi_lin_scalar_iso) and
           (materialtype != Core::Materials::mfi_lin_temp_iso) and
           (materialtype != Core::Materials::mfi_no_growth) and
+          (materialtype != Core::Materials::mfi_simplified_interface_growth) and
           (materialtype != Core::Materials::mfi_time_funct_aniso) and
           (materialtype != Core::Materials::mfi_time_funct_iso) and
           (materialtype != Core::Materials::mfi_poly_intercal_frac_aniso) and

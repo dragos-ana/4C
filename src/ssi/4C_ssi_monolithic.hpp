@@ -228,7 +228,7 @@ namespace SSI
     //! update structure state within the Newton iteration
     void update_iter_structure() const;
 
-    //! remove after full implementation: apply simplified growth as ALE displacement
+    //! TODO: remove after full implementation: apply simplified growth as ALE displacement
     void apply_simplified_growth_as_ale_disp();
 
     //! Dirichlet boundary condition handler

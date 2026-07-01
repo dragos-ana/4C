@@ -206,7 +206,7 @@ namespace Mat
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp,
-        int eleGID) override;
+        int eleGID, const SolidScalarMaterialNodalInput& nodal_input) override;
 
     void stress_temperature_modulus_and_deriv(Core::LinAlg::SymmetricTensor<double, 3, 3>& stm,
         Core::LinAlg::SymmetricTensor<double, 3, 3>& stm_dT, int gp) override;

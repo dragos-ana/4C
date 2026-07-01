@@ -236,16 +236,18 @@ namespace Mat
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int gp,
-        int eleGID) override
+        int eleGID, const SolidScalarMaterialNodalInput& nodal_input) override
     {
-      return evaluate_d_stress_d_scalars(defgrad, glstrain, params, context, 1, gp, eleGID).front();
+      return evaluate_d_stress_d_scalars(
+          defgrad, glstrain, params, context, 1, gp, eleGID, nodal_input)
+          .front();
     }
 
     std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> evaluate_d_stress_d_scalars(
         const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int num_scalars,
-        int gp, int eleGID) override;
+        int gp, int eleGID, const SolidScalarMaterialNodalInput& nodal_input) override;
 
    private:
     /// Material parameters

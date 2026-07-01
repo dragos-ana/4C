@@ -15,9 +15,11 @@
 #include "4C_linalg_symmetric_tensor.hpp"
 #include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_generators.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_mat_structporo.hpp"
 #include "4C_mat_stvenantkirchhoff.hpp"
+#include "4C_utils_exceptions.hpp"
 #include "4C_utils_local_newton.hpp"
 
 #include <Teuchos_ParameterList.hpp>
@@ -333,6 +335,22 @@ Discret::Elements::Stress<celltype> Discret::Elements::evaluate_material_stress(
   }
 }
 
+
+template <Core::FE::CellType celltype>
+  requires(Core::FE::dim<celltype> == 2)
+Discret::Elements::Stress<celltype> Discret::Elements::evaluate_material_stress_solid_scatra(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<celltype>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID)
+{
+  FOUR_C_THROW("Should not be currently called!");
+}
+
+
+
 template <Core::FE::CellType celltype>
   requires(Core::FE::dim<celltype> == 2)
 void Discret::Elements::update_material(Mat::So3Material& material,
@@ -458,6 +476,57 @@ Discret::Elements::evaluate_material_stress<Core::FE::CellType::tri6>(Mat::So3Ma
     const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
     const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
     const Mat::EvaluationContext<2>& context, const int gp, const int eleGID);
+
+
+template Discret::Elements::Stress<Core::FE::CellType::quad4>
+Discret::Elements::evaluate_material_stress_solid_scatra<Core::FE::CellType::quad4>(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<Core::FE::CellType::quad4>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID);
+template Discret::Elements::Stress<Core::FE::CellType::quad8>
+Discret::Elements::evaluate_material_stress_solid_scatra<Core::FE::CellType::quad8>(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<Core::FE::CellType::quad8>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID);
+template Discret::Elements::Stress<Core::FE::CellType::quad9>
+Discret::Elements::evaluate_material_stress_solid_scatra<Core::FE::CellType::quad9>(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<Core::FE::CellType::quad9>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID);
+template Discret::Elements::Stress<Core::FE::CellType::nurbs9>
+Discret::Elements::evaluate_material_stress_solid_scatra<Core::FE::CellType::nurbs9>(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<Core::FE::CellType::nurbs9>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID);
+template Discret::Elements::Stress<Core::FE::CellType::tri3>
+Discret::Elements::evaluate_material_stress_solid_scatra<Core::FE::CellType::tri3>(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<Core::FE::CellType::tri3>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID);
+template Discret::Elements::Stress<Core::FE::CellType::tri6>
+Discret::Elements::evaluate_material_stress_solid_scatra<Core::FE::CellType::tri6>(
+    Mat::MonolithicSolidScalarMaterial& material,
+    const ElementProperties<Core::FE::CellType::tri6>& element_properties,
+    const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+    const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+    const Mat::EvaluationContext<2>& context,
+    const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp, const int eleGID);
+
 
 template void Discret::Elements::update_material(Mat::So3Material& material,
     const ElementProperties<Core::FE::CellType::quad4>& element_properties,

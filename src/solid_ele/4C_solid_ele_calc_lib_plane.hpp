@@ -11,6 +11,7 @@
 #include "4C_config.hpp"
 
 #include "4C_fem_general_cell_type.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_solid_ele_calc_lib.hpp"
 
 #include <Teuchos_ParameterList.hpp>
@@ -37,6 +38,20 @@ namespace Discret::Elements
       const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
       const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
       const Mat::EvaluationContext<2>& context, const int gp, const int eleGID);
+
+
+  template <Core::FE::CellType celltype>
+    requires(Core::FE::dim<celltype> == 2)
+  Stress<celltype> evaluate_material_stress_solid_scatra(
+      Mat::MonolithicSolidScalarMaterial& material,
+      const ElementProperties<celltype>& element_properties,
+      const Core::LinAlg::Tensor<double, 2, 2>& defgrd,
+      const Core::LinAlg::SymmetricTensor<double, 2, 2>& gl_strain, Teuchos::ParameterList& params,
+      const Mat::EvaluationContext<2>& context,
+      const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp,
+      const int eleGID);
+
+
 
   template <Core::FE::CellType celltype>
     requires(Core::FE::dim<celltype> == 2)

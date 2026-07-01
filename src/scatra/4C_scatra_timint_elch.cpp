@@ -620,6 +620,8 @@ void ScaTra::ScaTraTimIntElch::prepare_time_loop()
       {
         simplgrowthn_->put_scalar(0.0);
         simplgrowthnp_->put_scalar(0.0);
+        dsimplgrowth_dc_np_->put_scalar(0.0);
+        dsimplgrowth_dpot_np_->put_scalar(0.0);
       }
     }
 

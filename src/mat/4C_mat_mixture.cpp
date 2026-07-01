@@ -342,10 +342,10 @@ std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> Mat::Mixture::evaluate_
     const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
     const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
     const Teuchos::ParameterList& params, const EvaluationContext<3>& context, int num_scalars,
-    int gp, int eleGID)
+    int gp, int eleGID, const SolidScalarMaterialNodalInput& nodal_input)
 {
   return mixture_rule_->evaluate_d_stress_d_scalars(
-      defgrad, glstrain, params, context, num_scalars, gp, eleGID);
+      defgrad, glstrain, params, context, num_scalars, gp, eleGID, nodal_input);
 }
 
 FOUR_C_NAMESPACE_CLOSE

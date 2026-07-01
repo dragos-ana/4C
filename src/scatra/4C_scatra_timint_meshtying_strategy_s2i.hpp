@@ -703,15 +703,19 @@ namespace ScaTra
 
 
     /*!
-     * @brief Computes the simplified growth given a suitable kinetics condition modeling simplified
-     * growth.
+     * @brief Computes the simplified growth and the derivatives wrt concentration and potential,
+     * given a suitable kinetics condition modeling simplified growth.
      *
      * @param[in] condition_slave_side kinetics condition modeling simplified
      * growth on the slave side
-     * @return compute simplified growth vector
+     * @param[out] simplgrowthnp simplified growth
+     * @param[out] dsimplgrowth_dc derivative of simplified growth wrt concentration
+     * @param[out] dsimplgrowth_dpot derivative of simplified growth wrt potential
      */
-    [[nodiscard]] Core::LinAlg::Vector<double> compute_simplified_growth(
-        const FourC::Core::Conditions::Condition& condition_slave_side) const;
+    void compute_simplified_growth_and_derivs(
+        const FourC::Core::Conditions::Condition& condition_slave_side,
+        Core::LinAlg::Vector<double>& simplgrowthnp, Core::LinAlg::Vector<double>& dsimplgrowth_dc,
+        Core::LinAlg::Vector<double>& dsimplgrowth_dpot) const;
 
 
     //! flag indicating if we have capacitive interface flux contributions

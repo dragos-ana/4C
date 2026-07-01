@@ -13,6 +13,7 @@
 #include "4C_linalg_fixedsizematrix.hpp"
 #include "4C_linalg_symmetric_tensor.hpp"
 #include "4C_linalg_tensor.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_material_parameter_base.hpp"
 #include "4C_solid_ele_fibers.hpp"
@@ -248,7 +249,8 @@ namespace Mixture
     evaluate_d_stress_d_scalars(const Core::LinAlg::Tensor<double, 3, 3>& defgrad,
         const Core::LinAlg::SymmetricTensor<double, 3, 3>& glstrain,
         const Teuchos::ParameterList& params, const Mat::EvaluationContext<3>& context,
-        int num_scalars, int gp, int eleGID) const
+        int num_scalars, int gp, int eleGID,
+        const Mat::SolidScalarMaterialNodalInput& nodal_input) const
     {
       std::vector<Core::LinAlg::SymmetricTensor<double, 3, 3>> result(num_scalars);
       for (auto& t : result) t.fill(0.0);

@@ -32,6 +32,7 @@
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_linalg_tensor_symmetric_einstein.hpp"
 #include "4C_linalg_vector.hpp"
+#include "4C_mat_monolithic_solid_scalar_material.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_solid_ele_calc_lib_integration.hpp"
 #include "4C_structure_new_input.hpp"
@@ -987,6 +988,26 @@ namespace Discret::Elements
     material.evaluate(&defgrd, gl_strain, params, context, stress.pk2_, stress.cmat_, gp, eleGID);
     return stress;
   }
+
+  //! overload for SolidScatra
+  template <Core::FE::CellType celltype>
+    requires(Core::FE::dim<celltype> == 3)
+  Stress<celltype> evaluate_material_stress_solid_scatra(
+      Mat::MonolithicSolidScalarMaterial& material,
+      const ElementProperties<celltype>& element_properties,
+      const Core::LinAlg::Tensor<double, Core::FE::dim<celltype>, Core::FE::dim<celltype>>& defgrd,
+      const Core::LinAlg::SymmetricTensor<double, Core::FE::dim<celltype>, Core::FE::dim<celltype>>&
+          gl_strain,
+      Teuchos::ParameterList& params, const Mat::EvaluationContext<3>& context,
+      const Mat::SolidScalarMaterialNodalInput& nodal_material_input, const int gp,
+      const int eleGID)
+  {
+    Stress<celltype> stress{};
+    material.evaluate(&defgrd, gl_strain, params, context, nodal_material_input, stress.pk2_,
+        stress.cmat_, gp, eleGID);
+    return stress;
+  }
+
 
   template <Core::FE::CellType celltype>
     requires(Core::FE::dim<celltype> == 3)

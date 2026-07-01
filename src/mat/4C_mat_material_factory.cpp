@@ -582,6 +582,11 @@ std::unique_ptr<Core::Mat::PAR::Parameter> Mat::make_parameter(
     {
       return make_parameter_impl<Mat::PAR::InelasticDefgradNoGrowth>(id, type, input_data);
     }
+    case Core::Materials::mfi_simplified_interface_growth:
+    {
+      return make_parameter_impl<Mat::PAR::InelasticDefgradSimplInterfaceGrowth>(
+          id, type, input_data);
+    }
     case Core::Materials::mfi_lin_scalar_aniso:
     {
       return make_parameter_impl<Mat::PAR::InelasticDefgradLinScalarAniso>(id, type, input_data);
