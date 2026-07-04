@@ -200,11 +200,8 @@ namespace ScaTra
     //! calculated
     virtual void post_calc_initial_potential_field()
     {
-      // DEBUG
-      std::cout << "post_calc_initial_potential_field called \n";
-
       // when initializing the potential field, the simplified growth should not be updated
-      if (has_simplified_growth_conditions_)
+      if (has_simplgrowth_conditions_)
       {
         Core::LinAlg::Vector<double> zero_simpl_growth{simplgrowthnp_->get_map()};
         set_simplified_growth(zero_simpl_growth);

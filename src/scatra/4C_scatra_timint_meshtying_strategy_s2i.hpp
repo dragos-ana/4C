@@ -700,10 +700,8 @@ namespace ScaTra
         const std::shared_ptr<Core::LinAlg::FEVector<double>>& systemvector2,
         const S2I::InterfaceSides vector2_side) const;
 
-
-
     /*!
-     * @brief Computes the simplified growth and the derivatives wrt concentration and potential,
+     * @brief Computes the simplified growth and its derivatives wrt concentration and potential,
      * given a suitable kinetics condition modeling simplified growth.
      *
      * @param[in] condition_slave_side kinetics condition modeling simplified
@@ -716,7 +714,6 @@ namespace ScaTra
         const FourC::Core::Conditions::Condition& condition_slave_side,
         Core::LinAlg::Vector<double>& simplgrowthnp, Core::LinAlg::Vector<double>& dsimplgrowth_dc,
         Core::LinAlg::Vector<double>& dsimplgrowth_dpot) const;
-
 
     //! flag indicating if we have capacitive interface flux contributions
     bool has_capacitive_contributions_;

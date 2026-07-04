@@ -57,33 +57,10 @@ namespace Mat
     //! direction)
     std::vector<std::vector<double>> shape_func_derivs_XYZ;
 
-    //! is the struct fully filled, i.e, do the vectors have consistent sizes?
-    bool is_fully_filled = false;
-
-    //! fill function
-    void fill()
-    {
-      FOUR_C_ASSERT(shape_func.size() > 0, "Shape functions must be provided");
-      FOUR_C_ASSERT(
-          shape_func_derivs_XYZ.size() > 0, "Shape function derivatives must be provided");
-      FOUR_C_ASSERT(shape_func.size() == shape_func_derivs_XYZ.size(),
-          "Inconsistent numbers of nodes for shape functions {} and their derivatives {}",
-          shape_func.size(), shape_func_derivs_XYZ.size());
-      for (unsigned n = 0; n < shape_func_derivs_XYZ.size(); ++n)
-      {
-        FOUR_C_ASSERT(shape_func_derivs_XYZ[n].size() == shape_func_derivs_XYZ[0].size(),
-            "Shape function derivatives must be consistent: they are not for dimensions 0: {}, and "
-            "{}: {}",
-            shape_func_derivs_XYZ[0].size(), n, shape_func_derivs_XYZ[n].size());
-      }
-
-      is_fully_filled = true;
-    }
-
     // DEBUG: print simplified growths
     void print(std::ostream& os) const
     {
-      os << std::format("Simplified growths for is_filled = {} \n", is_fully_filled);
+      os << std::format("Simplified growths: \n");
       FOUR_C_ASSERT_ALWAYS(nodal_simplified_growths.has_value(), "Stop");
       for (unsigned int n = 0; n < nodal_simplified_growths->size(); ++n)
       {

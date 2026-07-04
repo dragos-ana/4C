@@ -92,6 +92,12 @@ void elch_dyn(int restart)
       // scatra time integrator is constructed and initialized inside
       scatraonly.init();
 
+      // initialize simplified growth dofsets if such conditions are considered
+      if (scatraonly.scatra_field()->has_simplified_growth_conditions())
+      {
+        scatraonly.scatra_field()->init_simplified_growth_dofsets();
+      }
+
       // now me may redistribute or ghost the scatra discretization
       // finalize discretization
       scatradis->fill_complete();

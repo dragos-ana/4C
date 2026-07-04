@@ -27,7 +27,7 @@ namespace ScaTra::ScaTraUtils
   void check_consistency_with_s2_i_kinetics_condition(const std::string& condition_to_be_tested,
       std::shared_ptr<Core::FE::Discretization> discretization);
 
-  //! determine the s2i kinetics butler volmer conditions modeling
+  //! determine the S2I kinetics Butler-Volmer conditions modeling
   //! simplified growth
   std::vector<const Core::Conditions::Condition*>
   get_s2i_kinetics_butler_volmer_simplified_growth_conditions(

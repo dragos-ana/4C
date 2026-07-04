@@ -103,9 +103,9 @@ namespace SSI
 
     //! \brief set simplified growth solution of scatra field on other field
     //!
-    //! \param dis     discretization to write simplified growth solution on
+    //! \param dis     discretization to write solution on
     //! \param simpl_growth     simplified growth solution
-    //! \param nds     number of dofset to write simplified growth solution on
+    //! \param nds     number of dofset to write solution on
     virtual void set_simplified_growth_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) = 0;
 
@@ -113,18 +113,18 @@ namespace SSI
     //! \brief set simplified growth derivative solution (wrt concentration) of scatra field on
     //! other field
     //!
-    //! \param dis     discretization to write simplified growth solution on
+    //! \param dis     discretization to write solution on
     //! \param dsimpl_growth_dc     simplified growth derivative wrt concentration
-    //! \param nds     number of dofset to write simplified growth solution on
+    //! \param nds     number of dofset to write solution on
     virtual void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) = 0;
 
     //! \brief set simplified growth derivative solution (wrt potential) of scatra field on
     //! other field
     //!
-    //! \param dis     discretization to write simplified growth solution on
+    //! \param dis     discretization to write solution on
     //! \param dsimpl_growth_dpot     simplified growth derivative wrt potential
-    //! \param nds     number of dofset to write simplified growth solution on
+    //! \param nds     number of dofset to write solution on
     virtual void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) = 0;
   };
@@ -246,19 +246,19 @@ namespace SSI
     void set_simplified_growth_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) override
     {
-      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+      FOUR_C_THROW("Currently only for matching nodes!");
     }
 
     void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) override
     {
-      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+      FOUR_C_THROW("Currently only for matching nodes!");
     }
 
     void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) override
     {
-      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+      FOUR_C_THROW("Currently only for matching nodes!");
     }
 
 
@@ -354,19 +354,19 @@ namespace SSI
     void set_simplified_growth_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds) override
     {
-      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+      FOUR_C_THROW("Currently only for matching nodes!");
     }
 
     void set_deriv_simplified_growth_conc_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& dsimpl_growth_dc, unsigned nds) override
     {
-      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+      FOUR_C_THROW("Currently only for matching nodes!");
     }
 
     void set_deriv_simplified_growth_pot_solution(Core::FE::Discretization& dis,
         const Core::LinAlg::Vector<double>& dsimpl_growth_dpot, unsigned nds) override
     {
-      FOUR_C_THROW("Currently only for matching nodes (volume and boundary)!");
+      FOUR_C_THROW("Currently only for matching nodes!");
     }
 
    private:

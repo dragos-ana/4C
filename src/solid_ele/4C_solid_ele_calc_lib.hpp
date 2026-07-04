@@ -1008,7 +1008,6 @@ namespace Discret::Elements
     return stress;
   }
 
-
   template <Core::FE::CellType celltype>
     requires(Core::FE::dim<celltype> == 3)
   void update_material(Mat::So3Material& material,

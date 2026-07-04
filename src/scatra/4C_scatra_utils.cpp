@@ -132,7 +132,7 @@ void ScaTra::ScaTraUtils::check_consistency_of_s2_i_conditions(
   // 2. Check presence of S2IKineticsGrowth conditions. Currently, we do
   //    not allow the combination of simplified growth with fully
   //    coupled growth as modeled by these.
-  if (simplified_growth_conditions.size() && s2ikinetics_growth_conditions.size())
+  if (simplified_growth_conditions.size() > 0 && s2ikinetics_growth_conditions.size() > 0)
   {
     FOUR_C_THROW(
         "There are simplified S2I Kinetics growth conditions and fully coupled S2IKineticsGrowth "
@@ -509,16 +509,13 @@ ScaTra::ScaTraUtils::get_s2i_kinetics_butler_volmer_simplified_growth_conditions
   std::vector<const Core::Conditions::Condition*> s2ikinetics_conditions;
   discretization->get_condition("S2IKinetics", s2ikinetics_conditions);
 
-
   // create vector of simplified growth conditions, empty at first: S2I Kinetics
   // Butler-Volmer conditions modeling simplified growth, i.e. growth without
   // influence on the current density
   std::vector<const Core::Conditions::Condition*> simplified_growth_conditions;
 
-  // loop through scatra-scatra kinetics conditions; for the
-  // Butler-Volmer models, we determine
-  // whether simplified kinetics-based growth
-  // should be modeled
+  // loop through scatra-scatra kinetics conditions; for the Butler-Volmer models, we determine
+  // whether simplified kinetics-based growth should be modeled
   for (auto& kinetics_condition : s2ikinetics_conditions)
   {
     auto side = kinetics_condition->parameters().get<S2I::InterfaceSides>("INTERFACE_SIDE");
@@ -548,7 +545,6 @@ ScaTra::ScaTraUtils::get_s2i_kinetics_butler_volmer_simplified_growth_conditions
 
   return simplified_growth_conditions;
 }
-
 
 // Templates for Mean value averaging -- For now only HEX-type elements allowed!
 template Core::LinAlg::Matrix<3, 1>

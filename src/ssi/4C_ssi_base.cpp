@@ -178,7 +178,7 @@ void SSI::SSIBase::setup()
     if (scatra_field()->has_simplified_growth_conditions())
     {
       ssicoupling_->set_simplified_growth_solution(
-          *problem->get_dis("structure"), scatra_field()->get_simplgrowthnp(), 2);
+          *problem->get_dis("structure"), scatra_field()->simplgrowthnp(), 2);
       ssicoupling_->set_deriv_simplified_growth_conc_solution(
           *problem->get_dis("structure"), scatra_field()->dsimplgrowth_dc_np(), 3);
       ssicoupling_->set_deriv_simplified_growth_pot_solution(
@@ -563,7 +563,6 @@ void SSI::SSIBase::set_scatra_solution(
   check_is_setup();
 
   ssicoupling_->set_scalar_field(*structure_field()->discretization(), phi, 1);
-
 
   // set state for contact evaluation
   if (contact_strategy_nitsche_ != nullptr) set_ssi_contact_states(phi);

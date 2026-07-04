@@ -511,6 +511,26 @@ namespace
       return structure_dis->element_row_map()->lid(ele_gid) >= 0;
     }
   }
+
+  void assert_consistency_nodal_input(const Mat::SolidScalarMaterialNodalInput& nodal_input)
+  {
+    FOUR_C_ASSERT(nodal_input.shape_func.size() > 0, "Shape functions must be provided");
+    FOUR_C_ASSERT(nodal_input.shape_func_derivs_XYZ.size() > 0,
+        "Shape function derivatives must be provided");
+    FOUR_C_ASSERT(nodal_input.shape_func.size() == nodal_input.shape_func_derivs_XYZ.size(),
+        "Inconsistent numbers of nodes for shape functions {} and their derivatives {}",
+        nodal_input.shape_func.size(), nodal_input.shape_func_derivs_XYZ.size());
+    for (unsigned n = 0; n < nodal_input.shape_func_derivs_XYZ.size(); ++n)
+    {
+      FOUR_C_ASSERT(nodal_input.shape_func_derivs_XYZ[n].size() ==
+                        nodal_input.shape_func_derivs_XYZ[0].size(),
+          "Shape function derivatives must be consistent: they are not for dimensions 0: {}, and "
+          "{}: {}",
+          nodal_input.shape_func_derivs_XYZ[0].size(), n,
+          nodal_input.shape_func_derivs_XYZ[n].size());
+    }
+  }
+
 }  // namespace
 
 
@@ -1818,15 +1838,10 @@ void Mat::InelasticDefgradSimplInterfaceGrowth::pre_evaluate(const Teuchos::Para
     const EvaluationContext<3>& context, const SolidScalarMaterialNodalInput& nodal_input, int gp,
     int eleGID)
 {
+  assert_consistency_nodal_input(nodal_input);
+
   // save nodal input -> this function is called always before any evaluations
   nodal_input_ = nodal_input;
-
-  // DEBUG
-  if (gp == 0)
-  {
-    // std::cout << "ele_gid: " << eleGID << ": " << std::endl;
-    // nodal_input.print(std::cout);
-  }
 }
 
 

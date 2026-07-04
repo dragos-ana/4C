@@ -15,7 +15,6 @@
 #include "4C_fem_discretization_nullspace.hpp"
 #include "4C_fem_general_assemblestrategy.hpp"
 #include "4C_global_data.hpp"
-#include "4C_global_legacy_module_problem_type.hpp"
 #include "4C_io_control.hpp"
 #include "4C_linalg_equilibrate.hpp"
 #include "4C_linalg_mapextractor.hpp"
@@ -27,7 +26,6 @@
 #include "4C_linalg_vector.hpp"
 #include "4C_linear_solver_method_linalg.hpp"
 #include "4C_linear_solver_method_parameters.hpp"
-#include "4C_scatra_ele_action.hpp"
 #include "4C_scatra_timint_elch.hpp"
 #include "4C_scatra_timint_implicit.hpp"
 #include "4C_scatra_timint_meshtying_strategy_s2i.hpp"
@@ -46,9 +44,7 @@
 
 #include <Teuchos_TimeMonitor.hpp>
 
-#include <array>
 #include <iostream>
-#include <type_traits>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -648,7 +644,7 @@ void SSI::SsiMono::prepare_time_step()
   set_scatra_solution(scatra_field()->phinp());
   if (scatra_field()->has_simplified_growth_conditions())
   {
-    set_simplified_growth_solution(scatra_field()->get_simplgrowthnp());
+    set_simplified_growth_solution(scatra_field()->simplgrowthnp());
     set_deriv_simplified_growth_conc_solution(scatra_field()->dsimplgrowth_dc_np());
     set_deriv_simplified_growth_pot_solution(scatra_field()->dsimplgrowth_dpot_np());
   }
@@ -863,7 +859,6 @@ void SSI::SsiMono::newton_loop()
   // reset counter for Newton-Raphson iteration
   reset_iteration_count();
 
-
   // start Newton-Raphson iteration
   while (true)
   {
@@ -899,10 +894,7 @@ void SSI::SsiMono::newton_loop()
       FOUR_C_THROW("Complete() has not been called on global system matrix yet!");
 
     // check termination criterion for Newton-Raphson iteration
-    if (strategy_convcheck_->exit_newton_raphson(*this))
-    {
-      break;
-    }
+    if (strategy_convcheck_->exit_newton_raphson(*this)) break;
 
     // clear the global increment vector
     ssi_vectors_->clear_increment();
@@ -911,7 +903,6 @@ void SSI::SsiMono::newton_loop()
     const double time_before_solving = timer_->wallTime();
 
     solve_linear_system(*solver_);
-
 
     // time needed for solving global system of equations
     double my_solve_time = timer_->wallTime() - time_before_solving;
@@ -925,7 +916,6 @@ void SSI::SsiMono::newton_loop()
 
     // update states for next Newton iteration
     update_iter_scatra();
-
     update_iter_structure();
 
 
@@ -1217,7 +1207,7 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
   set_scatra_solution(scatra_field()->phinp());
   if (scatra_field()->has_simplified_growth_conditions())
   {
-    set_simplified_growth_solution(scatra_field()->get_simplgrowthnp());
+    set_simplified_growth_solution(scatra_field()->simplgrowthnp());
     set_deriv_simplified_growth_conc_solution(scatra_field()->dsimplgrowth_dc_np());
     set_deriv_simplified_growth_pot_solution(scatra_field()->dsimplgrowth_dpot_np());
   }
@@ -1244,7 +1234,7 @@ void SSI::SsiMono::apply_simplified_growth_as_ale_disp()
       k_struct >= 0, "[SSI] Could not determine dofset number of structural displacements!");
 
   // store scatra dofset number
-  const Core::LinAlg::Vector<double>& simplgrowthnp_vec = scatra_field()->get_simplgrowthnp();
+  const Core::LinAlg::Vector<double>& simplgrowthnp_vec = scatra_field()->simplgrowthnp();
   const Core::LinAlg::Map& simplgrowthnp_map = simplgrowthnp_vec.get_map();
   // consistency check: does the dofset map match the dof row map?
   int k_growth = -1;
@@ -1292,7 +1282,7 @@ void SSI::SsiMono::apply_simplified_growth_as_ale_disp()
       if (dof_lid_growth >= 0)
       {
         growth_on_struct.get_values()[dof_lid_struct] =
-            scatra_field()->get_simplgrowthnp().local_values_as_span()[dof_lid_growth];
+            scatra_field()->simplgrowthnp().local_values_as_span()[dof_lid_growth];
       }
     }
   }
@@ -1528,8 +1518,8 @@ void SSI::SsiMono::calc_initial_time_derivative()
   // In a second step, we need to modify the assembled system of equations, since we want to solve
   // M phidt^0 = f^n - K\phi^n - C(u_n)\phi^n
   // In particular, we need to replace the global system matrix by a global mass matrix,
-  // and we need to remove all transient contributions associated with time discretization from
-  // the global residual vector.
+  // and we need to remove all transient contributions associated with time discretization from the
+  // global residual vector.
 
   // Evaluate mass matrix and modify residual
   scatra_field()->evaluate_initial_time_derivative(massmatrix_scatra, rhs_scatra);

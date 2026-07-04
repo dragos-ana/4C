@@ -260,10 +260,11 @@ namespace ScaTra
 
     void set_mean_concentration(std::shared_ptr<const Core::LinAlg::Vector<double>> MeanConc);
 
-
+    //! set the simplified growth vector at \f$ t_{n+1} \f$
     void set_simplified_growth(const Core::LinAlg::Vector<double>& simplified_growth);
-
+    //! set the vector containing the derivatives of simplified growth wrt concentration
     void set_deriv_simplified_growth_conc(const Core::LinAlg::Vector<double>& dsimplgrowth_dc_np);
+    //! set the vector containing the derivatives of simplified growth wrt potential
     void set_deriv_simplified_growth_pot(const Core::LinAlg::Vector<double>& dsimplgrowth_dpot_np);
 
     void clear_external_concentrations()
@@ -430,12 +431,8 @@ namespace ScaTra
     //! is calculated
     virtual void post_calc_initial_time_derivative()
     {
-      // DEBUG
-      std::cout << "post_calc_initial_time_derivative called \n";
-
-
       // reset simplified growth
-      if (has_simplified_growth_conditions_)
+      if (has_simplgrowth_conditions_)
       {
         Core::LinAlg::Vector<double> zero_simpl_growth{simplgrowthnp_->get_map()};
         set_simplified_growth(zero_simpl_growth);
@@ -912,7 +909,7 @@ namespace ScaTra
     //! return true if there are S2I Kinetics conditions with simplified growth
     [[nodiscard]] bool has_simplified_growth_conditions() const
     {
-      return has_simplified_growth_conditions_;
+      return has_simplgrowth_conditions_;
     }
 
     //! returns if restart information is needed for the current time step
@@ -998,20 +995,19 @@ namespace ScaTra
     }
 
     //! simplified growth at time \f$ t_n \f$
-    [[nodiscard]] const Core::LinAlg::Vector<double>& get_simplgrowthn() const
+    [[nodiscard]] const Core::LinAlg::Vector<double>& simplgrowthn() const
     {
       return *simplgrowthn_;
     };
 
     //! simplified growth at time \f$ t_{n+1} \f$ - read-only access
-    [[nodiscard]] const Core::LinAlg::Vector<double>& get_simplgrowthnp() const
+    [[nodiscard]] const Core::LinAlg::Vector<double>& simplgrowthnp() const
     {
       return *simplgrowthnp_;
     };
 
-
     //! simplified growth at time \f$ t_{n+1} \f$ - modifiable access
-    [[nodiscard]] Core::LinAlg::Vector<double>& get_simplgrowthnp() { return *simplgrowthnp_; };
+    [[nodiscard]] Core::LinAlg::Vector<double>& simplgrowthnp() { return *simplgrowthnp_; };
 
 
     //! simplified growth derivative wrt concentration at time \f$ t_{n+1} \f$ - read-only access
@@ -1024,7 +1020,6 @@ namespace ScaTra
     {
       return *dsimplgrowth_dc_np_;
     };
-
 
     //! simplified growth derivative wrt potential at time \f$ t_{n+1} \f$ - read-only access
     [[nodiscard]] const Core::LinAlg::Vector<double>& dsimplgrowth_dpot_np() const
@@ -1394,7 +1389,10 @@ namespace ScaTra
     bool has_external_force_;
 
     //! flag for simplified growth conditions (S2I Butler-Volmer kinetics)
-    bool has_simplified_growth_conditions_;
+    bool has_simplgrowth_conditions_;
+
+    //! flag: are dofsets associated with simplified growth initialized?
+    bool are_simplgrowth_dofsets_init_;
 
     /*--- query and output ---------------------------------------------------*/
 
@@ -1534,13 +1532,13 @@ namespace ScaTra
     //! relative errors of scalar fields in L2 and H1 norms
     std::shared_ptr<std::vector<double>> relerrors_;
 
-    //! simplified growth at time n
+    //! simplified growth at time $t_n$
     std::shared_ptr<Core::LinAlg::Vector<double>> simplgrowthn_;
-    //! simplified growth at time n+1
+    //! simplified growth at time $t_{n+1}$
     std::shared_ptr<Core::LinAlg::Vector<double>> simplgrowthnp_;
-    //! simplified growth derivative wrt concentration at time n+1
+    //! simplified growth derivative wrt concentration at time $t_{n+1}$
     std::shared_ptr<Core::LinAlg::Vector<double>> dsimplgrowth_dc_np_;
-    //! simplified growth derivative wrt potential at time n+1
+    //! simplified growth derivative wrt potential at time $t_{n+1}$
     std::shared_ptr<Core::LinAlg::Vector<double>> dsimplgrowth_dpot_np_;
 
 

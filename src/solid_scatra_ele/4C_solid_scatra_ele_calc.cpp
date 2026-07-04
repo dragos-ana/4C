@@ -7,7 +7,6 @@
 
 #include "4C_solid_scatra_ele_calc.hpp"
 
-#include "4C_art_net_input.hpp"
 #include "4C_fem_discretization.hpp"
 #include "4C_fem_general_cell_type.hpp"
 #include "4C_fem_general_cell_type_traits.hpp"
@@ -16,7 +15,6 @@
 #include "4C_linalg_tensor.hpp"
 #include "4C_linalg_tensor_generators.hpp"
 #include "4C_mat_monolithic_solid_scalar_material.hpp"
-#include "4C_mat_multiplicative_split_defgrad_elasthyper.hpp"
 #include "4C_mat_so3_material.hpp"
 #include "4C_solid_ele_calc_displacement_based.hpp"
 #include "4C_solid_ele_calc_displacement_based_linear_kinematics.hpp"
@@ -31,10 +29,8 @@
 #include "4C_solid_ele_interface_serializable.hpp"
 #include "4C_utils_exceptions.hpp"
 
-#include <boost/graph/visitors.hpp>
 #include <Teuchos_ParameterList.hpp>
 
-#include <cstddef>
 #include <memory>
 #include <optional>
 
@@ -82,8 +78,8 @@ namespace
     unsigned int nsimplgrowthdim = 0;
     if (nodal_simplified_growths)
     {
-      FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs.has_value() &&
-                        nodal_simplified_growth_pot_derivs.has_value(),
+      FOUR_C_ASSERT_ALWAYS(nodal_simplified_growth_conc_derivs.has_value() &&
+                               nodal_simplified_growth_pot_derivs.has_value(),
           "Both simplified growth increments and their derivatives must be provided");
       output.nodal_simplified_growths.emplace();
       output.nodal_simplified_growths->resize(nnode);
@@ -136,15 +132,12 @@ namespace
 
       output.shape_func[n] = shape_func_and_derivs.shapefunctions_(n);
 
-
       output.shape_func_derivs_XYZ[n].resize(ndim);
       for (std::size_t d = 0; d < ndim; ++d)
       {
         output.shape_func_derivs_XYZ[n][d] = jac_mapping.N_XYZ[n].at(d);
       }
     }
-
-    output.fill();
 
     return output;
   }
@@ -164,6 +157,9 @@ namespace
       const int eleGID, const int num_scalars)
   {
     auto* monolithic_material = dynamic_cast<Mat::MonolithicSolidScalarMaterial*>(&solid_material);
+
+    FOUR_C_ASSERT_ALWAYS(
+        monolithic_material, "Your material does not allow to evaluate a monolithic ssi material!");
 
     if constexpr (Core::FE::dim<celltype> == 3)
     {
@@ -451,18 +447,6 @@ void Discret::Elements::SolidScatraEleCalc<celltype,
       nodal_simplified_growth_pot_derivs =
           extract_my_nodal_scalars<celltype, simpl_growths_are_scalar>(
               ele, discretization, la, "simplified_growth_pot_deriv");
-
-
-  // DEBUG
-  FOUR_C_ASSERT(nodal_simplified_growths.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growths->size() > 0, "No size");
-  FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs->size() > 0, "No size");
-  FOUR_C_ASSERT(nodal_simplified_growth_pot_derivs.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growth_pot_derivs->size() > 0, "No size");
-
-
-
   constexpr bool temperature_is_scalar = true;
   std::optional<Core::LinAlg::Matrix<Core::FE::num_nodes(celltype), 1>> nodal_temperatures =
       extract_my_nodal_scalars<celltype, temperature_is_scalar>(
@@ -508,7 +492,6 @@ void Discret::Elements::SolidScatraEleCalc<celltype,
               auto gp_ref_coord = evaluate_reference_coordinate<celltype>(
                   nodal_coordinates.reference_coordinates, shape_functions.shapefunctions_);
 
-
               const Mat::SolidScalarMaterialNodalInput& nodal_material_input =
                   create_solid_scalar_material_nodal_input(nodal_scalars, nodal_simplified_growths,
                       nodal_simplified_growth_conc_derivs, nodal_simplified_growth_pot_derivs,
@@ -525,7 +508,7 @@ void Discret::Elements::SolidScatraEleCalc<celltype,
               {
                 auto* monolithic_material =
                     dynamic_cast<Mat::MonolithicSolidScalarMaterial*>(&solid_material);
-                FOUR_C_ASSERT_ALWAYS(monolithic_material, "This should be convertible!");
+                FOUR_C_ASSERT(monolithic_material, "This should be convertible!");
 
                 stress = evaluate_material_stress_solid_scatra<celltype>(*monolithic_material,
                     element_properties_, deformation_gradient, gl_strain, params, context,
@@ -533,6 +516,7 @@ void Discret::Elements::SolidScatraEleCalc<celltype,
               }
               else
               {
+                // TODO: will I need to change all monolithic materials to enable this?
                 stress = evaluate_material_stress<celltype>(solid_material, element_properties_,
                     deformation_gradient, gl_strain, params, context, gp, ele.id());
               }
@@ -644,23 +628,10 @@ void Discret::Elements::SolidScatraEleCalc<celltype, SolidFormulation>::evaluate
           extract_my_nodal_scalars<celltype, simpl_growths_are_scalar>(
               ele, discretization, la, "simplified_growth_pot_deriv");
 
-
-
-  // DEBUG
-  FOUR_C_ASSERT(nodal_simplified_growths.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growths->size() > 0, "No size");
-  FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs->size() > 0, "No size");
-  FOUR_C_ASSERT(nodal_simplified_growth_pot_derivs.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growth_pot_derivs->size() > 0, "No size");
-
-
   constexpr bool temperature_is_scalar = true;
   std::optional<Core::LinAlg::Matrix<Core::FE::num_nodes(celltype), 1>> nodal_temperatures =
       extract_my_nodal_scalars<celltype, temperature_is_scalar>(
           ele, discretization, la, "temperature");
-
-
 
   evaluate_centroid_coordinates_and_add_to_parameter_list(nodal_coordinates, params);
 
@@ -925,22 +896,10 @@ void Discret::Elements::SolidScatraEleCalc<celltype, SolidFormulation>::calculat
           extract_my_nodal_scalars<celltype, simpl_growths_are_scalar>(
               ele, discretization, la, "simplified_growth_pot_deriv");
 
-
-
-  // DEBUG
-  FOUR_C_ASSERT(nodal_simplified_growths.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growths->size() > 0, "No size");
-  FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growth_conc_derivs->size() > 0, "No size");
-  FOUR_C_ASSERT(nodal_simplified_growth_pot_derivs.has_value(), "No value");
-  FOUR_C_ASSERT(nodal_simplified_growth_pot_derivs->size() > 0, "No size");
-
-
   constexpr bool temperature_is_scalar = true;
   std::optional<Core::LinAlg::Matrix<Core::FE::num_nodes(celltype), 1>> nodal_temperatures =
       extract_my_nodal_scalars<celltype, temperature_is_scalar>(
           ele, discretization, la, "temperature");
-
 
   evaluate_centroid_coordinates_and_add_to_parameter_list(nodal_coordinates, params);
 
@@ -995,7 +954,7 @@ void Discret::Elements::SolidScatraEleCalc<celltype, SolidFormulation>::calculat
                     nodal_material_input, gp, ele.id());
               }
               else
-              {
+              {  // TODO: same as above
                 stress = evaluate_material_stress<celltype>(solid_material, element_properties_,
                     deformation_gradient, gl_strain, params, context, gp, ele.id());
               }
@@ -1089,8 +1048,7 @@ void Discret::Elements::SolidScatraEleCalc<celltype, SolidFormulation>::material
 {
   Teuchos::ParameterList params{};
 
-  // Check if element has fiber nodes, if so interpolate fibers to Gauss Points and add to
-  // params
+  // Check if element has fiber nodes, if so interpolate fibers to Gauss Points and add to params
   interpolate_fibers_to_gauss_points_and_add_to_parameter_list<celltype>(
       stiffness_matrix_integration_, ele, params);
 

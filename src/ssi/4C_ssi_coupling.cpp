@@ -8,7 +8,6 @@
 #include "4C_ssi_coupling.hpp"
 
 #include "4C_adapter_scatra_base_algorithm.hpp"
-#include "4C_comm_mpi_utils.hpp"
 #include "4C_coupling_adapter_mortar.hpp"
 #include "4C_coupling_adapter_volmortar.hpp"
 #include "4C_coupling_volmortar_utils.hpp"
@@ -17,13 +16,11 @@
 #include "4C_fem_dofset_gidbased_wrapper.hpp"
 #include "4C_fem_dofset_predefineddofnumber.hpp"
 #include "4C_global_data.hpp"
-#include "4C_io_pstream.hpp"
 #include "4C_linalg_transfer.hpp"
 #include "4C_linalg_vector.hpp"
 #include "4C_mat_par_bundle.hpp"
 #include "4C_ssi_problem_access.hpp"
 #include "4C_utils_exceptions.hpp"
-
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -88,41 +85,6 @@ void SSI::SSICouplingMatchingVolume::init(const int ndim,
     if (structdis->add_dof_set(scatradis->get_dof_set_proxy(
             scatra_integrator->nds_growth_deriv_pot())) != ++structure_dofset_counter)
       FOUR_C_THROW("unexpected dof sets in structure field");
-
-
-    // num_dofs_per_node_simpl_growth = 3;
-
-    // std::shared_ptr<Core::DOFSets::DofSetInterface> dofsetsimplgrowth =
-    //     std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(
-    //         num_dofs_per_node_simpl_growth, 0, 0, true);
-    // if (structdis->add_dof_set(dofsetsimplgrowth) != ++structure_dofset_counter)
-    //   FOUR_C_THROW("unexpected dof sets in structure field");
-    // if (scatradis->add_dof_set(structdis->get_dof_set_proxy(structure_dofset_counter)) !=
-    //     ++scatra_dofset_counter)
-    //   FOUR_C_THROW("unexpected dof sets in scatra field");
-    // scatra_integrator->set_number_of_dof_set_growth(scatra_dofset_counter);
-
-
-    // std::shared_ptr<Core::DOFSets::DofSetInterface> dofsetderivconc =
-    //     std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(
-    //         num_dofs_per_node_simpl_growth, 0, 0, true);
-    // if (structdis->add_dof_set(dofsetderivconc) != ++structure_dofset_counter)
-    //   FOUR_C_THROW("unexpected dof sets in structure field");
-    // if (scatradis->add_dof_set(structdis->get_dof_set_proxy(structure_dofset_counter)) !=
-    //     ++scatra_dofset_counter)
-    //   FOUR_C_THROW("unexpected dof sets in scatra field");
-    // scatra_integrator->set_number_of_dof_set_d_growth_d_conc(scatra_dofset_counter);
-
-
-    // std::shared_ptr<Core::DOFSets::DofSetInterface> dofsetderivpot =
-    //     std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(
-    //         num_dofs_per_node_simpl_growth, 0, 0, true);
-    // if (structdis->add_dof_set(dofsetderivpot) != ++structure_dofset_counter)
-    //   FOUR_C_THROW("unexpected dof sets in structure field");
-    // if (scatradis->add_dof_set(structdis->get_dof_set_proxy(structure_dofset_counter)) !=
-    //     ++scatra_dofset_counter)
-    //   FOUR_C_THROW("unexpected dof sets in scatra field");
-    // scatra_integrator->set_number_of_dof_set_d_growth_d_pot(scatra_dofset_counter);
   }
 
 
@@ -139,7 +101,6 @@ void SSI::SSICouplingMatchingVolume::init(const int ndim,
       FOUR_C_THROW("unexpected dof sets in scatra field");
     scatra_integrator->set_number_of_dof_set_two_tensor_quantity(scatra_dofset_counter);
   }
-
 
   set_is_init(true);
 }
@@ -208,18 +169,6 @@ void SSI::SSICouplingMatchingVolume::set_scalar_field(Core::FE::Discretization& 
     std::shared_ptr<const Core::LinAlg::Vector<double>> phi, unsigned nds)
 {
   dis.set_state(nds, "scalarfield", *phi);
-
-  // if (Core::Communication::my_mpi_rank(dis.get_comm()) == 0)
-  {
-    Core::IO::cout << "phi: \n";
-    Core::IO::cout << "map: \n";
-    phi->get_map().print(Core::IO::cout.os(Core::IO::standard));
-
-
-    Core::IO::cout << "dis.dof_col_map: \n";
-    Core::IO::cout << "map: \n";
-    dis.dof_col_map(nds)->print(Core::IO::cout.os(Core::IO::standard));
-  }
 }
 
 /*----------------------------------------------------------------------*/
@@ -235,26 +184,7 @@ void SSI::SSICouplingMatchingVolume::set_scalar_field_micro(Core::FE::Discretiza
 void SSI::SSICouplingMatchingVolume::set_simplified_growth_solution(
     Core::FE::Discretization& dis, const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds)
 {
-  Core::LinAlg::Vector<double> imported_simplified_growth(*dis.dof_row_map(nds), true);
-  Core::LinAlg::Import importer(imported_simplified_growth.get_map(), simpl_growth.get_map());
-  imported_simplified_growth.import(simpl_growth, importer, Core::LinAlg::CombineMode::insert);
-
-  // DEBUG: what do we set here? simpl growth or some transformed vector?
   dis.set_state(nds, "simplified_growth", simpl_growth);
-
-  // DEBUG
-  std::cout << "SSI::SSICouplingMatchingVolume::simplified_growth \n";
-  std::cout << "map: " << std::endl;
-  simpl_growth.get_map().print(std::cout);
-  std::cout << "dof row map: " << std::endl;
-  dis.dof_row_map(nds)->print(std::cout);
-  // std::cout << "vec: " << std::endl;
-  // simpl_growth.print(std::cout);
-  // std::cout << "SSI::SSICouplingMatchingVolume::imported_simplified_growth \n";
-  // std::cout << "map: " << std::endl;
-  // imported_simplified_growth.get_map().print(std::cout);
-  // std::cout << "vec: " << std::endl;
-  // imported_simplified_growth.print(std::cout);
 }
 
 /*----------------------------------------------------------------------*/
@@ -263,10 +193,6 @@ void SSI::SSICouplingMatchingVolume::set_deriv_simplified_growth_conc_solution(
     Core::FE::Discretization& dis, const Core::LinAlg::Vector<double>& dsimpl_growth_dc,
     unsigned nds)
 {
-  // Core::LinAlg::Vector<double> imported_vec(*dis.dof_col_map(nds), true);
-  // Core::LinAlg::Import importer(imported_vec.get_map(), dsimpl_growth_dc.get_map());
-  // imported_vec.import(dsimpl_growth_dc, importer, Core::LinAlg::CombineMode::insert);
-  // dis.set_state(nds, "simplified_growth_conc_deriv", imported_vec);
   dis.set_state(nds, "simplified_growth_conc_deriv", dsimpl_growth_dc);
 }
 
@@ -277,10 +203,6 @@ void SSI::SSICouplingMatchingVolume::set_deriv_simplified_growth_pot_solution(
     Core::FE::Discretization& dis, const Core::LinAlg::Vector<double>& dsimpl_growth_dpot,
     unsigned nds)
 {
-  // Core::LinAlg::Vector<double> imported_vec(*dis.dof_col_map(nds), true);
-  // Core::LinAlg::Import importer(imported_vec.get_map(), dsimpl_growth_dpot.get_map());
-  // imported_vec.import(dsimpl_growth_dpot, importer, Core::LinAlg::CombineMode::insert);
-  // dis.set_state(nds, "simplified_growth_pot_deriv", imported_vec);
   dis.set_state(nds, "simplified_growth_pot_deriv", dsimpl_growth_dpot);
 }
 
@@ -305,10 +227,7 @@ void SSI::SSICouplingMatchingVolumeAndBoundary::set_temperature_field(
 void SSI::SSICouplingMatchingVolumeAndBoundary::set_simplified_growth_solution(
     Core::FE::Discretization& dis, const Core::LinAlg::Vector<double>& simpl_growth, unsigned nds)
 {
-  Core::LinAlg::Vector<double> imported_simplified_growth(*dis.dof_col_map(nds), true);
-  Core::LinAlg::Import importer(imported_simplified_growth.get_map(), simpl_growth.get_map());
-  imported_simplified_growth.import(simpl_growth, importer, Core::LinAlg::CombineMode::insert);
-  dis.set_state(nds, "simplified_growth", imported_simplified_growth);
+  dis.set_state(nds, "simplified_growth", simpl_growth);
 }
 
 
@@ -318,10 +237,7 @@ void SSI::SSICouplingMatchingVolumeAndBoundary::set_deriv_simplified_growth_conc
     Core::FE::Discretization& dis, const Core::LinAlg::Vector<double>& dsimpl_growth_dc,
     unsigned nds)
 {
-  Core::LinAlg::Vector<double> imported_vec(*dis.dof_col_map(nds), true);
-  Core::LinAlg::Import importer(imported_vec.get_map(), dsimpl_growth_dc.get_map());
-  imported_vec.import(dsimpl_growth_dc, importer, Core::LinAlg::CombineMode::insert);
-  dis.set_state(nds, "simplified_growth_conc_deriv", imported_vec);
+  dis.set_state(nds, "simplified_growth_conc_deriv", dsimpl_growth_dc);
 }
 
 
@@ -331,10 +247,7 @@ void SSI::SSICouplingMatchingVolumeAndBoundary::set_deriv_simplified_growth_pot_
     Core::FE::Discretization& dis, const Core::LinAlg::Vector<double>& dsimpl_growth_dpot,
     unsigned nds)
 {
-  Core::LinAlg::Vector<double> imported_vec(*dis.dof_col_map(nds), true);
-  Core::LinAlg::Import importer(imported_vec.get_map(), dsimpl_growth_dpot.get_map());
-  imported_vec.import(dsimpl_growth_dpot, importer, Core::LinAlg::CombineMode::insert);
-  dis.set_state(nds, "simplified_growth_pot_deriv", imported_vec);
+  dis.set_state(nds, "simplified_growth_pot_deriv", dsimpl_growth_dpot);
 }
 
 /*----------------------------------------------------------------------*/

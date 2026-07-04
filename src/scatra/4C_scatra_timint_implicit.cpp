@@ -104,7 +104,8 @@ ScaTra::ScaTraTimIntImpl::ScaTraTimIntImpl(std::shared_ptr<Core::FE::Discretizat
           problem_->materials()->first_id_by_type(Core::Materials::m_newman_multiscale) != -1),
       micro_scale_(probnum != 0),
       has_external_force_(params_->sublist("EXTERNAL FORCE").get<bool>("EXTERNAL_FORCE")),
-      has_simplified_growth_conditions_(false),
+      has_simplgrowth_conditions_(false),
+      are_simplgrowth_dofsets_init_(false),
       calcflux_domain_(Teuchos::getIntegralValue<ScaTra::FluxType>(*params, "CALCFLUX_DOMAIN")),
       calcflux_domain_lumped_(params->get<bool>("CALCFLUX_DOMAIN_LUMPED")),
       calcflux_boundary_(Teuchos::getIntegralValue<ScaTra::FluxType>(*params, "CALCFLUX_BOUNDARY")),
@@ -318,12 +319,11 @@ void ScaTra::ScaTraTimIntImpl::init()
 
   ScaTraUtils::check_consistency_of_s2_i_conditions(discretization());
 
-  // initialize dofs for simplified growth modeling (S2IKinetics with
-  // Butler-Volmer as kinetic model), if there are such conditions / interfaces
+  // determine whether simplified growth should be modeled (S2IKinetics with
+  // Butler-Volmer as kinetic model) specified via special conditions
   std::vector<const Core::Conditions::Condition*> simplified_growth_conditions =
       ScaTraUtils::get_s2i_kinetics_butler_volmer_simplified_growth_conditions(discretization());
-  // if (simplified_growth_conditions.size() > 0) init_simplified_growth_dofsets();
-  has_simplified_growth_conditions_ = simplified_growth_conditions.size() > 0;
+  has_simplgrowth_conditions_ = simplified_growth_conditions.size() > 0;
 
   // create strategy
   create_meshtying_strategy();
@@ -410,17 +410,14 @@ void ScaTra::ScaTraTimIntImpl::setup()
     }
   }
 
-
-  // initialize dofs for simplified growth modeling (S2IKinetics with
-  // Butler-Volmer as kinetic model), if there are such conditions / interfaces
-  std::vector<const Core::Conditions::Condition*> simplified_growth_conditions =
-      ScaTraUtils::get_s2i_kinetics_butler_volmer_simplified_growth_conditions(discretization());
-  if (simplified_growth_conditions.size() > 0)
+  // initialize vectors for simplified growth modeling (S2IKinetics with
+  // Butler-Volmer as kinetic model)
+  if (has_simplgrowth_conditions_)
   {
-    // init_simplified_growth_dofsets();
-    has_simplified_growth_conditions_ = true;
+    FOUR_C_ASSERT_ALWAYS(are_simplgrowth_dofsets_init_,
+        "Simplified growth dofsets have not yet been initialized! You need to initialize them "
+        "before running the setup method!");
 
-    // create simplified growth vectors if the dofset has been initialized
     simplgrowthn_ =
         std::make_shared<Core::LinAlg::Vector<double>>(*discret_->dof_row_map(nds_growth()), true);
     simplgrowthnp_ =
@@ -430,7 +427,6 @@ void ScaTra::ScaTraTimIntImpl::setup()
     dsimplgrowth_dpot_np_ = std::make_shared<Core::LinAlg::Vector<double>>(
         *discret_->dof_row_map(nds_growth_deriv_pot()), true);
   }
-
   // temporal solution derivative at time n+1
   phidtnp_ = std::make_shared<Core::LinAlg::Vector<double>>(*dofrowmap, true);
   // temporal solution derivative at time n
@@ -1582,7 +1578,6 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
     // -------------------------------------------------------------------
     prepare_time_step();
 
-
     // -------------------------------------------------------------------
     //                  solve nonlinear / linear equation
     // -------------------------------------------------------------------
@@ -1592,7 +1587,6 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
     pre_solve();
     solve();
     post_solve();
-
 
     // determine time spent by nonlinear solver and take maximum over all processors via
     // communication
@@ -1608,7 +1602,6 @@ void ScaTra::ScaTraTimIntImpl::time_loop()
     //        current solution becomes old solution of next timestep
     // -------------------------------------------------------------------
     update();
-
 
     // -------------------------------------------------------------------
     // evaluate error for problems with analytical solution
@@ -1680,7 +1673,7 @@ void ScaTra::ScaTraTimIntImpl::update()
   strategy_->update();
 
   // update simplified growth variables
-  if (has_simplified_growth_conditions_)
+  if (has_simplgrowth_conditions_)
   {
     simplgrowthn_->update(1.0, *simplgrowthnp_, 0.0);
   }
@@ -1912,7 +1905,7 @@ void ScaTra::ScaTraTimIntImpl::collect_runtime_output_data()
   }
 
   // generate output for simplified growth conditions
-  if (has_simplified_growth_conditions_)
+  if (has_simplgrowth_conditions_)
   {
     // convert vector to multi vector
     auto simplified_growth =
@@ -2001,12 +1994,9 @@ void ScaTra::ScaTraTimIntImpl::set_initial_field(
         if (lstsolver == (-1))
         {
           FOUR_C_THROW(
-              "no linear solver defined for least square NURBS problem. Please set "
-              "LINEAR_SOLVER "
-              "in SCALAR TRANSPORT DYNAMIC to a valid number! Note: this solver block is "
-              "misused "
-              "for the least square problem. Maybe one should add a separate parameter for "
-              "this.");
+              "no linear solver defined for least square NURBS problem. Please set LINEAR_SOLVER "
+              "in SCALAR TRANSPORT DYNAMIC to a valid number! Note: this solver block is misused "
+              "for the least square problem. Maybe one should add a separate parameter for this.");
         }
 
         Core::FE::Nurbs::apply_nurbs_initial_condition(*discret_,
@@ -2694,13 +2684,12 @@ void ScaTra::ScaTraTimIntImpl::apply_neumann_bc(
   // specific parameters
   add_problem_specific_parameters_and_vectors(condparams);
 
-  // set time for evaluation of point Neumann conditions as parameter depending on time
-  // integration scheme line/surface/volume Neumann conditions use the time stored in the time
-  // parameter class
+  // set time for evaluation of point Neumann conditions as parameter depending on time integration
+  // scheme line/surface/volume Neumann conditions use the time stored in the time parameter class
   set_time_for_neumann_evaluation(condparams);
 
-  // evaluate Neumann boundary conditions at time t_{n+alpha_F} (generalized alpha) or time
-  // t_{n+1} (otherwise)
+  // evaluate Neumann boundary conditions at time t_{n+alpha_F} (generalized alpha) or time t_{n+1}
+  // (otherwise)
   discret_->evaluate_neumann(condparams, *neumann_loads);
 }
 
@@ -3058,13 +3047,11 @@ void ScaTra::ScaTraTimIntImpl::nonlinear_solve()
 
       solver_->reset_tolerance();
 
-      // end time measurement for solver and take average over all processors via
-      // communication
+      // end time measurement for solver and take average over all processors via communication
       double mydtsolve = Teuchos::Time::wallTime() - tcpusolve;
       dtsolve_ = Core::Communication::max_all(mydtsolve, discret_->get_comm());
 
-      // output performance statistics associated with linear solver into text file if
-      // applicable
+      // output performance statistics associated with linear solver into text file if applicable
       if (params_->get<bool>("OUTPUTLINSOLVERSTATS"))
         output_lin_solver_stats(strategy_->solver(), dtsolve_, step(), iternum_,
             strategy_->dof_row_map().num_global_elements());
@@ -3114,8 +3101,8 @@ void ScaTra::ScaTraTimIntImpl::nonlinear_multi_scale_solve()
       // backup macro-scale state vector
       const std::shared_ptr<Core::LinAlg::Vector<double>> phinp = phinp_;
 
-      // replace macro-scale state vector by relaxed macro-scale state vector as input for
-      // micro scale
+      // replace macro-scale state vector by relaxed macro-scale state vector as input for micro
+      // scale
       phinp_ = phinp_relaxed;
 
       // solve micro-scale problems
@@ -3147,8 +3134,7 @@ void ScaTra::ScaTraTimIntImpl::nonlinear_multi_scale_solve()
     if (solvtype_ == ScaTra::solvertype_nonlinear_multiscale_macrotomicro_aitken or
         solvtype_ == ScaTra::solvertype_nonlinear_multiscale_macrotomicro_aitken_dofsplit)
     {
-      // compute difference between current and previous increments of macro-scale state
-      // vector
+      // compute difference between current and previous increments of macro-scale state vector
       Core::LinAlg::Vector<double> phinp_inc_diff(*phinp_inc_);
       phinp_inc_diff.update(-1., *phinp_inc_old_, 1.);
 
@@ -3454,8 +3440,8 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               // compute and store micro-scale coupling flux
               q_ = (*permeabilities)[0] * (phinp_->local_values_as_span()[lid] - phinp_macro_[0]);
 
-              // compute and store derivative of micro-scale coupling flux w.r.t. macro-scale
-              // state variable
+              // compute and store derivative of micro-scale coupling flux w.r.t. macro-scale state
+              // variable
               dq_dphi_[0] = -(*permeabilities)[0];
 
               // assemble contribution from macro-micro coupling into global residual vector
@@ -3502,8 +3488,7 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               }
               if (stoichiometries->size() != 1)
                 FOUR_C_THROW(
-                    "Number of stoichiometric coefficients does not match number of "
-                    "scalars!");
+                    "Number of stoichiometric coefficients does not match number of scalars!");
               if ((*stoichiometries)[0] != -1) FOUR_C_THROW("Invalid stoichiometric coefficient!");
               const double faraday =
                   Global::Problem::instance(0)->elch_control_params().get<double>(
@@ -3527,11 +3512,10 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               const double cmax = matelectrode->c_max();
               if (cmax < 1.e-12)
                 FOUR_C_THROW(
-                    "Saturation value c_max of intercalated lithium concentration is too "
-                    "small!");
+                    "Saturation value c_max of intercalated lithium concentration is too small!");
 
-              // extract electrode-side and electrolyte-side concentration values at
-              // multi-scale coupling point
+              // extract electrode-side and electrolyte-side concentration values at multi-scale
+              // coupling point
               const double conc_ed = phinp_->local_values_as_span()[lid];
               const double conc_el = phinp_macro_[0];
 
@@ -3550,8 +3534,8 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               // no deformation available
               const double dummy_detF(1.0);
 
-              // equilibrium electric potential difference and its derivative w.r.t.
-              // concentration at electrode surface
+              // equilibrium electric potential difference and its derivative w.r.t. concentration
+              // at electrode surface
               const double epd =
                   matelectrode->compute_open_circuit_potential(conc_ed, faraday, frt, dummy_detF);
               const double epdderiv =
@@ -3591,8 +3575,7 @@ void ScaTra::ScaTraTimIntImpl::evaluate_macro_micro_coupling()
               // assemble contribution from macro-micro coupling into global residual vector
               (*residual_).get_values()[lid] -= timefacrhsfac * q_;
 
-              // assemble contribution from macro-micro coupling into micro global system
-              // matrix
+              // assemble contribution from macro-micro coupling into micro global system matrix
               sysmat_->assemble(timefacfac * dj_dc_ed, gid, gid);
 
               break;
@@ -3650,12 +3633,12 @@ void ScaTra::ScaTraTimIntImpl::setup_matrix_block_maps()
     std::vector<std::shared_ptr<const Core::LinAlg::Map>> node_block_maps;
     build_block_maps(partitioningconditions, dof_block_maps, node_block_maps);
 
-    // initialize a full map extractor associated with the degrees of freedom inside the
-    // blocks of global system matrix
+    // initialize a full map extractor associated with the degrees of freedom inside the blocks of
+    // global system matrix
     dof_block_maps_ = std::make_shared<Core::LinAlg::MultiMapExtractor>(
         *(discret_->dof_row_map()), dof_block_maps);
-    // initialize a full map extractor associated with the nodes inside the blocks of global
-    // system matrix
+    // initialize a full map extractor associated with the nodes inside the blocks of global system
+    // matrix
     node_block_maps_ = std::make_shared<Core::LinAlg::MultiMapExtractor>(
         *discret_->node_row_map(), node_block_maps);
 
@@ -3717,8 +3700,8 @@ void ScaTra::ScaTraTimIntImpl::post_setup_matrix_block_maps() const
   // now build the null spaces
   build_block_null_spaces(*solver(), 0);
 
-  // in case of an extended solver for scatra-scatra interface meshtying including interface
-  // growth we need to equip it with the null space information generated above
+  // in case of an extended solver for scatra-scatra interface meshtying including interface growth
+  // we need to equip it with the null space information generated above
   if (s2i_meshtying()) strategy_->equip_extended_solver_with_null_space_info();
 }
 
@@ -3743,8 +3726,8 @@ void ScaTra::ScaTraTimIntImpl::build_block_null_spaces(
       block_smoother_parameters.sublist("Belos Parameters");
       block_smoother_parameters.sublist("MueLu Parameters");
 
-      // equip smoother for the current matrix block with null space associated with all
-      // degrees of freedom on discretization
+      // equip smoother for the current matrix block with null space associated with all degrees of
+      // freedom on discretization
       Core::FE::compute_null_space_if_necessary(*discret_, block_smoother_parameters);
     }
     // Implementation for Teko and MueLu
@@ -3771,8 +3754,7 @@ void ScaTra::ScaTraTimIntImpl::build_block_null_spaces(
           *discret_, block_smoother_parameters);
     }
 
-    // reduce full null space to match degrees of freedom associated with the current matrix
-    // block
+    // reduce full null space to match degrees of freedom associated with the current matrix block
     Core::LinearSolver::Parameters::fix_null_space("Block " + std::to_string(block_id),
         *discret_->dof_row_map(), *dof_block_maps()->map(iblock - init_block_number),
         block_smoother_parameters);
@@ -3810,8 +3792,8 @@ void ScaTra::ScaTraTimIntImpl::setup_matrix_block_maps_and_meshtying()
       // setup the meshtying
       strategy_->setup_meshtying();
 
-      // do some post-setup matrix block map operations after the call to setup_meshtying, as
-      // they rely on the fact that the interface maps have already been built
+      // do some post-setup matrix block map operations after the call to setup_meshtying, as they
+      // rely on the fact that the interface maps have already been built
       post_setup_matrix_block_maps();
 
       break;
@@ -3853,8 +3835,7 @@ std::shared_ptr<Core::LinAlg::SparseOperator> ScaTra::ScaTraTimIntImpl::init_sys
     default:
     {
       FOUR_C_THROW(
-          "Type of global system matrix for scatra-scatra interface coupling not "
-          "recognized!");
+          "Type of global system matrix for scatra-scatra interface coupling not recognized!");
     }
   }
 
@@ -3939,8 +3920,8 @@ void ScaTra::ScaTraTimIntImpl::calc_mean_micro_concentration()
   // nodes with 2 dofs
   std::set<int> other_nodes;
 
-  // loop over all element and search for nodes that are on elements with 2 dof on one side
-  // and 3 dofs at the other side
+  // loop over all element and search for nodes that are on elements with 2 dof on one side and 3
+  // dofs at the other side
   for (int ele_lid = 0; ele_lid < discretization()->element_row_map()->num_my_elements(); ++ele_lid)
   {
     const int ele_gid = discretization()->element_row_map()->gid(ele_lid);
@@ -4053,55 +4034,31 @@ void ScaTra::ScaTraTimIntImpl::test_results()
  *----------------------------------------------------------------------*/
 void ScaTra::ScaTraTimIntImpl::init_simplified_growth_dofsets()
 {
-  // set flag for simplified growth conditions
-  has_simplified_growth_conditions_ = true;
+  const int numdofpernode = nsd_;
 
-  // get vector of number of dofs per node
-  const auto& col_map = *discretization()->node_col_map();
-  const auto numdofpernode = std::make_shared<Core::LinAlg::Vector<int>>(col_map);
-  const std::span<const int> my_col_nodes(col_map.my_global_elements(), col_map.num_my_elements());
-  size_t local_size = numdofpernode->get_local_values().size();
-  for (const int& node_gid : my_col_nodes)
-  {
-    auto node_lid = col_map.lid(node_gid);
-    if (node_lid >= 0)
-    {
-      // add interface layer thickness growth dofs as a vector (size: number of spatial
-      // dimensions)
-      numdofpernode->get_local_values()[node_lid] = nsd_;
-    }
-
-    FOUR_C_ASSERT_ALWAYS(static_cast<size_t>(node_lid) < numdofpernode->get_local_values().size(),
-        "Rank {}: invalid index {} for local size {}",
-        Core::Communication::my_mpi_rank(
-            Global::Problem::instance()->get_dis("scatra")->get_comm()),
-        node_lid, local_size);
-  }
-
-  // add dofset and set its number within the discretization
   int number_dofsets = std::max(0, get_max_dof_set_number());
 
+  // append dofsets related to simplified growth and its derivatives
   std::shared_ptr<Core::DOFSets::DofSetInterface> dofset_growth =
-      std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(
-          numdofpernode, nullptr, nullptr, true);
+      std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(numdofpernode, 0, 0, true);
   if (discretization()->add_dof_set(dofset_growth) != ++number_dofsets)
     FOUR_C_THROW("Scalar transport discretization exhibits invalid number of dofsets!");
   set_number_of_dof_set_growth(number_dofsets);
 
   std::shared_ptr<Core::DOFSets::DofSetInterface> dofset_deriv_conc =
-      std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(
-          numdofpernode, nullptr, nullptr, true);
+      std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(numdofpernode, 0, 0, true);
   if (discretization()->add_dof_set(dofset_deriv_conc) != ++number_dofsets)
     FOUR_C_THROW("Scalar transport discretization exhibits invalid number of dofsets!");
   set_number_of_dof_set_d_growth_d_conc(number_dofsets);
 
   std::shared_ptr<Core::DOFSets::DofSetInterface> dofset_deriv_pot =
-      std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(
-          numdofpernode, nullptr, nullptr, true);
+      std::make_shared<Core::DOFSets::DofSetPredefinedDoFNumber>(numdofpernode, 0, 0, true);
 
   if (discretization()->add_dof_set(dofset_deriv_pot) != ++number_dofsets)
     FOUR_C_THROW("Scalar transport discretization exhibits invalid number of dofsets!");
   set_number_of_dof_set_d_growth_d_pot(number_dofsets);
+
+  are_simplgrowth_dofsets_init_ = true;
 }
 
 
@@ -4110,9 +4067,7 @@ void ScaTra::ScaTraTimIntImpl::init_simplified_growth_dofsets()
 void ScaTra::ScaTraTimIntImpl::set_simplified_growth(
     const Core::LinAlg::Vector<double>& simplified_growth)
 {
-  FOUR_C_ASSERT_ALWAYS(simplified_growth.get_map().same_as(*discret_->dof_row_map(nds_growth())),
-      "Maps (simplified growth and dof row map) are NOT identical. Emergency!");
-  FOUR_C_ASSERT_ALWAYS(simplified_growth.get_map().same_as(simplgrowthnp_->get_map()),
+  FOUR_C_ASSERT(simplified_growth.get_map().same_as(*discret_->dof_row_map(nds_growth())),
       "Maps (simplified growth and dof row map) are NOT identical. Emergency!");
   simplgrowthnp_->update(1.0, simplified_growth, 0.0);
 
@@ -4127,10 +4082,8 @@ void ScaTra::ScaTraTimIntImpl::set_simplified_growth(
 void ScaTra::ScaTraTimIntImpl::set_deriv_simplified_growth_conc(
     const Core::LinAlg::Vector<double>& dsimplgrowth_dc_np)
 {
-  FOUR_C_ASSERT_ALWAYS(
+  FOUR_C_ASSERT(
       dsimplgrowth_dc_np.get_map().same_as(*discret_->dof_row_map(nds_growth_deriv_conc())),
-      "Maps (simplified growth derivative and dof row map) are NOT identical. Emergency!");
-  FOUR_C_ASSERT_ALWAYS(dsimplgrowth_dc_np.get_map().same_as(dsimplgrowth_dc_np_->get_map()),
       "Maps (simplified growth derivative and dof row map) are NOT identical. Emergency!");
   dsimplgrowth_dc_np_->update(1.0, dsimplgrowth_dc_np, 0.0);
 
@@ -4146,16 +4099,13 @@ void ScaTra::ScaTraTimIntImpl::set_deriv_simplified_growth_conc(
 void ScaTra::ScaTraTimIntImpl::set_deriv_simplified_growth_pot(
     const Core::LinAlg::Vector<double>& dsimplgrowth_dpot_np)
 {
-  FOUR_C_ASSERT_ALWAYS(
+  FOUR_C_ASSERT(
       dsimplgrowth_dpot_np.get_map().same_as(*discret_->dof_row_map(nds_growth_deriv_pot())),
       "Maps (simplified growth and dof row map) are NOT identical. Emergency!");
-  FOUR_C_ASSERT_ALWAYS(dsimplgrowth_dpot_np.get_map().same_as(dsimplgrowth_dpot_np_->get_map()),
-      "Maps (simplified growth derivative and dof row map) are NOT identical. Emergency!");
   dsimplgrowth_dpot_np_->update(1.0, dsimplgrowth_dpot_np, 0.0);
 
   // update state variable
   discret_->set_state(
       nds_growth_deriv_pot(), "simplified growth potential derivative", *dsimplgrowth_dpot_np_);
 }
-
 FOUR_C_NAMESPACE_CLOSE
