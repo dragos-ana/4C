@@ -129,8 +129,12 @@ std::vector<Core::IO::InputSpec> SSI::valid_parameters()
   /* parameters for monolithic SSI */
   /*----------------------------------------------------------------------*/
   specs.push_back(group("SSI CONTROL/MONOLITHIC",
-      {
-
+      {// DEBUG: apply simplified growth as ALE displacements?
+          parameter<bool>("APPLY_SIMPL_GROWTH_AS_ALE",
+              {.description = "DEBUG: apply simplified growth as ALE displacements? Only to be "
+                              "used for verifications of the applied increments, and to be deleted "
+                              "prior to any PRs!",
+                  .default_value = false}),
           // convergence tolerances of Newton-Raphson iteration loop
           parameter<double>(
               "ABSTOLRES", {.description = "absolute tolerance for deciding if global residual of "

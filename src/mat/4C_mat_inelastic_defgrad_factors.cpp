@@ -47,6 +47,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <format>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -1737,7 +1738,8 @@ void Mat::InelasticDefgradSimplInterfaceGrowth::evaluate_inverse_inelastic_def_g
 {
   // --> calculation based on simplified growths from nodal input
   FOUR_C_ASSERT_ALWAYS(nodal_input_.nodal_simplified_growths.has_value(),
-      "Nodal simplified growths must be provided");
+      "Nodal simplified growths must be provided! Probably, the modeling of simplified growth via "
+      "S2I Kinetics conditions is not enabled!");
   FOUR_C_ASSERT_ALWAYS(nodal_input_.nodal_simplified_growths->at(0).size() == 3,
       "Currently, this material is only enabled for 3D formulations, whereas the current dimension "
       "is {}",

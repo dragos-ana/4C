@@ -298,6 +298,10 @@ namespace SSI
 
     //! timer for Newton-Raphson iteration
     std::shared_ptr<Teuchos::Time> timer_;
+
+    //! DEBUG: apply simplified growth as ALE displacements? Only to be used for verifications of
+    //! the applied increments, and to be deleted prior to any PRs!
+    const bool apply_simpl_growth_as_ale_;
   };
 }  // namespace SSI
 FOUR_C_NAMESPACE_CLOSE

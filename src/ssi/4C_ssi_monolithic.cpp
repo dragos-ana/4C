@@ -48,11 +48,6 @@
 
 FOUR_C_NAMESPACE_OPEN
 
-namespace
-{
-  // DEBUG: remove afterwards
-  constexpr bool apply_simpl_growth_as_ale = false;
-}  // namespace
 
 /*--------------------------------------------------------------------------*
  *--------------------------------------------------------------------------*/
@@ -77,7 +72,9 @@ SSI::SsiMono::SsiMono(MPI_Comm comm, const Teuchos::ParameterList& globaltimepar
           comm, SSI::Utils::problem_from_instance()->solver_params_callback(),
           Teuchos::getIntegralValue<Core::IO::Verbositylevel>(
               SSI::Utils::problem_from_instance()->io_params(), "VERBOSITY"))),
-      timer_(std::make_shared<Teuchos::Time>("SSI_Mono", true))
+      timer_(std::make_shared<Teuchos::Time>("SSI_Mono", true)),
+      apply_simpl_growth_as_ale_(
+          globaltimeparams.sublist("MONOLITHIC").get<bool>("APPLY_SIMPL_GROWTH_AS_ALE"))
 {
   const auto init_pot_calc_linear_solver =
       globaltimeparams.sublist("ELCH").get<std::optional<int>>("INIT_POT_CALC_LINEAR_SOLVER");
@@ -360,7 +357,7 @@ void SSI::SsiMono::evaluate_subproblems()
   evaluate_scatra();
 
   // apply simplified growth as ALE displacement (to be removed after full implementation)
-  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale_)
     apply_simplified_growth_as_ale_disp();
 
   // build system matrix and residual for scalar transport field on manifold
@@ -920,7 +917,7 @@ void SSI::SsiMono::newton_loop()
 
 
     // reapply simplified growth as ALE displacement (to be removed after full implementation)
-    if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+    if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale_)
       apply_simplified_growth_as_ale_disp();
   }
 }
@@ -1195,7 +1192,7 @@ void SSI::SsiMono::distribute_solution_all_fields(const bool restore_velocity)
 
   // TODO: remove this; node-based mapping of simplified growth -> ALE displacement if simplified
   // growth conditions are used
-  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale_)
   {
     apply_simplified_growth_as_ale_disp();
   }
@@ -1403,7 +1400,7 @@ void SSI::SsiMono::calc_initial_potential_field()
   if (is_scatra_manifold()) manifold_elch->post_calc_initial_potential_field();
 
   // apply 0.0 ALE displacements due to simplified growth
-  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale_)
   {
     apply_simplified_growth_as_ale_disp();
   }
@@ -1679,7 +1676,7 @@ void SSI::SsiMono::calc_initial_time_derivative()
   if (is_scatra_manifold()) scatra_manifold()->post_calc_initial_time_derivative();
 
   // apply 0.0 ALE displacements due to simplified growth
-  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale)
+  if (scatra_field()->has_simplified_growth_conditions() && apply_simpl_growth_as_ale_)
   {
     apply_simplified_growth_as_ale_disp();
   }
