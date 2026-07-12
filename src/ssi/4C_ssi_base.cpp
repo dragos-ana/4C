@@ -36,6 +36,7 @@
 #include "4C_ssi_str_model_evaluator_partitioned.hpp"
 #include "4C_ssi_utils.hpp"
 #include "4C_structure_new_model_evaluator_contact.hpp"
+#include "4C_utils_exceptions.hpp"
 #include "4C_utils_function_of_time.hpp"
 #include "4C_utils_parameter_list.hpp"
 
@@ -205,7 +206,9 @@ void SSI::SSIBase::setup()
   if (is_s2i_kinetics_with_pseudo_contact())
   {
     const auto dummy_stress_state = std::make_shared<Core::LinAlg::Vector<double>>(
-        *structure_field()->discretization()->dof_row_map(2), true);
+        *structure_field()->discretization()->dof_row_map(
+            scatra_field()->nds_two_tensor_quantity()),
+        true);
     ssicoupling_->set_mechanical_stress_state(*scatra_field()->discretization(), dummy_stress_state,
         scatra_field()->nds_two_tensor_quantity());
   }

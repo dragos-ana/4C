@@ -68,7 +68,9 @@ void Solid::ModelEvaluator::BaseSSI::determine_stress_strain()
     const int nodelid = discret().node_row_map()->lid(nodegid);
 
     // extract dof lid of first degree of freedom associated with current node in second nodeset
-    const int dofgid = discret().dof(2, node, 0);
+    // const int dofgid = discret().dof(2, node, 0); // TODO: why this hard-coded 2? Associated with
+    // why only 3 DOFsets are allowed in the other TODO...
+    const int dofgid = discret().dof(discret().num_dof_sets() - 1, node, 0);
     const int doflid = mechanical_stress_state_np_->get_map().lid(dofgid);
     if (doflid < 0) FOUR_C_THROW("Local ID not found in vector!");
 
@@ -111,12 +113,20 @@ void Solid::ModelEvaluator::BaseSSI::setup()
   // check initialization
   check_init();
 
-  if (discret().num_dof_sets() - 1 == 2)
+  if (true)  // (discret().num_dof_sets() == 3) // TODO: why this previous check? It works how I
+             // implemented it right now...
   {
-    mechanical_stress_state_n_ =
-        std::make_shared<Core::LinAlg::Vector<double>>(*discret().dof_row_map(2), true);
-    mechanical_stress_state_np_ =
-        std::make_shared<Core::LinAlg::Vector<double>>(*discret().dof_row_map(2), true);
+    /*
+  mechanical_stress_state_n_ =
+      std::make_shared<Core::LinAlg::Vector<double>>(*discret().dof_row_map(2), true);
+  mechanical_stress_state_np_ =
+      std::make_shared<Core::LinAlg::Vector<double>>(*discret().dof_row_map(2), true);
+*/
+
+    mechanical_stress_state_n_ = std::make_shared<Core::LinAlg::Vector<double>>(
+        *discret().dof_row_map(discret().num_dof_sets() - 1), true);
+    mechanical_stress_state_np_ = std::make_shared<Core::LinAlg::Vector<double>>(
+        *discret().dof_row_map(discret().num_dof_sets() - 1), true);
   }
 
   // set flag
