@@ -2366,7 +2366,7 @@ namespace
         .ref_coords = nullptr};
 
     // the use of the elastic predictor fails to converge
-    material_elastic_pred->pre_evaluate(params_list, context, 0, 0);
+    material_elastic_pred->pre_evaluate(params_list, context, {}, 0, 0);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material_elastic_pred->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
         Core::Exception,
@@ -2384,7 +2384,7 @@ namespace
             .material;
 
     // the use of the adaptive estimate interpolation converges
-    material_adaptive_estimate_interp->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp->pre_evaluate(params_list, context, {}, 0, 0);
     material_adaptive_estimate_interp->evaluate_inverse_inelastic_def_grad(
         &FM, iFin_other, iFin_result);
     Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
@@ -2410,7 +2410,7 @@ namespace
 
     // the use of the adaptive estimate interpolation without hardening integration also converges
     // converges
-    material_adaptive_estimate_interp_fixed_hardening->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp_fixed_hardening->pre_evaluate(params_list, context, {}, 0, 0);
     material_adaptive_estimate_interp_fixed_hardening->evaluate_inverse_inelastic_def_grad(
         &FM, iFin_other, iFin_result);
     FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
@@ -2423,14 +2423,14 @@ namespace
     FM(1, 1) = 0.75;
     FM(2, 2) = 0.75;
 
-    material_elastic_pred->pre_evaluate(params_list, context, 0, 0);
+    material_elastic_pred->pre_evaluate(params_list, context, {}, 0, 0);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material_elastic_pred->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
         Core::Exception,
         "Local Newton evaluation has failed and there is no evaluation management strategy");
 
 
-    material_adaptive_estimate_interp->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp->pre_evaluate(params_list, context, {}, 0, 0);
     material_adaptive_estimate_interp->evaluate_inverse_inelastic_def_grad(
         &FM, iFin_other, iFin_result);
     iFin_result_ref.clear();
@@ -2440,7 +2440,7 @@ namespace
     FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
 
 
-    material_adaptive_estimate_interp_fixed_hardening->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp_fixed_hardening->pre_evaluate(params_list, context, {}, 0, 0);
     FOUR_C_EXPECT_THROW_WITH_MESSAGE(
         material_adaptive_estimate_interp_fixed_hardening->evaluate_inverse_inelastic_def_grad(
             &FM, iFin_other, iFin_result),
