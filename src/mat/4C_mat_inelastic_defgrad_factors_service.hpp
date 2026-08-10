@@ -1235,6 +1235,22 @@ namespace Mat
         ReestimationParams reestimation;
       };
 
+
+      //! struct containing information required for integrating the hardening variables according
+      //! to their evolution equations (currently only the equivalent plastic strain)
+      struct InputHardeningIntegration
+      {
+        //! interpolated equivalent stress \f$ \overline_{\sigma}(\xi) \f$
+        double interp_equiv_stress;
+
+        //! previous plastic strain \f$ \varepsilon_{\text{p},n} \f$
+        double last_plastic_strain;
+
+        //! integration time step / substep \f$ \Delta t \f$
+        double dt;
+      };
+
+
       //! struct: input for the interpolation point determination based on the equivalent
       //! stress of the previous solution between both predictors
       struct InputEquivStressStartingPoint
