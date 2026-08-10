@@ -2316,6 +2316,137 @@ namespace
 
 
 
+  /// tests a challenging scenario, where using the elastic predictor to initialize the local
+  /// Newton-Raphson does not converge, whilst using the Adaptive Estimate Interpolation (AEI) with
+  /// / without hardening integration does
+  TEST_F(InelasticDefgradFactorsTest, TestViscoplasticCorrectionAdaptiveEstimateInterpolation)
+  {
+    Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonParams local_newton_params{
+        .res_tol = 1.0e-8,
+        .incr_tol = 1.0e-8,
+        .conv_check = Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonConvCheck::
+            residual_and_increment_ratio,
+        .diver_cont =
+            Mat::InelasticDefgradTransvIsotropElastViscoplastUtils::LocalNewtonDiverCont::stop,
+        .max_iter = 50,
+        .max_exceedance_fact_res_tol = 0.0,
+        .max_exceedance_fact_incr_tol = 0.0,
+    };
+
+    auto material_elastic_pred =
+        set_up_viscoplastic_material({.local_newton_params = local_newton_params,
+                                         .use_substepping = false,
+                                         .viscoplastic_law_params = {.strain_rate_prefac = 1.0,
+                                             .strain_rate_exp_fac = 0.014,
+                                             .init_yield_strength = 792.0,
+                                             .isotrop_harden_prefac = 510.0,
+                                             .isotrop_harden_exp = 0.26,
+                                             .ref_temperature = 293.0,
+                                             .melt_temperature = 1000.0,
+                                             .temperature_sens = 0.1}})
+            .material;
+
+    Core::LinAlg::Matrix<3, 3> unit_3x3(Core::LinAlg::Initialization::zero);
+    unit_3x3(0, 0) = 1.0;
+    unit_3x3(1, 1) = 1.0;
+    unit_3x3(2, 2) = 1.0;
+    Core::LinAlg::Matrix<3, 3> iFin_other(unit_3x3);
+
+    Core::LinAlg::Matrix<3, 3> FM(Core::LinAlg::Initialization::zero);
+    FM(0, 0) = 1.1;
+    FM(1, 1) = 0.9;
+    FM(2, 2) = 0.9;
+
+    Core::LinAlg::Matrix<3, 3> iFin_result(Core::LinAlg::Initialization::zero);
+
+    Teuchos::ParameterList params_list;
+    double total_time = 1.0;
+    double time_step_size = 1.0;
+    Mat::EvaluationContext<3> context{.total_time = &total_time,
+        .time_step_size = &time_step_size,
+        .xi = {},
+        .ref_coords = nullptr};
+
+    // the use of the elastic predictor fails to converge
+    material_elastic_pred->pre_evaluate(params_list, context, 0, 0);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_elastic_pred->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
+        Core::Exception,
+        "Local Newton evaluation has failed and there is no evaluation management strategy");
+
+
+    // setup AEI with hardening integration
+    AEINamespace::AEIParams aei_params_hardening =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params();  // default: hardening integration
+    auto material_adaptive_estimate_interp =
+        set_up_viscoplastic_material({.local_newton_params = local_newton_params,
+                                         .use_substepping = false,
+                                         .adaptive_estimate_interp_params = aei_params_hardening})
+            .material;
+
+    // the use of the AEI converges
+    material_adaptive_estimate_interp->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp->evaluate_inverse_inelastic_def_grad(
+        &FM, iFin_other, iFin_result);
+    Core::LinAlg::Matrix<3, 3> iFin_result_ref{Core::LinAlg::Initialization::zero};
+    iFin_result_ref(0, 0) = 0.96637623335;
+    iFin_result_ref(1, 1) = 1.01724808212;
+    iFin_result_ref(2, 2) = 1.01724808212;
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+
+
+    // repeat test without hardening integration within the adaptive estimate interpolation
+    AEINamespace::AEIParams aei_params_fixed_hardening =
+        InelasticDefgradFactorsTestUtils::set_up_aei_params(
+            {.hardening = {.method = AEINamespace::HardeningMethod::use_previous,
+                 .max_iter_integration = 0,
+                 .tol_integration = 0.0}});
+
+    auto material_adaptive_estimate_interp_fixed_hardening = set_up_viscoplastic_material(
+        {.local_newton_params = local_newton_params,
+            .use_substepping = false,
+            .adaptive_estimate_interp_params = aei_params_fixed_hardening})
+                                                                 .material;
+
+    // the use of the adaptive estimate interpolation without hardening integration also converges
+    material_adaptive_estimate_interp_fixed_hardening->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp_fixed_hardening->evaluate_inverse_inelastic_def_grad(
+        &FM, iFin_other, iFin_result);
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+
+
+    // let's repeat the tests with an even more difficult mechanical state, such that only the use
+    // of the AEI with hardening integration converges
+    FM.clear();
+    FM(0, 0) = 1.5;
+    FM(1, 1) = 0.75;
+    FM(2, 2) = 0.75;
+
+    material_elastic_pred->pre_evaluate(params_list, context, 0, 0);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_elastic_pred->evaluate_inverse_inelastic_def_grad(&FM, iFin_other, iFin_result),
+        Core::Exception,
+        "Local Newton evaluation has failed and there is no evaluation management strategy");
+
+
+    material_adaptive_estimate_interp->pre_evaluate(params_list, context, 0, 0);
+    material_adaptive_estimate_interp->evaluate_inverse_inelastic_def_grad(
+        &FM, iFin_other, iFin_result);
+    iFin_result_ref.clear();
+    iFin_result_ref(0, 0) = 0.70480335583;
+    iFin_result_ref(1, 1) = 1.19114880226;
+    iFin_result_ref(2, 2) = 1.19114880226;
+    FOUR_C_EXPECT_NEAR(iFin_result, iFin_result_ref, 1.0e-10);
+
+
+    material_adaptive_estimate_interp_fixed_hardening->pre_evaluate(params_list, context, 0, 0);
+    FOUR_C_EXPECT_THROW_WITH_MESSAGE(
+        material_adaptive_estimate_interp_fixed_hardening->evaluate_inverse_inelastic_def_grad(
+            &FM, iFin_other, iFin_result),
+        Core::Exception, "The re-estimation procedure has failed!");
+  }
+
+
   TEST_F(InelasticDefgradFactorsTest, TestEvaluateStateQuantityDerivatives)
   {
     auto transv_isotropic_material = set_up_viscoplastic_material(
