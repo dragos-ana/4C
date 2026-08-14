@@ -4488,7 +4488,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::manage_evaluation(
       increment_wrt_current_sol.update(
           1.0, updated_estimate, -1.0, local_newton_manager_.sol(), 0.0);
 
-      // reset the Local Newton vector
+      // "artificial reset" of the Local Newton--Raphson: the solution vector is set to the updated
+      // estimate, and the iteration counter is incremented to proceed with the next iteration
       local_newton_manager_.increment_solution_vector(increment_wrt_current_sol);
       local_newton_manager_.increment_iter();
 
