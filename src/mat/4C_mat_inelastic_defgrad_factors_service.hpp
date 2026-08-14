@@ -1147,12 +1147,13 @@ namespace Mat
         //! maximum number of construction iterations \f$ i_{\text{C,max}} \f$
         int max_iter;
 
-        //! relative understress tolerance $\kappa_{\text{\sigma}_{\text{Y}}}$ for \f$
+        //! relative understress tolerance \f$\kappa_{\text{\sigma}_{\text{Y}}} \f$ for \f$
         //! \overline{\sigma}(\tau) / \sigma_{\text{Y},n} - 1
         //! \f$
         double relative_understress_tol;
 
-        //! interval scanning parameter $s$ for updating the construction parameter \f$\tau \gets
+        //! interval scanning parameter \f$ s \f$ for updating the construction parameter \f$ \tau
+        //! \gets
         //! \tau_{\text{E}} + s \, \left( \tau_{\hat{\text{P}}} - \tau_{\text{E}} \right) \f$
         //! (bisection: = 1/2)
         double interval_scanning_param;
@@ -1172,7 +1173,8 @@ namespace Mat
         //! maximum number of estimate interpolation iterations \f$ i_{\text{EI,max}} \f$
         int max_iter;
 
-        //! interval scanning parameter $s$ for updating the interpolation parameter \f$\xi \gets
+        //! interval scanning parameter \f$ s \f$ for updating the interpolation parameter \f$\xi
+        //! \gets
         //! \xi_{\text{E}} + s \, \left( \xi_{\text{P}} - \xi_{\text{E}} \right) \f$ (bisection: =
         //! 1/2)
         double interval_scanning_param;
@@ -1198,7 +1200,7 @@ namespace Mat
         //! maximum number of adaptive re-estimations allowed
         int max_num_reestimations;
 
-        //! interval scanning parameter $s$ for determining the intermediate parameter \f$
+        //! interval scanning parameter \f$ s \f$ for determining the intermediate parameter \f$
         //! \xi_{\mathrm{I}} \gets
         //! \xi_{\mathrm{E}} + s \, \left( \xi - \xi_{\mathrm{E}}\right) \f$ (bisection: = 1 / 2)
         double interval_scanning_param;

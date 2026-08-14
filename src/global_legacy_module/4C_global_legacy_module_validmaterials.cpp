@@ -3104,7 +3104,7 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                                         &AEINamespace::PlasticPredictorConstructionParams::
                                             elastic_rotation_type)}),
                             parameter<int>("MAX_ITER",
-                                {.description = "maximum number of construction iterations f$ "
+                                {.description = "maximum number of construction iterations $ "
                                                 "i_{\\text{C,max}} $",
                                     .default_value = 50,
                                     .validator = positive<int>(),
@@ -3113,7 +3113,7 @@ std::unordered_map<Core::Materials::MaterialType, Core::IO::InputSpec> Global::v
                             parameter<double>("RELATIVE_UNDERSTRESS_TOL",
                                 {.description =
                                         "relative understress tolerance "
-                                        "$\\kappa_{\\mathrm{\\sigma}_{\\text{Y}}}$ for \\f$ "
+                                        "$\\kappa_{\\mathrm{\\sigma}_{\\text{Y}}}$ for $ "
                                         "\\overline{\\sigma}(\\tau) / \\sigma_{\\text{Y},n} - 1 $ "
                                         "used to iteratively construct the plastic predictor",
                                     .default_value = 1.0e-6,
