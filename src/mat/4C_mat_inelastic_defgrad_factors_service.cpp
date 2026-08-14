@@ -21,6 +21,7 @@
 #include "4C_utils_enum.hpp"
 #include "4C_utils_exceptions.hpp"
 
+#include <algorithm>
 #include <string>
 #include <tuple>
 #include <vector>
