@@ -4764,10 +4764,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::assert_predictor_stress_
 
   // compute the relative overstress associated with the elastic predictor
   ViscoplastUtils::StateQuantities state_quantities_elastic_pred = evaluate_state_quantities(
-      local_integration_input.right_cg, local_integration_input.temperature,
-      local_integration_input.elastic_predictor_inverse_plastic_defgrad, dummy_plastic_strain,
-      err_status, local_integration_input.step,
-      ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      local_integration_input, local_integration_input.elastic_predictor_inverse_plastic_defgrad,
+      dummy_plastic_strain, err_status, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
   // note that the evaluation may fail if large stresses are involved, but this is ok since the
   // elastic predictor is assumed to have a high stress; we only perform further verifications for
   // the case where this is computable
@@ -4789,11 +4787,10 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::assert_predictor_stress_
   // plastic predictor (at this stage stored as the "plastic predictor" within the AEI manager)
   err_status = InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors;
   ViscoplastUtils::StateQuantities state_quantities_prelim_plastic_pred = evaluate_state_quantities(
-      local_integration_input.right_cg, local_integration_input.temperature,
+      local_integration_input,
       adaptive_estimate_interp_manager_->get_inverse_inelastic_defgrad_plastic_pred(
           gp_, local_integration_input.inv_defgrad),
-      dummy_plastic_strain, err_status, local_integration_input.step,
-      ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      dummy_plastic_strain, err_status, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
   FOUR_C_ASSERT_ALWAYS(err_status == ViscoplastUtils::ErrorType::no_errors, "{}",
       get_error_warning_info("Inconsistent preliminary plastic predictor stress!"
                              "This should always be computable for "
@@ -4895,9 +4892,8 @@ void Mat::InelasticDefgradTransvIsotropElastViscoplast::construct_plastic_predic
         adaptive_estimate_interp_manager_->interpolate_inverse_inelastic_defgrad(
             gp_, local_integration_input.inv_defgrad);
     ViscoplastUtils::StateQuantities interp_state_quantities = evaluate_state_quantities(
-        local_integration_input.right_cg, local_integration_input.temperature,
-        interp_inverse_inelastic_defgrad, dummy_plastic_strain, err_status,
-        local_integration_input.step, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+        local_integration_input, interp_inverse_inelastic_defgrad, dummy_plastic_strain, err_status,
+        ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
     if (err_status == InelasticDefgradTransvIsotropElastViscoplastUtils::ErrorType::no_errors)
     {
       // compute and verify relative overstress
@@ -5065,15 +5061,13 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_estimate_candidate(
   ViscoplastUtils::ErrorType err_status{ViscoplastUtils::ErrorType::no_errors};
 
   // evaluate the candidate state
-  state_quantities_ = evaluate_state_quantities(local_integration_input.right_cg,
-      local_integration_input.temperature, iFin_candidate, plastic_strain_candidate, err_status,
-      local_integration_input.step, ViscoplastUtils::StateQuantityEvalType::full_eval);
+  state_quantities_ = evaluate_state_quantities(local_integration_input, iFin_candidate,
+      plastic_strain_candidate, err_status, ViscoplastUtils::StateQuantityEvalType::full_eval);
   if (err_status != ViscoplastUtils::ErrorType::no_errors) return err_status;
 
   // evaluate the candidate state linearization
-  state_quantity_derivatives_ = evaluate_state_quantity_derivatives(
-      local_integration_input.right_cg, local_integration_input.temperature, iFin_candidate,
-      plastic_strain_candidate, err_status, local_integration_input.step,
+  state_quantity_derivatives_ = evaluate_state_quantity_derivatives(local_integration_input,
+      iFin_candidate, plastic_strain_candidate, err_status,
       ViscoplastUtils::StateQuantityDerivEvalType::full_eval, false);
 
   return err_status;
@@ -5136,10 +5130,9 @@ Core::LinAlg::Matrix<10, 1> Mat::InelasticDefgradTransvIsotropElastViscoplast::i
 
     // compute equivalent stress related to the interpolated inverse plastic deformation
     // gradient
-    ViscoplastUtils::StateQuantities state_quantities_stress_only = evaluate_state_quantities(
-        local_integration_input.right_cg, local_integration_input.temperature, interp_iFin, -1.0,
-        err_status, local_integration_input.step,
-        ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+    ViscoplastUtils::StateQuantities state_quantities_stress_only =
+        evaluate_state_quantities(local_integration_input, interp_iFin, -1.0, err_status,
+            ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
     if (err_status == ViscoplastUtils::ErrorType::no_errors)
     {
       // detect possible "under the yield surface" error state, and shift interpolation accordingly
@@ -5306,9 +5299,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::reestimate_to_restart_local_n
   ViscoplastUtils::ErrorType err_status{ViscoplastUtils::ErrorType::no_errors};
   const double dummy_plastic_strain = -1.0;
   ViscoplastUtils::StateQuantities interp_state_quantities =
-      evaluate_state_quantities(local_integration_input.right_cg,
-          local_integration_input.temperature, interp_iFin, dummy_plastic_strain, err_status,
-          local_integration_input.step, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      evaluate_state_quantities(local_integration_input, interp_iFin, dummy_plastic_strain,
+          err_status, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
 
   // if the state could not be computed -> shift toward plastic predictor
   if (err_status != ViscoplastUtils::ErrorType::no_errors)
@@ -5438,9 +5430,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::get_input_equiv_stress_starti
 
   // compute solution stress at the considered Gauss point
   ViscoplastUtils::StateQuantities state_quantities_sol = evaluate_state_quantities(
-      local_integration_input.right_cg, time_step_quantities_.current_temperature[gp],
-      time_step_quantities_.current_plastic_defgrad_inverse[gp], -1.0, err_status,
-      local_integration_input.step, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      local_integration_input, time_step_quantities_.current_plastic_defgrad_inverse[gp], -1.0,
+      err_status, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
   if (err_status != ViscoplastUtils::ErrorType::no_errors)
   {
     FOUR_C_THROW(
@@ -5452,9 +5443,8 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::get_input_equiv_stress_starti
   // compute stress related to the elastic and plastic predictors at the considered Gauss
   // point
   ViscoplastUtils::StateQuantities state_quantities_elast_pred = evaluate_state_quantities(
-      local_integration_input.right_cg, time_step_quantities_.current_temperature[gp],
-      time_step_quantities_.last_plastic_defgrad_inverse[gp], -1.0, err_status,
-      local_integration_input.step, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      local_integration_input, time_step_quantities_.last_plastic_defgrad_inverse[gp], -1.0,
+      err_status, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
 
   if (err_status != ViscoplastUtils::ErrorType::no_errors)
   {
@@ -5467,15 +5457,12 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::get_input_equiv_stress_starti
                   err_status)));
   }
 
-
-
   Core::LinAlg::Matrix<3, 3> iFin_plastic_pred =
       adaptive_estimate_interp_manager_->get_inverse_inelastic_defgrad_plastic_pred(
           gp, local_integration_input.inv_defgrad);
   ViscoplastUtils::StateQuantities state_quantities_plast_pred =
-      evaluate_state_quantities(local_integration_input.right_cg,
-          time_step_quantities_.current_temperature[gp], iFin_plastic_pred, -1.0, err_status,
-          local_integration_input.step, ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
+      evaluate_state_quantities(local_integration_input, iFin_plastic_pred, -1.0, err_status,
+          ViscoplastUtils::StateQuantityEvalType::equiv_stress_only);
 
   if (err_status != ViscoplastUtils::ErrorType::no_errors)
   {
