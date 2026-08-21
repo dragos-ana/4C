@@ -5074,15 +5074,26 @@ Mat::InelasticDefgradTransvIsotropElastViscoplast::verify_estimate_candidate(
   // initialize output
   ViscoplastUtils::ErrorType err_status{ViscoplastUtils::ErrorType::no_errors};
 
-  // evaluate the candidate state
-  state_quantities_ = evaluate_state_quantities(local_integration_input, iFin_candidate,
-      plastic_strain_candidate, err_status, ViscoplastUtils::StateQuantityEvalType::full_eval);
-  if (err_status != ViscoplastUtils::ErrorType::no_errors) return err_status;
-
-  // evaluate the candidate state linearization
-  state_quantity_derivatives_ = evaluate_state_quantity_derivatives(local_integration_input,
-      iFin_candidate, plastic_strain_candidate, err_status,
-      ViscoplastUtils::StateQuantityDerivEvalType::full_eval, false);
+  // try evaluating the local Newton--Raphson residual and Jacobian for the estimate candidate
+  try
+  {
+    Core::LinAlg::Matrix<10, 1> estimate_candidate =
+        wrap_unknowns(iFin_candidate, plastic_strain_candidate);
+    Core::LinAlg::Matrix<10, 1> residual =
+        evaluate_local_newton_residual(local_integration_input, estimate_candidate, err_status);
+    if (err_status == ViscoplastUtils::ErrorType::no_errors)
+    {
+      Core::LinAlg::Matrix<10, 10> jacMat =
+          evaluate_local_newton_jacobian(local_integration_input, estimate_candidate, err_status);
+    }
+    // beware: state_quantities_ and state_quantity_derivatives_ are now updated to the evaluated
+    // values!
+  }
+  // all caught errors are marked as overflow
+  catch (...)
+  {
+    err_status = ViscoplastUtils::ErrorType::overflow_error;
+  }
 
   return err_status;
 }
