@@ -452,21 +452,25 @@ namespace CONTACT
     std::shared_ptr<Core::LinAlg::Vector<double>>& lm_uzawa_ptr() { return zuzawa_; };
     std::shared_ptr<const Core::LinAlg::Vector<double>> lm_uzawa_ptr() const { return zuzawa_; };
 
-    //! return vector of normal contact forces at \f$t_{n+1}\f$
-    std::shared_ptr<Core::LinAlg::Vector<double>>& stress_normal_ptr() { return stressnormal_; };
-    std::shared_ptr<const Core::LinAlg::Vector<double>> stress_normal_ptr() const
+    //! return vector of normal contact tractions $\boldsymbol{t}_{\text{n},n+1}$ at \f$t_{n+1}\f$
+    std::shared_ptr<Core::LinAlg::Vector<double>>& normal_traction_ptr()
     {
-      return stressnormal_;
+      return normal_traction_;
+    };
+    [[nodiscard]] std::shared_ptr<const Core::LinAlg::Vector<double>> normal_traction_ptr() const
+    {
+      return normal_traction_;
     };
 
-    //! return vector of tangential contact forces at \f$t_{n+1}\f$
-    std::shared_ptr<Core::LinAlg::Vector<double>>& stress_tangential_ptr()
+    //! return vector of tangential contact tractions $\boldsymbol{t}_{\tau,n+1}$ at \f$t_{n+1}\f$
+    std::shared_ptr<Core::LinAlg::Vector<double>>& tangential_traction_ptr()
     {
-      return stresstangential_;
+      return tangential_traction_;
     };
-    std::shared_ptr<const Core::LinAlg::Vector<double>> stress_tangential_ptr() const
+    [[nodiscard]] std::shared_ptr<const Core::LinAlg::Vector<double>> tangential_traction_ptr()
+        const
     {
-      return stresstangential_;
+      return tangential_traction_;
     };
 
     //! return vector of normal contact forces at \f$t_{n+1}\f$
@@ -731,11 +735,11 @@ namespace CONTACT
     //! vector of Lagrange multipliers from last Uzawa step
     std::shared_ptr<Core::LinAlg::Vector<double>> zuzawa_;
 
-    //! vector of normal contact forces at \f$t_{n+1}\f$
-    std::shared_ptr<Core::LinAlg::Vector<double>> stressnormal_;
+    //! vector of normal contact tractions $\boldsymbol{t}_{\text{n},n+1}$ at \f$t_{n+1}\f$
+    std::shared_ptr<Core::LinAlg::Vector<double>> normal_traction_;
 
-    //! vector of tangential contact forces at \f$t_{n+1}\f$
-    std::shared_ptr<Core::LinAlg::Vector<double>> stresstangential_;
+    //! vector of tangential contact tractions $\boldsymbol{t}_{\tau,n+1}$ at \f$t_{n+1}\f$
+    std::shared_ptr<Core::LinAlg::Vector<double>> tangential_traction_;
 
     //! vector of normal contact forces at \f$t_{n+1}\f$
     std::shared_ptr<Core::LinAlg::Vector<double>> forcenormal_;

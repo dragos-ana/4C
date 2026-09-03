@@ -81,12 +81,14 @@ namespace CONTACT
     //! @name Access methods
 
     /*!
-     \brief Return jump per time step (only for source side!) (length 3)
+     \brief Return jump per time step: \f$ \boldsymbol{v}_{\text{rel}} \times \Delta t \f$ (only for
+     source side, length 3)
      */
     virtual inline double* jump() { return jump_; }
 
     /*!
-     \brief Return jump per time step (only for source side!) (max length 2)
+     \brief Return jump per time step : \f$ \boldsymbol{v}_{\text{rel}} \times \Delta t \f$
+     (only for source side, max length 2)
      */
     virtual inline double* jump_var() { return jumpvar_; }
 

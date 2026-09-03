@@ -13,6 +13,7 @@
 #include "4C_comm_parobjectfactory.hpp"
 #include "4C_fem_general_node.hpp"
 #include "4C_linalg_map.hpp"
+#include "4C_linalg_serialdensematrix.hpp"
 #include "4C_utils_pairedvector.hpp"
 
 FOUR_C_NAMESPACE_OPEN
@@ -596,6 +597,13 @@ namespace Mortar
      \brief Build nodal normal
      */
     virtual void build_averaged_normal();
+
+    /*!
+     \brief Compute tangential projection matrix $\mathcal{P} = \boldsymbol{I} - \boldsymbol{n}
+     \boldsymbol{n}^T$, which projects vectors onto the tangential plane associated with the nodal
+     normal \f$ \boldsymbol{n} \f$
+     */
+    Core::LinAlg::SerialDenseMatrix tangential_projection_matrix();
 
     /*!
      \brief Find closest node from given node set and return pointer

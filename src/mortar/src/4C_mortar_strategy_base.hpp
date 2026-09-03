@@ -168,15 +168,15 @@ namespace Mortar
       activeold,  //!< contact status of last converged state
       slipold,    //!< slip for last converged state
       dm,
-      pentrac,
-      weightedwear,  //!< weighted wear (internal state var. approach)
-      wupdate,       //!< update current pv wear for current step (slave)
-      wmupdate,      //!< update current pv wear for current step (master)
-      wold,          //!< pv wear for last converged state (slave)
-      wmold,         //!< pv wear for last converged state (master)
-      wupdateT,      //!< accumulated pv wear for different time scales
-      lmThermo,      //!< thermal Lagrange multiplier
-      n_old          //!< old normal
+      tangential_tractions,  //! current tangential tractions
+      weightedwear,          //!< weighted wear (internal state var. approach)
+      wupdate,               //!< update current pv wear for current step (slave)
+      wmupdate,              //!< update current pv wear for current step (master)
+      wold,                  //!< pv wear for last converged state (slave)
+      wmold,                 //!< pv wear for last converged state (master)
+      wupdateT,              //!< accumulated pv wear for different time scales
+      lmThermo,              //!< thermal Lagrange multiplier
+      n_old                  //!< old normal
     };
     //! @}
 
@@ -252,8 +252,8 @@ namespace Mortar
         std::shared_ptr<Core::LinAlg::Map>& InnerDofMap,
         std::shared_ptr<Core::LinAlg::Map>& ActiveDofMap) const = 0;
     virtual double constraint_norm() const = 0;
-    virtual std::shared_ptr<const Core::LinAlg::Vector<double>> contact_normal_stress() const = 0;
-    virtual std::shared_ptr<const Core::LinAlg::Vector<double>> contact_tangential_stress()
+    virtual std::shared_ptr<const Core::LinAlg::Vector<double>> contact_normal_traction() const = 0;
+    virtual std::shared_ptr<const Core::LinAlg::Vector<double>> contact_tangential_traction()
         const = 0;
     virtual std::shared_ptr<const Core::LinAlg::Vector<double>> contact_normal_force() const = 0;
     virtual std::shared_ptr<const Core::LinAlg::Vector<double>> contact_tangential_force()
@@ -296,7 +296,7 @@ namespace Mortar
         const std::shared_ptr<const Core::LinAlg::Vector<double>>& dis) = 0;
     virtual int number_of_active_nodes() const = 0;
     virtual int number_of_slip_nodes() const = 0;
-    virtual void compute_contact_stresses() = 0;
+    virtual void compute_contact_tractions() = 0;
 
     /*!
     \brief Write results for visualization separately for each meshtying/contact interface

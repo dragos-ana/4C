@@ -466,6 +466,42 @@ void Mortar::Node::build_averaged_normal()
     for (int j = 0; j < 3; ++j) mo_data().n()[j] /= length;
 }
 
+/*----------------------------------------------------------------------*
+ *----------------------------------------------------------------------*/
+Core::LinAlg::SerialDenseMatrix Mortar::Node::tangential_projection_matrix()
+{
+  // retrieve problem dimension and nodal normal
+  const int numdof = static_cast<int>(dofs_.size());
+  double* n = modata_->n();
+
+  Core::LinAlg::SerialDenseMatrix tan_proj_matrix(numdof, numdof);
+  if (numdof == 3)
+  {
+    tan_proj_matrix(0, 0) = 1 - (n[0] * n[0]);
+    tan_proj_matrix(0, 1) = -(n[0] * n[1]);
+    tan_proj_matrix(0, 2) = -(n[0] * n[2]);
+    tan_proj_matrix(1, 0) = -(n[1] * n[0]);
+    tan_proj_matrix(1, 1) = 1 - (n[1] * n[1]);
+    tan_proj_matrix(1, 2) = -(n[1] * n[2]);
+
+    tan_proj_matrix(2, 0) = -(n[2] * n[0]);
+    tan_proj_matrix(2, 1) = -(n[2] * n[1]);
+    tan_proj_matrix(2, 2) = 1 - (n[2] * n[2]);
+  }
+  else if (numdof == 2)
+  {
+    tan_proj_matrix(0, 0) = 1 - (n[0] * n[0]);
+    tan_proj_matrix(0, 1) = -(n[0] * n[1]);
+
+    tan_proj_matrix(1, 0) = -(n[1] * n[0]);
+    tan_proj_matrix(1, 1) = 1 - (n[1] * n[1]);
+  }
+  else
+    FOUR_C_THROW("Invalid node dimension for computing the tangential projection matrix.");
+
+
+  return tan_proj_matrix;
+}
 
 /*----------------------------------------------------------------------*
  *----------------------------------------------------------------------*/
