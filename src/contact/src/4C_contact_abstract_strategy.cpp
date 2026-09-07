@@ -19,8 +19,10 @@
 #include "4C_global_data.hpp"
 #include "4C_io.hpp"
 #include "4C_io_control.hpp"
+#include "4C_linalg_serialdensematrix.hpp"
 #include "4C_linalg_sparsematrix.hpp"
 #include "4C_linalg_utils_densematrix_communication.hpp"
+#include "4C_linalg_utils_densematrix_multiply.hpp"
 #include "4C_linalg_utils_sparse_algebra_assemble.hpp"
 #include "4C_linalg_utils_sparse_algebra_create.hpp"
 #include "4C_linalg_utils_sparse_algebra_manipulation.hpp"
@@ -1574,6 +1576,11 @@ void CONTACT::AbstractStrategy::store_nodal_quantities(Mortar::StrategyBase::Qua
         vectorglobal = lagrange_multiplier();
         break;
       }
+      case Mortar::StrategyBase::tangential_tractions:
+      {
+        vectorglobal = data_ptr_->tangential_traction_ptr();
+        break;
+      }
       case Mortar::StrategyBase::lmuzawa:
       {
         vectorglobal = lagrange_multiplier_uzawa();
@@ -1666,6 +1673,16 @@ void CONTACT::AbstractStrategy::store_nodal_quantities(Mortar::StrategyBase::Qua
             cnode->data().active_old() = cnode->active();
             break;
           }
+          case Mortar::StrategyBase::tangential_tractions:
+          {
+            if (!friction_) FOUR_C_THROW("This should only be called friction problems!");
+            auto* fnode = dynamic_cast<FriNode*>(cnode);
+            fnode->fri_data().traction()[dof] =
+                -vectorinterface->local_values_as_span()[locindex[dof]];
+            fnode->fri_data().traction_ltl()[dof] =
+                -vectorinterface->local_values_as_span()[locindex[dof]];
+            break;
+          }
           case Mortar::StrategyBase::slipold:
           {
             if (!friction_) FOUR_C_THROW("Slip just for friction problems!");
@@ -1707,42 +1724,86 @@ void CONTACT::AbstractStrategy::compute_contact_tractions()
 
       // be aware of problem dimension
       const int numdof = cnode->num_dof();
-      if (n_dim() != numdof) FOUR_C_THROW("Inconsistency Dim <-> NumDof");
+      FOUR_C_ASSERT_ALWAYS(n_dim() == static_cast<int>(numdof), "Inconsistency Dim <-> NumDof");
 
-      double nn[3];
-      double nt1[3];
-      double nt2[3];
-      double lmn = 0.0;
-      double lmt1 = 0.0;
-      double lmt2 = 0.0;
-
-      for (int j = 0; j < 3; ++j)
+      // determine normal component of the Lagrange multiplier vector
+      Core::LinAlg::SerialDenseMatrix lm_normal(3, 1, true);
+      const double* normal_vec = cnode->mo_data().n();
+      const double* lm = cnode->mo_data().lm();
+      double lm_normal_magnitude = 0.0;
+      for (int dof = 0; dof < numdof; ++dof)
       {
-        nn[j] = cnode->mo_data().n()[j];
-        nt1[j] = cnode->data().txi()[j];
-        nt2[j] = cnode->data().teta()[j];
-        lmn += nn[j] * cnode->mo_data().lm()[j];
-        lmt1 += nt1[j] * cnode->mo_data().lm()[j];
-        lmt2 += nt2[j] * cnode->mo_data().lm()[j];
+        lm_normal_magnitude += normal_vec[dof] * lm[dof];
+      }
+      for (int dof = 0; dof < numdof; ++dof)
+      {
+        lm_normal(dof, 0) = lm_normal_magnitude * normal_vec[dof];
       }
 
-      // find indices for DOFs of current node in Core::LinAlg::Vector<double>
-      // and put node values (normal and tangential stress components) at these DOFs
-
-      std::vector<int> locindex(n_dim());
-
-      // normal stress components
-      for (int dof = 0; dof < n_dim(); ++dof)
+      // determine tangential component of the Lagrange multipliers (only in case of
+      // friction, else: 0.0)
+      Core::LinAlg::SerialDenseMatrix lm_tangential(3, 1, true);
+      if (friction_ && cnode->active())
       {
-        locindex[dof] = (normal_traction->get_map()).lid(cnode->dofs()[dof]);
-        (*normal_traction).get_values()[locindex[dof]] = -lmn * nn[dof];
+        auto soltype = Teuchos::getIntegralValue<CONTACT::SolvingStrategy>(params(), "STRATEGY");
+
+        switch (soltype)
+        {
+          case CONTACT::SolvingStrategy::penalty:
+          case CONTACT::SolvingStrategy::uzawa:
+          {
+            // For the penalty and Uzawa methods, we take the saved friction traction: projecting
+            // the Lagrange multipliers onto the tangential planes leads to slight deviations in the
+            // range of machine precision. Since we use this function to write the restart data
+            // required for consistently return mapping the tangential traction, we directly save
+            // the components used anyway in that specific routine, namely the nodal frictional
+            // traction
+            auto* cnode = dynamic_cast<FriNode*>(node);
+
+            for (int dof = 0; dof < numdof; ++dof)
+            {
+              lm_tangential(dof, 0) = cnode->fri_data().traction()[dof];
+            }
+#ifdef FOUR_C_ENABLE_ASSERTIONS
+            // verify that the normal and tangential components sum up to the Lagrange multiplier,
+            // in order to verify that the tangential projection is consistent
+            for (int dof = 0; dof < numdof; ++dof)
+            {
+              const double sum_of_components = lm_normal(dof, 0) + lm_tangential(dof, 0);
+              FOUR_C_ASSERT(std::abs(sum_of_components - lm[dof]) <= std::abs(lm[dof]) * 1.0e-8,
+                  "Component {} of the sum of the projections (normal + tangential) does not match "
+                  "the "
+                  "corresponding item from the Lagrange multiplier vector: {} vs. {}",
+                  dof, sum_of_components, lm[dof]);
+            }
+#endif
+            break;
+          }
+          default:
+          {
+            // for all other contact enforcement strategies, we calculate the tangential traction
+            // based on the normal traction
+            for (int dof = 0; dof < numdof; ++dof)
+            {
+              lm_tangential(dof, 0) = lm[dof] - lm_normal(dof, 0);
+            }
+            break;
+          }
+        }
       }
 
-      // tangential stress components
-      for (int dof = 0; dof < n_dim(); ++dof)
+
+      // save the determined traction components into the normal and tangential traction vectors
+      for (int dof = 0; dof < numdof; ++dof)
       {
-        locindex[dof] = (tangential_traction->get_map()).lid(cnode->dofs()[dof]);
-        (*tangential_traction).get_values()[locindex[dof]] = -lmt1 * nt1[dof] - lmt2 * nt2[dof];
+        const int dof_gid = cnode->dofs()[dof];
+
+        // normal traction components
+        const unsigned int normal_locindex = (normal_traction->get_map()).lid(dof_gid);
+        (*normal_traction).get_values()[normal_locindex] = -lm_normal(dof, 0);
+        // tangential traction components
+        const unsigned int tangent_locindex = (tangential_traction->get_map()).lid(dof_gid);
+        (*tangential_traction).get_values()[tangent_locindex] = -lm_tangential(dof, 0);
       }
     }
   }
@@ -1885,7 +1946,7 @@ void CONTACT::AbstractStrategy::update(std::shared_ptr<const Core::LinAlg::Vecto
     store_to_old(Mortar::StrategyBase::dm);
 
     // store nodal entries from tangential / frictional tractions as the old ones
-    store_to_old(Mortar::StrategyBase::pentrac);
+    store_to_old(Mortar::StrategyBase::tangential_tractions);
   }
 }
 
@@ -2037,7 +2098,10 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
   // read restart information on Lagrange multipliers
   z_ = std::make_shared<Core::LinAlg::Vector<double>>(source_dof_row_map(true));
   zold_ = std::make_shared<Core::LinAlg::Vector<double>>(source_dof_row_map(true));
+  data_ptr_->tangential_traction_ptr() =
+      std::make_shared<Core::LinAlg::Vector<double>>(source_dof_row_map(true));
   if (!restartwithcontact)
+  {
     if (not(Global::Problem::instance()
                     ->structural_dynamic_params()
                     .get<Solid::IntegrationStrategy>("INT_STRATEGY") ==
@@ -2048,11 +2112,21 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
       reader.read_vector(data().old_lm_ptr(), "lagrmultold");
     }
 
+    if (friction_)
+    {
+      reader.read_vector(data_ptr_->tangential_traction_ptr(), "tangential_traction");
+    }
+  }
+
   // Lagrange multiplier increment is always zero (no restart value to be read)
   zincr_ = std::make_shared<Core::LinAlg::Vector<double>>(source_dof_row_map(true));
   // store restart information on Lagrange multipliers into nodes
   store_nodal_quantities(Mortar::StrategyBase::lmcurrent);
   store_nodal_quantities(Mortar::StrategyBase::lmold);
+  if (friction_)
+  {
+    store_nodal_quantities(Mortar::StrategyBase::tangential_tractions);
+  }
 
   // only for Uzawa augmented strategy
   // TODO: this should be moved to contact_penalty_strategy
@@ -2070,6 +2144,7 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
   {
     store_nodal_quantities(Mortar::StrategyBase::activeold);
     store_to_old(Mortar::StrategyBase::dm);
+    store_to_old(Mortar::StrategyBase::tangential_tractions);
   }
 
   // (re)setup active global Core::LinAlg::Maps
@@ -2933,7 +3008,8 @@ void CONTACT::AbstractStrategy::postprocess_quantities_per_interface(
     std::shared_ptr<Core::LinAlg::Vector<double>> fctarget =
         std::make_shared<Core::LinAlg::Vector<double>>(target_dof_row_map(true), true);
 
-    // Mortar matrices might not be initialized, e.g. in the initial state. If so, keep zero vector.
+    // Mortar matrices might not be initialized, e.g. in the initial state. If so, keep zero
+    // vector.
     if (d_matrix()) d_matrix()->multiply(true, *zold_, *fcsource);
     if (m_matrix()) m_matrix()->multiply(true, *zold_, *fctarget);
 

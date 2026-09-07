@@ -11,6 +11,7 @@
 #include "4C_config.hpp"
 
 #include "4C_contact_node.hpp"
+#include "4C_linalg_serialdensevector.hpp"
 
 #include <set>
 
@@ -81,12 +82,14 @@ namespace CONTACT
     //! @name Access methods
 
     /*!
-     \brief Return jump per time step (only for source side!) (length 3)
+     \brief Return jump per time step: \f$ \boldsymbol{v}_{\text{rel}} \times \Delta t \f$ (only for
+     source side, length 3)
      */
     virtual inline double* jump() { return jump_; }
 
     /*!
-     \brief Return jump per time step (only for source side!) (max length 2)
+     \brief Return jump per time step : \f$ \boldsymbol{v}_{\text{rel}} \times \Delta t \f$
+     (only for source side, max length 2)
      */
     virtual inline double* jump_var() { return jumpvar_; }
 
@@ -608,7 +611,21 @@ namespace CONTACT
      */
     void reset_data_container() override;
 
+    /*! @brief Evaluate the tangential traction from the previous time instant, projected onto the
+     * current tangential plane:  $\boldsymbol{t}_{\tau,n, \mathrm{proj}} = (\boldsymbol{I} -
+     * \boldsymbol{n}_{n+1} \odot \boldsymbol{n}_{n+1}) \boldsymbol{t}_{\tau,n}
+     *
+     * @note This can be used in the return mapping algorithms for the regularized tangential
+     * tractions to ensure that they are really tangential to the current surface. The approach is
+     * not fully consistent, since projecting can change the magnitude of the previous tangential
+     * traction; but it is cheap, and should be fine for small incremental changes of the surface
+     * normal.
+     *
+     */
+    [[nodiscard]] Core::LinAlg::SerialDenseVector projected_tangential_traction_old() const;
+
     //@}
+
 
    protected:
     //! Additional information of proc's friction nodes

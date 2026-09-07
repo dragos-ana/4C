@@ -11,6 +11,8 @@
 #include "4C_contact_defines.hpp"
 #include "4C_contact_element.hpp"
 #include "4C_fem_discretization.hpp"
+#include "4C_linalg_serialdensematrix.hpp"
+#include "4C_linalg_utils_densematrix_multiply.hpp"
 #include "4C_utils_exceptions.hpp"
 
 FOUR_C_NAMESPACE_OPEN
@@ -526,6 +528,30 @@ void CONTACT::FriNode::add_delta_weighted_wear_value(double val)
   // add given value to deltawear_
   wear_data().delta_weighted_wear() += val;
 }
+
+/*----------------------------------------------------------------------*
+ *----------------------------------------------------------------------*/
+Core::LinAlg::SerialDenseVector CONTACT::FriNode::projected_tangential_traction_old() const
+{
+  /// retrieve some nodal information
+  int numdof = num_dof();
+  Core::LinAlg::SerialDenseMatrix tangent_proj_matrix = tangential_projection_matrix();
+
+  // get tangential traction $\boldsymbol{t}_{\tau,n}$ from the previous time instant as a serial
+  // dense matrix for subsequent tangential projection
+  Core::LinAlg::SerialDenseVector traction_old(numdof);
+  for (int i = 0; i < numdof; i++)
+  {
+    traction_old(i) = fridata_->tractionold()[i];
+  }
+
+  Core::LinAlg::SerialDenseVector projected_tangential_traction_old(numdof);
+  Core::LinAlg::multiply(
+      0.0, projected_tangential_traction_old, 1.0, tangent_proj_matrix, traction_old);
+
+  return projected_tangential_traction_old;
+}
+
 
 /*----------------------------------------------------------------------*
  |  Initialize data container                             gitterle 10/09|
