@@ -23,6 +23,7 @@
 #include "4C_linalg_utils_sparse_algebra_create.hpp"
 #include "4C_linalg_utils_sparse_algebra_manipulation.hpp"
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_mortar_defines.hpp"
 #include "4C_mortar_utils.hpp"
 #include "4C_structure_new_model_evaluator_contact.hpp"
@@ -1393,25 +1394,29 @@ void CONTACT::LagrangeStrategy::evaluate_friction(
 /*----------------------------------------------------------------------*
  |  pp stresses                                              farah 11/16|
  *----------------------------------------------------------------------*/
-void CONTACT::LagrangeStrategy::compute_contact_stresses()
+void CONTACT::LagrangeStrategy::compute_contact_tractions()
 {
   static int step = 0;
   // call abstract function
-  CONTACT::AbstractStrategy::compute_contact_stresses();
+  CONTACT::AbstractStrategy::compute_contact_tractions();
+
+  std::shared_ptr<Core::LinAlg::Vector<double>> normal_traction = data().normal_traction_ptr();
+  std::shared_ptr<Core::LinAlg::Vector<double>> tangential_traction = data().normal_traction_ptr();
+
 
   // further scaling for nonsmooth contact
   if (nonSmoothContact_)
   {
     forcenormal_ = std::make_shared<Core::LinAlg::Vector<double>>(source_dof_row_map(true));
-    d_matrix()->multiply(true, *stressnormal_, *forcenormal_);
+    d_matrix()->multiply(true, *normal_traction, *forcenormal_);
     forcetangential_ = std::make_shared<Core::LinAlg::Vector<double>>(source_dof_row_map(true));
-    d_matrix()->multiply(true, *stresstangential_, *forcetangential_);
+    d_matrix()->multiply(true, *tangential_traction, *forcetangential_);
 
     Core::LinAlg::Vector<double> forcenormal(source_dof_row_map(true));
-    d_matrix()->multiply(true, *stressnormal_, forcenormal);
+    d_matrix()->multiply(true, *normal_traction, forcenormal);
 
     Core::LinAlg::Vector<double> forcetangential(source_dof_row_map(true));
-    d_matrix()->multiply(true, *stresstangential_, forcetangential);
+    d_matrix()->multiply(true, *tangential_traction, forcetangential);
 
     // add penalty force normal
     if (fLTLn_ != nullptr)
@@ -1463,8 +1468,8 @@ void CONTACT::LagrangeStrategy::compute_contact_stresses()
         }
       }
     }
-    stresstangential_->update(1.0, forcetangential, 0.0);
-    stressnormal_->update(1.0, forcenormal, 0.0);
+    tangential_traction->update(1.0, forcetangential, 0.0);
+    normal_traction->update(1.0, forcenormal, 0.0);
 
     // temporary output:
     double tangforce = 0.0;
