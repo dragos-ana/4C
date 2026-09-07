@@ -2257,14 +2257,14 @@ void CONTACT::AbstractStrategy::print_active_set() const
   std::vector<double> lwear, gwear;
 
   // loop over all interfaces
-  for (int i = 0; i < (int)Interfaces().size(); ++i)
+  for (int i = 0; i < (int)interfaces().size(); ++i)
   {
     // loop over all source row nodes on the current interface
-    for (int j = 0; j < Interfaces()[i]->SourceRowNodes()->NumMyElements(); ++j)
+    for (int j = 0; j < interfaces()[i]->source_row_nodes()->num_my_elements(); ++j)
     {
       // gid of current node
-      int gid = Interfaces()[i]->SourceRowNodes()->GID(j);
-      Core::Nodes::Node* node = Interfaces()[i]->Discret().gNode(gid);
+      int gid = interfaces()[i]->source_row_nodes()->gid(j);
+      Core::Nodes::Node* node = interfaces()[i]->discret().g_node(gid);
       if (!node) FOUR_C_THROW("Cannot find node with gid %", gid);
 
       //--------------------------------------------------------------------
@@ -2276,11 +2276,11 @@ void CONTACT::AbstractStrategy::print_active_set() const
         Node* cnode = dynamic_cast<Node*>(node);
 
         // compute weighted gap
-        double wgap = (*wgap_)[wgap_->Map().LID(gid)];
+        double wgap = (*wgap_).local_values_as_span()[wgap_->get_map().lid(gid)];
 
-        double Xpos = cnode->X()[0];
-        double Ypos = cnode->X()[1];
-        double Zpos = cnode->X()[2];
+        double Xpos = cnode->x()[0];
+        double Ypos = cnode->x()[1];
+        double Zpos = cnode->x()[2];
 
         double xpos = cnode->xspatial()[0];
         double ypos = cnode->xspatial()[1];
@@ -2288,7 +2288,7 @@ void CONTACT::AbstractStrategy::print_active_set() const
 
         // compute normal part of Lagrange multiplier
         double nz = 0.0;
-        for (int k = 0; k < 3; ++k) nz += cnode->MoData().n()[k] * cnode->MoData().lm()[k];
+        for (int k = 0; k < 3; ++k) nz += cnode->mo_data().n()[k] * cnode->mo_data().lm()[k];
 
         // store node id
         lnid.push_back(gid);
@@ -2304,7 +2304,7 @@ void CONTACT::AbstractStrategy::print_active_set() const
         zposl.push_back(zpos);
 
         // store status (0=inactive, 1=active, 2=slip, 3=stick)
-        if (cnode->Active())
+        if (cnode->active())
           lsta.push_back(1);
         else
           lsta.push_back(0);
@@ -2320,11 +2320,11 @@ void CONTACT::AbstractStrategy::print_active_set() const
         FriNode* frinode = dynamic_cast<FriNode*>(cnode);
 
         // compute weighted gap
-        double wgap = (*wgap_)[wgap_->Map().LID(gid)];
+        double wgap = (*wgap_).local_values_as_span()[wgap_->get_map().lid(gid)];
 
         // compute normal part of Lagrange multiplier
         double nz = 0.0;
-        for (int k = 0; k < 3; ++k) nz += frinode->MoData().n()[k] * frinode->MoData().lm()[k];
+        for (int k = 0; k < 3; ++k) nz += frinode->mo_data().n()[k] * frinode->mo_data().lm()[k];
 
         // compute tangential parts of Lagrange multiplier and jumps and wear
         double txiz = 0.0;
@@ -2333,19 +2333,19 @@ void CONTACT::AbstractStrategy::print_active_set() const
         double jumpteta = 0.0;
         double wear = 0.0;
 
-        for (int k = 0; k < Dim(); ++k)
+        for (int k = 0; k < dim_; ++k)
         {
-          txiz += frinode->data().txi()[k] * frinode->MoData().lm()[k];
-          tetaz += frinode->data().teta()[k] * frinode->MoData().lm()[k];
-          jumptxi += frinode->data().txi()[k] * frinode->FriData().jump()[k];
-          jumpteta += frinode->data().teta()[k] * frinode->FriData().jump()[k];
+          txiz += frinode->data().txi()[k] * frinode->mo_data().lm()[k];
+          tetaz += frinode->data().teta()[k] * frinode->mo_data().lm()[k];
+          jumptxi += frinode->data().txi()[k] * frinode->fri_data().jump()[k];
+          jumpteta += frinode->data().teta()[k] * frinode->fri_data().jump()[k];
         }
 
         // total tangential component
         double tz = sqrt(txiz * txiz + tetaz * tetaz);
 
         // check for dimensions
-        if (Dim() == 2 && abs(jumpteta) > 0.0001)
+        if (dim_ == 2 && abs(jumpteta) > 0.0001)
           FOUR_C_THROW("Error: Jumpteta should be zero for 2D");
 
         // store node id
@@ -2360,9 +2360,9 @@ void CONTACT::AbstractStrategy::print_active_set() const
         lwear.push_back(wear);
 
         // store status (0=inactive, 1=active, 2=slip, 3=stick)
-        if (cnode->Active())
+        if (cnode->active())
         {
-          if (frinode->FriData().Slip())
+          if (frinode->fri_data().slip())
             lsta.push_back(2);
           else
             lsta.push_back(3);
@@ -2376,34 +2376,34 @@ void CONTACT::AbstractStrategy::print_active_set() const
   }
 
   // we want to gather data from on all procs
-  std::vector<int> allproc(Core::Communication::num_mpi_ranks(Comm()));
-  for (int i = 0; i < Core::Communication::num_mpi_ranks(Comm()); ++i) allproc[i] = i;
+  std::vector<int> allproc(Core::Communication::num_mpi_ranks(comm_));
+  for (int i = 0; i < Core::Communication::num_mpi_ranks(comm_); ++i) allproc[i] = i;
 
   // communicate all data to proc 0
-  Core::LinAlg::gather<int>(lnid, gnid, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<double>(llmn, glmn, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<double>(lgap, ggap, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<int>(lsta, gsta, (int)allproc.size(), allproc.data(), Comm());
+  Core::LinAlg::gather<int>(lnid, gnid, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<double>(llmn, glmn, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<double>(lgap, ggap, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<int>(lsta, gsta, (int)allproc.size(), allproc.data(), comm_);
 
-  Core::LinAlg::gather<double>(Xposl, Xposg, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<double>(Yposl, Yposg, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<double>(Zposl, Zposg, (int)allproc.size(), allproc.data(), Comm());
+  Core::LinAlg::gather<double>(Xposl, Xposg, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<double>(Yposl, Yposg, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<double>(Zposl, Zposg, (int)allproc.size(), allproc.data(), comm_);
 
-  Core::LinAlg::gather<double>(xposl, xposg, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<double>(yposl, yposg, (int)allproc.size(), allproc.data(), Comm());
-  Core::LinAlg::gather<double>(zposl, zposg, (int)allproc.size(), allproc.data(), Comm());
+  Core::LinAlg::gather<double>(xposl, xposg, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<double>(yposl, yposg, (int)allproc.size(), allproc.data(), comm_);
+  Core::LinAlg::gather<double>(zposl, zposg, (int)allproc.size(), allproc.data(), comm_);
 
   // communicate some more data to proc 0 for friction
   if (friction_)
   {
-    Core::LinAlg::gather<double>(llmt, glmt, (int)allproc.size(), allproc.data(), Comm());
-    Core::LinAlg::gather<double>(ljtx, gjtx, (int)allproc.size(), allproc.data(), Comm());
-    Core::LinAlg::gather<double>(ljte, gjte, (int)allproc.size(), allproc.data(), Comm());
-    Core::LinAlg::gather<double>(lwear, gwear, (int)allproc.size(), allproc.data(), Comm());
+    Core::LinAlg::gather<double>(llmt, glmt, (int)allproc.size(), allproc.data(), comm_);
+    Core::LinAlg::gather<double>(ljtx, gjtx, (int)allproc.size(), allproc.data(), comm_);
+    Core::LinAlg::gather<double>(ljte, gjte, (int)allproc.size(), allproc.data(), comm_);
+    Core::LinAlg::gather<double>(lwear, gwear, (int)allproc.size(), allproc.data(), comm_);
   }
 
   // output is solely done by proc 0
-  if (Core::Communication::my_mpi_rank(Comm()) == 0)
+  if (Core::Communication::my_mpi_rank(comm_) == 0)
   {
     //--------------------------------------------------------------------
     // FRICTIONLESS CASE
