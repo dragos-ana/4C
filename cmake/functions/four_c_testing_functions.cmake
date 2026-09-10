@@ -8,7 +8,7 @@
 ###------------------------------------------------------------------ Helper Functions
 
 # define this test (name_of_test) as a "setup fixture" (named name_of_fixture). Other tests may
-# add a dependency on such a setup fixture through the require_fixture() function. CTest will
+# add a dependency on such a setup fixture through the require_fixtures() function. CTest will
 # then ensure that a) required fixtures are included if necessary and b) tests are executed in
 # the correct order.
 #
@@ -18,11 +18,11 @@ function(define_setup_fixture name_of_test name_of_fixture)
   set_tests_properties(${name_of_test} PROPERTIES FIXTURES_SETUP ${name_of_fixture})
 endfunction()
 
-# add a required test (name_of_required_test) to this test (name_of_test). The required
-# test must be defined through define_setup_fixture() as "setup fixture". For more details on why
+# adds required tests (name_of_required_tests) to this test (name_of_test). The required
+# tests must be defined through define_setup_fixture() as "setup fixtures". For more details on why
 # these functions are needed, have a look at the documentation of define_setup_fixture().
-function(require_fixture name_of_test name_of_required_test)
-  set_tests_properties(${name_of_test} PROPERTIES FIXTURES_REQUIRED "${name_of_required_test}")
+function(require_fixtures name_of_test name_of_required_tests)
+  set_tests_properties(${name_of_test} PROPERTIES FIXTURES_REQUIRED "${name_of_required_tests}")
 endfunction()
 
 function(set_environment name_of_test)
@@ -200,7 +200,6 @@ function(_add_test_with_options)
   set(options "")
   set(oneValueArgs
       NAME_OF_TEST
-      ADDITIONAL_FIXTURE
       TOTAL_PROCS
       TIMEOUT
       SKIP
@@ -212,6 +211,7 @@ function(_add_test_with_options)
       REQUIRED_DEPENDENCIES
       LABELS
       EXCLUDE_PLATFORM
+      ADDITIONAL_FIXTURES
       CLEANUP_FIXTURES
       )
   cmake_parse_arguments(
@@ -232,8 +232,8 @@ function(_add_test_with_options)
     set(_parsed_CLEANUP_FIXTURES "")
   endif()
 
-  if(NOT DEFINED _parsed_ADDITIONAL_FIXTURE)
-    set(_parsed_ADDITIONAL_FIXTURE "")
+  if(NOT DEFINED _parsed_ADDITIONAL_FIXTURES)
+    set(_parsed_ADDITIONAL_FIXTURES "")
   endif()
 
   if(NOT DEFINED _parsed_TOTAL_PROCS)
@@ -255,10 +255,10 @@ function(_add_test_with_options)
   # ensure that the cleanup fixture is added
   list(APPEND _parsed_CLEANUP_FIXTURES "test_cleanup")
 
-  # add all required dependencies from the additional fixture, if specified
-  if(NOT _parsed_ADDITIONAL_FIXTURE STREQUAL "")
-    append_required_dependencies_from(${_parsed_ADDITIONAL_FIXTURE} _parsed_REQUIRED_DEPENDENCIES)
-  endif()
+  # add all required dependencies from the additional fixtures, if specified
+  foreach(fixture IN LISTS _parsed_ADDITIONAL_FIXTURES)
+    append_required_dependencies_from(${fixture} _parsed_REQUIRED_DEPENDENCIES)
+  endforeach()
 
   # check if all required dependencies are present
   check_required_dependencies(skip_message "${_parsed_REQUIRED_DEPENDENCIES}")
@@ -277,13 +277,13 @@ function(_add_test_with_options)
     message(VERBOSE "Skipping test ${_parsed_NAME_OF_TEST}: ${skip_message}")
 
     # Note: Cleanup fixtures are not required for skipped tests
-    require_fixture(${_parsed_NAME_OF_TEST} "${_parsed_ADDITIONAL_FIXTURE}")
+    require_fixtures(${_parsed_NAME_OF_TEST} "${_parsed_ADDITIONAL_FIXTURES}")
   else()
     # Add the real test
     add_test(NAME ${_parsed_NAME_OF_TEST} COMMAND bash -c "${_parsed_TEST_COMMAND}")
 
-    require_fixture(
-      ${_parsed_NAME_OF_TEST} "${_parsed_ADDITIONAL_FIXTURE};${_parsed_CLEANUP_FIXTURES}"
+    require_fixtures(
+      ${_parsed_NAME_OF_TEST} "${_parsed_ADDITIONAL_FIXTURES};${_parsed_CLEANUP_FIXTURES}"
       )
   endif()
 
@@ -584,7 +584,7 @@ function(__four_c_test_restart)
     ${name_of_test}
     TEST_COMMAND
     ${test_command}
-    ADDITIONAL_FIXTURE
+    ADDITIONAL_FIXTURES
     ${_parsed_BASED_ON}
     TOTAL_PROCS
     "${total_procs}"
@@ -621,7 +621,7 @@ function(__four_c_test_restart)
       ${name_of_restart_check}
       TEST_COMMAND
       ${check_command}
-      ADDITIONAL_FIXTURE
+      ADDITIONAL_FIXTURES
       ${name_of_test}
       LABELS
       "${_parsed_LABELS}"
@@ -706,7 +706,7 @@ function(__four_c_test_add_csv_yaml_comparison)
     ${name_of_csv_comparison_test}
     TEST_COMMAND
     ${csv_comparison_command}
-    ADDITIONAL_FIXTURE
+    ADDITIONAL_FIXTURES
     ${_parsed_BASED_ON}
     SKIP
     "${skip_var}"
@@ -862,7 +862,7 @@ function(four_c_test_add_csv_header_check)
     ${name_of_csv_header_test}
     TEST_COMMAND
     ${csv_header_check_command}
-    ADDITIONAL_FIXTURE
+    ADDITIONAL_FIXTURES
     ${_parsed_BASED_ON}
     SKIP
     "${skip_var}"
@@ -966,7 +966,7 @@ function(four_c_test_nested_parallelism)
       "${test_file_full_path1}"
       OUTPUT_DIR
       "${test_directory}"
-      ADDITIONAL_FIXTURE
+      ADDITIONAL_FIXTURES
       ${name_of_test}
       REQUIRED_DEPENDENCIES
       "${_parsed_REQUIRED_DEPENDENCIES}"
@@ -1072,7 +1072,7 @@ function(four_c_test_tutorial)
       )
   endif()
 
-  require_fixture(${name_of_test} test_cleanup)
+  require_fixtures(${name_of_test} test_cleanup)
   set_environment(${name_of_test})
   set_fail_expression(${name_of_test})
   set_processors(${name_of_test} ${num_proc})
@@ -1098,7 +1098,7 @@ function(four_c_test_cut_test num_proc)
     COMMAND bash -c "mkdir -p ${test_directory} && cd ${test_directory} && ${RUNTESTS}"
     )
 
-  require_fixture(${name_of_test} test_cleanup)
+  require_fixtures(${name_of_test} test_cleanup)
   set_fail_expression(${name_of_test})
   set_environment(${name_of_test})
   set_processors(${name_of_test} ${num_proc})
@@ -1179,7 +1179,7 @@ function(
       )
   endif()
 
-  require_fixture("${name_of_test}" "${name_of_input_file}-p${num_proc_base_run};test_cleanup")
+  require_fixtures("${name_of_test}" "${name_of_input_file}-p${num_proc_base_run};test_cleanup")
   set_environment(${name_of_test})
   set_processors(${name_of_test} ${num_proc})
   set_timeout(${name_of_test})
@@ -1189,14 +1189,14 @@ function(
 endfunction()
 
 ###------------------------------------------------------------------ Compare VTK
-# Central function to define a vtk test based on an a previous input file test
+# Central function to define a vtk test for a previous input file test: either against a reference pvd file, or against another input file test (e.g., corresponding restart test)
 #
 # required parameters:
-#   BASED_ON:                     Reference to previous test
-#   PVD_RESULT:                   name of the .pvd file in the output directory of the previous test that references the .vtk files to compare
-#   PVD_REFERENCE:                name of the .pvd file in tests/input_files that
-#                                 references the .vtk files to compare against
-#   TOLERANCE:                    difference the values may have
+#   BASED_ON:                      Reference to previous test for which the comparison is run
+#   BASED_ON_PVD:                  Name of the .pvd file in the output directory of the previous test that references the .vtk files to compare
+#   PVD_REFERENCE or COMPARE_WITH: Either PVD_REFERENCE, i.e., the name of the .pvd file in tests/input_files that references the .vtk files to compare against, or COMPARE_WITH: similarly references a previous test to take as a reference for comparison
+#   COMPARE_WITH_PVD:              Name of the .pvd file in the output directory of the reference comparison test if COMPARE_WITH is used
+#   TOLERANCE:                     Difference the values may have
 #
 # optional parameters:
 #   TIME_STEPS:                   Timesteps to compare
@@ -1211,8 +1211,10 @@ function(__four_c_test_vtk)
   set(options "")
   set(oneValueArgs
       BASED_ON
-      PVD_RESULT
+      BASED_ON_PVD
       PVD_REFERENCE
+      COMPARE_WITH
+      COMPARE_WITH_PVD
       TOLERANCE
       TIMEOUT
       )
@@ -1230,13 +1232,29 @@ function(__four_c_test_vtk)
     message(FATAL_ERROR "There are unparsed arguments: ${_parsed_UNPARSED_ARGUMENTS}!")
   endif()
 
-  assert_required_arguments(
-    _parsed
-    BASED_ON
-    PVD_RESULT
-    PVD_REFERENCE
-    TOLERANCE
-    )
+  assert_required_arguments(_parsed BASED_ON BASED_ON_PVD TOLERANCE)
+
+  # validate comparison argument: PVD_REFERENCE / COMPARE_WITH
+  if(NOT DEFINED _parsed_PVD_REFERENCE AND NOT DEFINED _parsed_COMPARE_WITH)
+    message(
+      FATAL_ERROR
+        "Either compare against a set reference pvd file (PVD_REFERENCE), or against another test (COMPARE_WITH)."
+      )
+  endif()
+
+  if(DEFINED _parsed_PVD_REFERENCE AND DEFINED _parsed_COMPARE_WITH)
+    message(FATAL_ERROR "PVD_REFERENCE and COMPARE_WITH are mutually exclusive!")
+  endif()
+
+  if(DEFINED _parsed_COMPARE_WITH AND NOT DEFINED _parsed_COMPARE_WITH_PVD)
+    message(
+      FATAL_ERROR "If COMPARE_WITH is used, you also need to define the pvd to use from that test"
+      )
+  endif()
+
+  if(DEFINED _parsed_PVD_REFERENCE AND DEFINED _parsed_COMPARE_WITH_PVD)
+    message(FATAL_ERROR "If PVD_REFERENCE is used, you should not provide COMPARE_WITH_PVD")
+  endif()
 
   # get test directory of base test
   get_test_property(${_parsed_BASED_ON} _internal_OUTPUT_DIR test_directory)
@@ -1246,9 +1264,24 @@ function(__four_c_test_vtk)
     list(JOIN _parsed_TIME_STEPS " " merged_timesteps_to_compare)
   endif()
 
-  set(name_of_test "${_parsed_BASED_ON}-vtk-${_parsed_PVD_RESULT}")
+  # determine comparison target
+  set(additional_fixtures "${_parsed_BASED_ON}")
+  if(DEFINED _parsed_COMPARE_WITH)
+    get_test_property(${_parsed_COMPARE_WITH} _internal_OUTPUT_DIR reference_test_directory)
+    set(reference_pvd "${reference_test_directory}/${_parsed_COMPARE_WITH_PVD}")
+    list(APPEND additional_fixtures "${_parsed_COMPARE_WITH}")
+    set(name_of_test
+        "${_parsed_BASED_ON}-vtk-${_parsed_BASED_ON_PVD}-compare-with-${_parsed_COMPARE_WITH}-${_parsed_COMPARE_WITH_PVD}"
+        )
+  else()
+    set(reference_pvd "${PROJECT_SOURCE_DIR}/tests/input_files/${_parsed_PVD_REFERENCE}")
+    set(name_of_test
+        "${_parsed_BASED_ON}-vtk-${_parsed_BASED_ON_PVD}-pvd-reference-${_parsed_PVD_REFERENCE}"
+        )
+  endif()
+
   set(test_command
-      "vtk-compare ${test_directory}/${_parsed_PVD_RESULT} ${PROJECT_SOURCE_DIR}/tests/input_files/${_parsed_PVD_REFERENCE} ${_parsed_TOLERANCE} --points_in_time ${merged_timesteps_to_compare}"
+      "vtk-compare ${test_directory}/${_parsed_BASED_ON_PVD} ${reference_pvd} ${_parsed_TOLERANCE} --points_in_time ${merged_timesteps_to_compare}"
       )
 
   # Ensure that Python is listed as required dependency
@@ -1268,8 +1301,8 @@ function(__four_c_test_vtk)
     ${name_of_test}
     TEST_COMMAND
     ${test_command}
-    ADDITIONAL_FIXTURE
-    ${_parsed_BASED_ON}
+    ADDITIONAL_FIXTURES
+    ${additional_fixtures}
     TOTAL_PROCS
     "1"
     TIMEOUT
@@ -1374,7 +1407,7 @@ function(__four_c_test_timings)
     ${name_of_test}
     TEST_COMMAND
     ${test_command}
-    ADDITIONAL_FIXTURE
+    ADDITIONAL_FIXTURES
     ${_parsed_BASED_ON}
     TOTAL_PROCS
     "1"
@@ -1389,217 +1422,6 @@ function(__four_c_test_timings)
     REQUIRED_DEPENDENCIES
     "${_parsed_REQUIRED_DEPENDENCIES}"
     )
-endfunction()
-
-###------------------------------------------------------------------ Restart 4C simulation and compare VTK Output
-# Two-stage test case, where a simulation is restarted from same input file and
-# VTK file is compared for the restarted run.
-#
-# Usage:
-# four_c_test_restarted_vtk(
-#   TESTNAME name_of_test
-#   FILE <input_in_tests/input_files>
-#   RESTART_STEP <step>
-#   RESTARTFROM_PATHTYPE <absolute|relative|relative_from_parent|same_directory|same_directory_implicit>
-#   PVD_RESULTFILENAME <subdir_with_pvd_under_sim2>
-#   PVD_REFERENCEFILENAME <reference_file_under_tests/input_files>
-#   TOLERANCE <tol>
-#   [TIME_STEPS t1 t2 ...]
-#   [LABELS l1 l2 ...]
-#   [TIMEOUT <seconds>]
-# )
-function(four_c_test_restarted_vtk)
-  set(options "")
-  set(oneValueArgs
-      TESTNAME
-      FILE
-      RESTART_STEP
-      RESTARTFROM_PATHTYPE
-      PVD_RESULTFILENAME
-      PVD_REFERENCEFILENAME
-      TOLERANCE
-      TIMEOUT
-      )
-  set(multiValueArgs TIME_STEPS LABELS)
-  cmake_parse_arguments(
-    _parsed
-    "${options}"
-    "${oneValueArgs}"
-    "${multiValueArgs}"
-    ${ARGN}
-    )
-
-  # validation of required args
-  foreach(
-    req IN
-    ITEMS TESTNAME
-          FILE
-          RESTART_STEP
-          RESTARTFROM_PATHTYPE
-          PVD_RESULTFILENAME
-          PVD_REFERENCEFILENAME
-          TOLERANCE
-    )
-    if(NOT DEFINED _parsed_${req})
-      message(FATAL_ERROR "four_c_test_restarted_vtk: missing required argument ${req}")
-    endif()
-  endforeach()
-
-  # List of allowed values for RESTARTFROM_PATHTYPE
-  set(allowed_restartfrom_pathtypes
-      absolute
-      relative
-      relative_from_parent
-      same_directory
-      same_directory_implicit
-      )
-  if(NOT _parsed_RESTARTFROM_PATHTYPE IN_LIST allowed_restartfrom_pathtypes)
-    list(JOIN allowed_restartfrom_pathtypes "', '" _allowed_restartfrom_pathtypes_joined)
-    message(
-      FATAL_ERROR
-        "four_c_test_restarted_vtk: RESTARTFROM_PATHTYPE must be one of '${_allowed_restartfrom_pathtypes_joined}'"
-      )
-  endif()
-
-  # verify inputs exist
-  set(input_path "${PROJECT_SOURCE_DIR}/tests/input_files/${_parsed_FILE}")
-  if(NOT EXISTS "${input_path}")
-    message(FATAL_ERROR "Input file not found: ${input_path}")
-  endif()
-  set(ref_path "${PROJECT_SOURCE_DIR}/tests/input_files/${_parsed_PVD_REFERENCEFILENAME}")
-  if(NOT EXISTS "${ref_path}")
-    message(FATAL_ERROR "Reference file not found: ${ref_path}")
-  endif()
-
-  # perform test serial
-  set(base_NP 1)
-
-  # specify names and directories
-  set(name_of_test
-      "${_parsed_TESTNAME}-p${base_NP}-restart_step_${_parsed_RESTART_STEP}-restartfrom_pathtype_${_parsed_RESTARTFROM_PATHTYPE}"
-      )
-  set(root_dir ${PROJECT_BINARY_DIR}/framework_test_output/${name_of_test})
-  set(folder_name_sim1 "simulation_1")
-  set(folder_name_sim2 "simulation_2")
-  set(sim1_dir ${root_dir}/${folder_name_sim1})
-  set(relative_path_from_sim2_to_sim1 "../${folder_name_sim1}")
-  set(sim2_dir ${root_dir}/${folder_name_sim2})
-
-  # optional timeout (scaled)
-  set(local_timeout "")
-  if(DEFINED _parsed_TIMEOUT AND NOT "${_parsed_TIMEOUT}" STREQUAL "")
-    math(EXPR local_timeout "${FOUR_C_TEST_TIMEOUT_SCALE} * ${_parsed_TIMEOUT}")
-  endif()
-
-  # First simulation in directory simulation_1
-  set(run1_cmd
-      "mkdir -p ${sim1_dir} && \
-      ${extra_env}${MPIEXEC_EXECUTABLE} ${_mpiexec_all_args_for_testing} -np ${base_NP} \
-      $<TARGET_FILE:${FOUR_C_EXECUTABLE_NAME}> ${input_path} ${sim1_dir}/xxx"
-      )
-
-  _add_test_with_options(
-    NAME_OF_TEST
-    ${name_of_test}
-    TEST_COMMAND
-    ${run1_cmd}
-    TOTAL_PROCS
-    ${base_NP}
-    TIMEOUT
-    "${local_timeout}"
-    LABELS
-    "${_parsed_LABELS}"
-    )
-
-  # Restart second simulation previous directory simulation_1
-  set(name_of_restart "${name_of_test}-restart")
-  if(_parsed_RESTARTFROM_PATHTYPE STREQUAL "absolute") # restartfrom sim1_dir
-    set(run2_cmd
-        "mkdir -p ${sim2_dir} \
-      && ${extra_env}${MPIEXEC_EXECUTABLE} ${_mpiexec_all_args_for_testing} -np ${base_NP} $<TARGET_FILE:${FOUR_C_EXECUTABLE_NAME}> \
-      ${input_path} ${sim2_dir}/xxx --restartfrom=${sim1_dir}/xxx --restart=${_parsed_RESTART_STEP}"
-        )
-  elseif(_parsed_RESTARTFROM_PATHTYPE STREQUAL "relative"
-         )# change into sim2_dir, then restartfrom relative_path_from_sim2_to_sim1
-    set(run2_cmd
-        "mkdir -p ${sim2_dir} && cd ${sim2_dir} && echo changing pwd to: && pwd \
-      && ${extra_env}${MPIEXEC_EXECUTABLE} ${_mpiexec_all_args_for_testing} -np ${base_NP} $<TARGET_FILE:${FOUR_C_EXECUTABLE_NAME}> \
-      ${input_path} ${sim2_dir}/xxx --restartfrom=${relative_path_from_sim2_to_sim1}/xxx --restart=${_parsed_RESTART_STEP}"
-        )
-  elseif(_parsed_RESTARTFROM_PATHTYPE STREQUAL "relative_from_parent"
-         )# change into root_dir, then restartfrom folder_name_sim1
-    set(run2_cmd
-        "mkdir -p ${sim2_dir} && cd ${root_dir} && echo changing pwd to: && pwd \
-      && ${extra_env}${MPIEXEC_EXECUTABLE} ${_mpiexec_all_args_for_testing} -np ${base_NP} $<TARGET_FILE:${FOUR_C_EXECUTABLE_NAME}> \
-      ${input_path} ${sim2_dir}/xxx --restartfrom=${folder_name_sim1}/xxx --restart=${_parsed_RESTART_STEP}"
-        )
-  elseif(_parsed_RESTARTFROM_PATHTYPE STREQUAL "same_directory")
-    # restartfrom sim1_dir (same directory), output is still written in sim2_dir for later vtk comparison
-    set(run2_cmd
-        "mkdir -p ${sim2_dir} && cd ${sim1_dir} && echo staying in: && pwd \
-      && ${extra_env}${MPIEXEC_EXECUTABLE} ${_mpiexec_all_args_for_testing} -np ${base_NP} $<TARGET_FILE:${FOUR_C_EXECUTABLE_NAME}> \
-      ${input_path} ${sim2_dir}/xxx --restartfrom=xxx --restart=${_parsed_RESTART_STEP}"
-        )
-  elseif(_parsed_RESTARTFROM_PATHTYPE STREQUAL "same_directory_implicit")
-    # restartfrom sim1_dir (same directory) and write output in same directory while not specifying restartfrom path. Note: Output is written in sim1_dir now.
-    # Hence it is convenient to set sim2_dir to sim1_dir for the rest of the test such that the vtk comparison works later on.
-    set(sim2_dir ${sim1_dir})
-    set(run2_cmd
-        "cd ${sim1_dir} && echo staying in: && pwd \
-      && ${extra_env}${MPIEXEC_EXECUTABLE} ${_mpiexec_all_args_for_testing} -np ${base_NP} $<TARGET_FILE:${FOUR_C_EXECUTABLE_NAME}> \
-      ${input_path} xxx --restart=${_parsed_RESTART_STEP}"
-        )
-  endif()
-  _add_test_with_options(
-    NAME_OF_TEST
-    ${name_of_restart}
-    TEST_COMMAND
-    ${run2_cmd}
-    ADDITIONAL_FIXTURE
-    ${name_of_test}
-    TOTAL_PROCS
-    ${base_NP}
-    TIMEOUT
-    "${local_timeout}"
-    LABELS
-    "${_parsed_LABELS}"
-    )
-  set_run_serial(${name_of_restart})
-
-  # compare final VTK output in directory simulation_2
-  set(name_of_compare "${name_of_restart}-vtk-compare")
-  if(FOUR_C_WITH_PYTHON)
-    list(LENGTH _parsed_TIME_STEPS nsteps)
-    if(nsteps GREATER 0)
-      list(JOIN _parsed_TIME_STEPS " " steps_joined)
-    else()
-      set(steps_joined "")
-    endif()
-    set(result_dir "${sim2_dir}/${_parsed_PVD_RESULTFILENAME}")
-
-    set(compare_cmd
-        "vtk-compare ${result_dir} ${ref_path} ${_parsed_TOLERANCE} --points_in_time ${steps_joined}"
-        )
-    _add_test_with_options(
-      NAME_OF_TEST
-      ${name_of_compare}
-      TEST_COMMAND
-      ${compare_cmd}
-      ADDITIONAL_FIXTURE
-      ${name_of_restart}
-      TIMEOUT
-      "${local_timeout}"
-      LABELS
-      "${_parsed_LABELS}"
-      )
-    set_run_serial(${name_of_compare})
-  else()
-    skip_test(
-      ${name_of_compare}
-      "Skipping because FOUR_C_WITH_PYTHON is not enabled. VTK comparison requires Python."
-      )
-    require_fixture(${name_of_compare} ${name_of_restart})
-  endif()
 endfunction()
 
 ###------------------------------------------------------------------ Final cleanup
