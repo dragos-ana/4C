@@ -168,15 +168,15 @@ namespace Mortar
       activeold,  //!< contact status of last converged state
       slipold,    //!< slip for last converged state
       dm,
-      pentrac,
-      weightedwear,  //!< weighted wear (internal state var. approach)
-      wupdate,       //!< update current pv wear for current step (slave)
-      wmupdate,      //!< update current pv wear for current step (master)
-      wold,          //!< pv wear for last converged state (slave)
-      wmold,         //!< pv wear for last converged state (master)
-      wupdateT,      //!< accumulated pv wear for different time scales
-      lmThermo,      //!< thermal Lagrange multiplier
-      n_old          //!< old normal
+      tangential_tractions,  //! current tangential tractions
+      weightedwear,          //!< weighted wear (internal state var. approach)
+      wupdate,               //!< update current pv wear for current step (slave)
+      wmupdate,              //!< update current pv wear for current step (master)
+      wold,                  //!< pv wear for last converged state (slave)
+      wmold,                 //!< pv wear for last converged state (master)
+      wupdateT,              //!< accumulated pv wear for different time scales
+      lmThermo,              //!< thermal Lagrange multiplier
+      n_old                  //!< old normal
     };
     //! @}
 
