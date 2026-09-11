@@ -10,6 +10,9 @@
 #include "4C_contact_interface.hpp"
 #include "4C_coupling_adapter.hpp"
 #include "4C_fem_discretization.hpp"
+#include "4C_linalg_fixedsizematrix.hpp"
+#include "4C_linalg_serialdensematrix.hpp"
+#include "4C_linalg_serialdensevector.hpp"
 #include "4C_linalg_utils_densematrix_communication.hpp"
 #include "4C_linalg_utils_densematrix_multiply.hpp"
 #include "4C_linalg_utils_sparse_algebra_assemble.hpp"
@@ -190,9 +193,9 @@ void CONTACT::Interface::assemble_reg_normal_forces(
  *----------------------------------------------------------------------*/
 void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
 {
-  // penalty parameter in tangential direction
-  double ppnor = interface_params().get<double>("PENALTYPARAM");
-  double pptan = interface_params().get<double>("PENALTYPARAMTAN");
+  // retrieve interface parameters for normal and tangential contact
+  double penalty_param_normal = interface_params().get<double>("PENALTYPARAM");
+  double penalty_param_tangential = interface_params().get<double>("PENALTYPARAMTAN");
   double frcoeff = interface_params().get<double>("FRCOEFF");
 
   auto ftype = Teuchos::getIntegralValue<CONTACT::FrictionType>(interface_params(), "FRICTION");
@@ -220,59 +223,42 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
     for (int k = 0; k < numdof; ++k)
       lmuzawan += cnode->mo_data().lmuzawa()[k] * cnode->mo_data().n()[k];
 
-    // tangential plane
-    Core::LinAlg::SerialDenseMatrix tanplane(numdof, numdof);
-    if (numdof == 3)
-    {
-      tanplane(0, 0) = 1 - (n[0] * n[0]);
-      tanplane(0, 1) = -(n[0] * n[1]);
-      tanplane(0, 2) = -(n[0] * n[2]);
-      tanplane(1, 0) = -(n[1] * n[0]);
-      tanplane(1, 1) = 1 - (n[1] * n[1]);
-      tanplane(1, 2) = -(n[1] * n[2]);
+    // get tangential traction from the previous time instant, projected onto the current tangential
+    // plane: This is a simplified approach to ensure that the trial tangential traction, and then
+    // also the current tangential traction, are tangential to the current surface.
+    // The approach is not fully consistent, since projecting can change the magnitude of the
+    // previous tangential traction; but it is cheap, and should be fine for small incremental
+    // changes of the surface normal.
+    const Core::LinAlg::SerialDenseVector projected_tangential_traction_old =
+        cnode->projected_tangential_traction_old();
 
-      tanplane(2, 0) = -(n[2] * n[0]);
-      tanplane(2, 1) = -(n[2] * n[1]);
-      tanplane(2, 2) = 1 - (n[2] * n[2]);
-    }
-    else if (numdof == 2)
-    {
-      tanplane(0, 0) = 1 - (n[0] * n[0]);
-      tanplane(0, 1) = -(n[0] * n[1]);
+    // evaluate the tangential projection matrix
+    const Core::LinAlg::SerialDenseMatrix tangential_projection_matrix =
+        cnode->tangential_projection_matrix();
 
-      tanplane(1, 0) = -(n[1] * n[0]);
-      tanplane(1, 1) = 1 - (n[1] * n[1]);
-    }
-    else
-      FOUR_C_THROW("Error in AssembleTangentForces: Unknown dimension.");
+    // evaluate predictor for tangential traction increment: \f$ \Delta
+    // \boldsymbol{t}_{\tau,\text{trial}} =\kappa \epsilon_{\text{T}} \Delta t
+    // \boldsymbol{v}_{\tau,\text{rel}} \f$
+    // get relative jump: $ \Delta t \boldsymbol{v}_{\text{rel}} $ as a serial dense matrix for
+    // subsequent tangential projection
+    Core::LinAlg::SerialDenseVector jumpvec(numdof);
+    for (int i = 0; i < numdof; i++) jumpvec(i) = cnode->fri_data().jump()[i];
+    Core::LinAlg::SerialDenseVector delta_tangential_traction(numdof);
+    Core::LinAlg::multiply(0.0, delta_tangential_traction, kappa * penalty_param_tangential,
+        tangential_projection_matrix, jumpvec);
 
-    // evaluate traction
-    Core::LinAlg::SerialDenseMatrix jumpvec(numdof, 1);
-
-    for (int i = 0; i < numdof; i++) jumpvec(i, 0) = cnode->fri_data().jump()[i];
-
-    // evaluate kappa.pptan.jumptan
-    Core::LinAlg::SerialDenseMatrix temptrac(numdof, 1);
-    Core::LinAlg::multiply(0.0, temptrac, kappa * pptan, tanplane, jumpvec);
-
-    // fill vector tractionold
-    std::vector<double> tractionold(numdof);
-    for (int i = 0; i < numdof; i++) tractionold[i] = cnode->fri_data().tractionold()[i];
-
-    // Evaluate trailtraction (tractionold+temptrac in penalty case)
-    std::vector<double> trailtraction(numdof);
-    double magnitude = 0;
+    // evaluate trial tangential traction \f$ \boldsymbol{t}_{\tau,\text{trial}} =
+    // \boldsymbol{t}_{\tau, n, \mathrm{proj}} + \Delta \boldsymbol{t}_{\tau,\text{trial}}  \f$
+    Core::LinAlg::SerialDenseVector trial_tangential_traction(numdof);
     for (int i = 0; i < numdof; i++)
     {
-      trailtraction[i] = tractionold[i] + temptrac(i, 0);
-      magnitude += (trailtraction[i] * trailtraction[i]);
+      trial_tangential_traction(i) =
+          projected_tangential_traction_old(i) + delta_tangential_traction(i);
     }
-
-    // evaluate magnitude of trailtraction
-    magnitude = sqrt(magnitude);
+    const double magnitude_trial_tangential_traction = trial_tangential_traction.norm2();
 
     // evaluate maximal tangential traction
-    double maxtantrac = frcoeff * (lmuzawan - kappa * ppnor * gap);
+    double maxtantrac = frcoeff * (lmuzawan - kappa * penalty_param_normal * gap);
 
     if (cnode->active() == false)
     {
@@ -280,31 +266,45 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
       cnode->fri_data().slip() = false;
     }
     else if (cnode->active() == true &&
-             ((abs(maxtantrac) - magnitude >= 0) or ftype == CONTACT::FrictionType::stick))
+             ((abs(maxtantrac) - magnitude_trial_tangential_traction >= 0) or
+                 ftype == CONTACT::FrictionType::stick))
     {
-      // std::cout << "Node " << gid << " is stick" << std::endl;
+      // set node status to stick
       cnode->fri_data().slip() = false;
 
-      // in the stick case, traction is trailtraction
-      for (int i = 0; i < numdof; i++) cnode->fri_data().traction()[i] = trailtraction[i];
-
-      // compute lagrange multipliers and store into node
-      for (int j = 0; j < numdof; ++j)
-        cnode->mo_data().lm()[j] = n[j] * (-kappa * ppnor * gap) + trailtraction[j];
+      // in the stick case, the current tangential traction is simply the trial tangential traction:
+      // \f$ \boldsymbol{t}_{\tau,n+1} =
+      // \boldsymbol{t}_{\tau,\text{trial}} \f$
+      for (int i = 0; i < numdof; i++)
+      {
+        cnode->fri_data().traction()[i] = trial_tangential_traction[i];
+        // compute Lagrange multipliers \f$ \boldsymbol{\lambda}_{n+1} = - \kappa
+        // \epsilon_{\text{N}} g_{n+1}
+        // \boldsymbol{n}_{n+1} + \boldsymbol{t}_{\tau,n+1} \f$ at the specific node
+        cnode->mo_data().lm()[i] =
+            n[i] * (-kappa * penalty_param_normal * gap) + cnode->fri_data().traction()[i];
+      }
     }
     else
     {
-      // std::cout << "Node " << gid << " is slip" << std::endl;
+      // set node status to slip
       cnode->fri_data().slip() = true;
 
-      // in the slip case, traction is evaluated with a return map algorithm
+      // in the slip case, tangential traction is evaluated using a return mapping algorithm: \f$
+      // \boldsymbol{t}_{\tau,n+1} = t_{\tau,\text{max}}
+      // \boldsymbol{t}_{\tau,\text{trial}} / \left| \boldsymbol{t}_{\tau,\text{trial}} \right| \f$
+      // is evaluated with a return map algorithm
       for (int i = 0; i < numdof; i++)
-        cnode->fri_data().traction()[i] = maxtantrac / magnitude * trailtraction[i];
+      {
+        cnode->fri_data().traction()[i] =
+            maxtantrac / magnitude_trial_tangential_traction * trial_tangential_traction[i];
 
-      // compute lagrange multipliers and store into node
-      for (int j = 0; j < numdof; ++j)
-        cnode->mo_data().lm()[j] =
-            n[j] * (-kappa * ppnor * gap) + maxtantrac / magnitude * trailtraction[j];
+        // compute Lagrange multipliers \f$ \boldsymbol{\lambda}_{n+1} = - \kappa
+        // \epsilon_{\text{N}} g_{n+1}
+        // \boldsymbol{n}_{n+1} + \boldsymbol{t}_{\tau,n+1} \f$ at the specific node
+        cnode->mo_data().lm()[i] =
+            n[i] * (-kappa * penalty_param_normal * gap) + cnode->fri_data().traction()[i];
+      }
     }
 
     // linearization of contact forces (lagrange multipliers)
@@ -328,7 +328,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (colcurr = derivjump[dim].begin(); colcurr != derivjump[dim].end(); ++colcurr)
           {
             int col = colcurr->first;
-            double val = pptan * kappa * (colcurr->second) * tanplane(dimrow, dim);
+            double val = penalty_param_tangential * kappa * (colcurr->second) *
+                         tangential_projection_matrix(dimrow, dim);
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -346,8 +347,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (int dim = 0; dim < numdof; ++dim)
           {
             int col = _colcurr->first;
-            double val =
-                -pptan * kappa * (_colcurr->second) * n[dim] * cnode->fri_data().jump()[dim];
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dim] *
+                         cnode->fri_data().jump()[dim];
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -362,8 +363,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (int dimrow = 0; dimrow < numdof; ++dimrow)
           {
             int col = _colcurr->first;
-            double val =
-                -pptan * kappa * (_colcurr->second) * n[dimrow] * cnode->fri_data().jump()[dim];
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dimrow] *
+                         cnode->fri_data().jump()[dim];
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -387,8 +388,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (colcurr = derivjump[dim].begin(); colcurr != derivjump[dim].end(); ++colcurr)
           {
             int col = colcurr->first;
-            double val =
-                pptan * kappa * (colcurr->second) * tanplane(dimrow, dim) * maxtantrac / magnitude;
+            double val = penalty_param_tangential * kappa * (colcurr->second) *
+                         tangential_projection_matrix(dimrow, dim) * maxtantrac /
+                         magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -406,8 +408,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (int dim = 0; dim < numdof; ++dim)
           {
             int col = _colcurr->first;
-            double val = -pptan * kappa * (_colcurr->second) * n[dim] *
-                         cnode->fri_data().jump()[dim] * maxtantrac / magnitude;
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dim] *
+                         cnode->fri_data().jump()[dim] * maxtantrac /
+                         magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -421,8 +424,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (int dimrow = 0; dimrow < numdof; ++dimrow)
           {
             int col = _colcurr->first;
-            double val = -pptan * kappa * (_colcurr->second) * n[dimrow] *
-                         cnode->fri_data().jump()[dim] * maxtantrac / magnitude;
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dimrow] *
+                         cnode->fri_data().jump()[dim] * maxtantrac /
+                         magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -437,7 +441,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
         for (gcurr = derivg.begin(); gcurr != derivg.end(); ++gcurr)
         {
           cnode->add_deriv_z_value(j, gcurr->first,
-              -frcoeff * kappa * ppnor * (gcurr->second) * trailtraction[j] / magnitude);
+              -frcoeff * kappa * penalty_param_normal * (gcurr->second) *
+                  trial_tangential_traction[j] / magnitude_trial_tangential_traction);
         }
       }
 
@@ -445,16 +450,19 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
       // vector double temp
       std::vector<double> temp(numdof);
       for (int dim = 0; dim < numdof; ++dim)
-        temp[dim] = -maxtantrac / (magnitude * magnitude) * trailtraction[dim];
+        temp[dim] = -maxtantrac /
+                    (magnitude_trial_tangential_traction * magnitude_trial_tangential_traction) *
+                    trial_tangential_traction[dim];
 
       // loop over dimensions
       for (int dimout = 0; dimout < numdof; ++dimout)
       {
         double traction = 0;
         for (int dim = 0; dim < numdof; ++dim)
-          traction += tanplane(dimout, dim) * cnode->fri_data().jump()[dim] * kappa * pptan;
+          traction += tangential_projection_matrix(dimout, dim) * cnode->fri_data().jump()[dim] *
+                      kappa * penalty_param_tangential;
 
-        traction += tractionold[dimout];
+        traction += projected_tangential_traction_old(dimout);
 
         for (int dim = 0; dim < numdof; ++dim)
         {
@@ -462,8 +470,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (colcurr = derivjump[dim].begin(); colcurr != derivjump[dim].end(); ++colcurr)
           {
             int col = colcurr->first;
-            double val =
-                tanplane(dimout, dim) * pptan * kappa * (colcurr->second) * traction / magnitude;
+            double val = tangential_projection_matrix(dimout, dim) * penalty_param_tangential *
+                         kappa * (colcurr->second) * traction / magnitude_trial_tangential_traction;
 
             for (int dimrow = 0; dimrow < numdof; ++dimrow)
             {
@@ -479,9 +487,10 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
       {
         double traction = 0;
         for (int dim = 0; dim < numdof; ++dim)
-          traction += tanplane(dimout, dim) * cnode->fri_data().jump()[dim] * kappa * pptan;
+          traction += tangential_projection_matrix(dimout, dim) * cnode->fri_data().jump()[dim] *
+                      kappa * penalty_param_tangential;
 
-        traction += tractionold[dimout];
+        traction += projected_tangential_traction_old(dimout);
 
         // loop over all entries of the current derivative map
         for (_colcurr = derivn[dimout].begin(); _colcurr != derivn[dimout].end(); ++_colcurr)
@@ -491,7 +500,7 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
           for (int dim = 0; dim < numdof; ++dim)
           {
             double val = -_colcurr->second * n[dim] * cnode->fri_data().jump()[dim] * traction /
-                         magnitude * pptan * kappa;
+                         magnitude_trial_tangential_traction * penalty_param_tangential * kappa;
             for (int dimrow = 0; dimrow < numdof; ++dimrow)
             {
               double val1 = val * temp[dimrow];
@@ -506,9 +515,10 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
       {
         double traction = 0;
         for (int dim = 0; dim < numdof; ++dim)
-          traction += tanplane(dimout, dim) * cnode->fri_data().jump()[dim] * kappa * pptan;
+          traction += tangential_projection_matrix(dimout, dim) * cnode->fri_data().jump()[dim] *
+                      kappa * penalty_param_tangential;
 
-        traction += tractionold[dimout];
+        traction += projected_tangential_traction_old(dimout);
 
         for (int dim = 0; dim < numdof; ++dim)
         {
@@ -518,7 +528,7 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
             int col = _colcurr->first;
 
             double val = -_colcurr->second * n[dimout] * cnode->fri_data().jump()[dim] * traction /
-                         magnitude * pptan * kappa;
+                         magnitude_trial_tangential_traction * penalty_param_tangential * kappa;
 
             for (int dimrow = 0; dimrow < numdof; ++dimrow)
             {
@@ -546,8 +556,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_penalty()
 void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
 {
   // penalty parameter in tangential direction
-  double ppnor = interface_params().get<double>("PENALTYPARAM");
-  double pptan = interface_params().get<double>("PENALTYPARAMTAN");
+  double penalty_param_normal = interface_params().get<double>("PENALTYPARAM");
+  double penalty_param_tangential = interface_params().get<double>("PENALTYPARAMTAN");
   double frcoeff = interface_params().get<double>("FRCOEFF");
 
   auto ftype = Teuchos::getIntegralValue<CONTACT::FrictionType>(interface_params(), "FRICTION");
@@ -575,82 +585,62 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
     for (int k = 0; k < dim; ++k)
       lmuzawan += cnode->mo_data().lmuzawa()[k] * cnode->mo_data().n()[k];
 
-    // tangential plane
-    Core::LinAlg::SerialDenseMatrix tanplane(dim, dim);
-    if (dim == 3)
-    {
-      tanplane(0, 0) = 1 - (n[0] * n[0]);
-      tanplane(0, 1) = -(n[0] * n[1]);
-      tanplane(0, 2) = -(n[0] * n[2]);
-      tanplane(1, 0) = -(n[1] * n[0]);
-      tanplane(1, 1) = 1 - (n[1] * n[1]);
-      tanplane(1, 2) = -(n[1] * n[2]);
-
-      tanplane(2, 0) = -(n[2] * n[0]);
-      tanplane(2, 1) = -(n[2] * n[1]);
-      tanplane(2, 2) = 1 - (n[2] * n[2]);
-    }
-    else if (dim == 2)
-    {
-      tanplane(0, 0) = 1 - (n[0] * n[0]);
-      tanplane(0, 1) = -(n[0] * n[1]);
-
-      tanplane(1, 0) = -(n[1] * n[0]);
-      tanplane(1, 1) = 1 - (n[1] * n[1]);
-    }
-    else
-      FOUR_C_THROW("Error in AssembleTangentForces: Unknown dimension.");
+    // tangential projection matrix
+    Core::LinAlg::SerialDenseMatrix tangential_projection_matrix =
+        cnode->tangential_projection_matrix();
 
     // Lagrange multiplier in tangential direction
     Core::LinAlg::SerialDenseMatrix lmuzawatan(dim, 1);
-    Core::LinAlg::multiply(lmuzawatan, tanplane, lmuzawa);
+    Core::LinAlg::multiply(lmuzawatan, tangential_projection_matrix, lmuzawa);
 
-    // evaluate traction
-    Core::LinAlg::SerialDenseMatrix jumpvec(dim, 1);
+    // evaluate predictor for tangential traction increment: \f$ \Delta
+    // \boldsymbol{t}_{\tau,\text{trial}} =\kappa \epsilon_{\text{T}} \Delta t
+    // \boldsymbol{v}_{\tau,\text{rel}} \f$
+    // get relative jump: $ \Delta t \boldsymbol{v}_{\text{rel}} $ as a serial dense matrix for
+    // subsequent tangential projection
+    Core::LinAlg::SerialDenseVector jumpvec(dim);
+    for (int i = 0; i < dim; i++) jumpvec(i) = cnode->fri_data().jump()[i];
+    Core::LinAlg::SerialDenseVector delta_tangential_traction(dim);
+    Core::LinAlg::multiply(0.0, delta_tangential_traction, kappa * penalty_param_tangential,
+        tangential_projection_matrix, jumpvec);
 
-    for (int i = 0; i < dim; i++) jumpvec(i, 0) = cnode->fri_data().jump()[i];
-
-    // evaluate kappa.pptan.jumptan
-    Core::LinAlg::SerialDenseMatrix temptrac(dim, 1);
-    Core::LinAlg::multiply(0.0, temptrac, kappa * pptan, tanplane, jumpvec);
-
-    // Evaluate trailtraction
-    std::vector<double> trailtraction(dim);
-    double magnitude = 0;
+    // evaluate trial tangential traction \f$ \boldsymbol{t}_{\tau,\text{trial}} =
+    // \boldsymbol{\lambda}_{\mathrm{uzawa},\tau, n} + \Delta \boldsymbol{t}_{\tau,\text{trial}} \f$
+    Core::LinAlg::SerialDenseVector trial_tangential_traction(dim);
     for (int i = 0; i < dim; i++)
     {
-      trailtraction[i] = lmuzawatan(i, 0) + temptrac(i, 0);
-      magnitude += (trailtraction[i] * trailtraction[i]);
+      trial_tangential_traction(i) = lmuzawatan(i, 0) + delta_tangential_traction(i);
     }
-
-    // evaluate magnitude of trailtraction
-    magnitude = sqrt(magnitude);
+    const double magnitude_trial_tangential_traction = trial_tangential_traction.norm2();
 
     // evaluate maximal tangential traction
-    double maxtantrac = frcoeff * (lmuzawan - kappa * ppnor * gap);
+    double maxtantrac = frcoeff * (lmuzawan - kappa * penalty_param_normal * gap);
 
     if (cnode->active() == false)
     {
     }
     else if (cnode->active() == true &&
-             ((abs(maxtantrac) - magnitude >= 0) or ftype == CONTACT::FrictionType::stick))
+             ((abs(maxtantrac) - magnitude_trial_tangential_traction >= 0) or
+                 ftype == CONTACT::FrictionType::stick))
     {
-      // std::cout << "Node " << gid << " is stick" << std::endl;
+      // set node status to stick
       cnode->fri_data().slip() = false;
 
-      // compute lagrange multipliers and store into node
+      // compute Lagrange multipliers and store into node
       for (int j = 0; j < dim; ++j)
-        cnode->mo_data().lm()[j] = n[j] * (lmuzawan - kappa * ppnor * gap) + trailtraction[j];
+        cnode->mo_data().lm()[j] =
+            n[j] * (lmuzawan - kappa * penalty_param_normal * gap) + trial_tangential_traction[j];
     }
     else
     {
-      // std::cout << "Node " << gid << " is slip" << std::endl;
+      // set node status to slip
       cnode->fri_data().slip() = true;
 
-      // compute lagrange multipliers and store into node
+      // compute Lagrange multipliers and store into node
       for (int j = 0; j < dim; ++j)
         cnode->mo_data().lm()[j] =
-            n[j] * (lmuzawan - kappa * ppnor * gap) + trailtraction[j] * maxtantrac / magnitude;
+            n[j] * (lmuzawan - kappa * penalty_param_normal * gap) +
+            trial_tangential_traction[j] * maxtantrac / magnitude_trial_tangential_traction;
     }
 
     // linearization of contact forces (lagrange multipliers)
@@ -675,7 +665,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (colcurr = derivjump[dim].begin(); colcurr != derivjump[dim].end(); ++colcurr)
           {
             int col = colcurr->first;
-            double val = pptan * kappa * (colcurr->second) * tanplane(dimrow, dim);
+            double val = penalty_param_tangential * kappa * (colcurr->second) *
+                         tangential_projection_matrix(dimrow, dim);
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -693,8 +684,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (int dim = 0; dim < numdof; ++dim)
           {
             int col = _colcurr->first;
-            double val =
-                -pptan * kappa * (_colcurr->second) * n[dim] * (cnode->fri_data().jump()[dim]);
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dim] *
+                         (cnode->fri_data().jump()[dim]);
             val = val - (_colcurr->second) * n[dim] * (cnode->mo_data().lmuzawa()[dim]);
             cnode->add_deriv_z_value(dimrow, col, val);
           }
@@ -710,8 +701,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (int dimrow = 0; dimrow < numdof; ++dimrow)
           {
             int col = _colcurr->first;
-            double val =
-                -pptan * kappa * (_colcurr->second) * n[dimrow] * (cnode->fri_data().jump()[dim]);
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dimrow] *
+                         (cnode->fri_data().jump()[dim]);
             val = val - (_colcurr->second) * n[dimrow] * (cnode->mo_data().lmuzawa()[dim]);
             cnode->add_deriv_z_value(dimrow, col, val);
           }
@@ -737,8 +728,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (colcurr = derivjump[dim].begin(); colcurr != derivjump[dim].end(); ++colcurr)
           {
             int col = colcurr->first;
-            double val =
-                pptan * kappa * (colcurr->second) * tanplane(dimrow, dim) * maxtantrac / magnitude;
+            double val = penalty_param_tangential * kappa * (colcurr->second) *
+                         tangential_projection_matrix(dimrow, dim) * maxtantrac /
+                         magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -756,10 +748,10 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (int dim = 0; dim < numdof; ++dim)
           {
             int col = _colcurr->first;
-            double val =
-                -pptan * kappa * (_colcurr->second) * n[dim] * cnode->fri_data().jump()[dim];
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dim] *
+                         cnode->fri_data().jump()[dim];
             val = (val - (_colcurr->second) * n[dim] * (cnode->mo_data().lmuzawa()[dim])) *
-                  maxtantrac / magnitude;
+                  maxtantrac / magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -774,10 +766,10 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (int dimrow = 0; dimrow < numdof; ++dimrow)
           {
             int col = _colcurr->first;
-            double val =
-                -pptan * kappa * (_colcurr->second) * n[dimrow] * cnode->fri_data().jump()[dim];
+            double val = -penalty_param_tangential * kappa * (_colcurr->second) * n[dimrow] *
+                         cnode->fri_data().jump()[dim];
             val = (val - (_colcurr->second) * n[dimrow] * (cnode->mo_data().lmuzawa()[dim])) *
-                  maxtantrac / magnitude;
+                  maxtantrac / magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(dimrow, col, val);
           }
         }
@@ -792,7 +784,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
         for (gcurr = derivg.begin(); gcurr != derivg.end(); ++gcurr)
         {
           cnode->add_deriv_z_value(j, gcurr->first,
-              -frcoeff * kappa * ppnor * (gcurr->second) * trailtraction[j] / magnitude);
+              -frcoeff * kappa * penalty_param_normal * (gcurr->second) *
+                  trial_tangential_traction[j] / magnitude_trial_tangential_traction);
         }
       }
 
@@ -802,8 +795,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
         {
           for (int k = 0; k < numdof; ++k)
           {
-            double val =
-                frcoeff * (_colcurr->second) * lmuzawa(j, 0) * trailtraction[k] / magnitude;
+            double val = frcoeff * (_colcurr->second) * lmuzawa(j, 0) *
+                         trial_tangential_traction[k] / magnitude_trial_tangential_traction;
             cnode->add_deriv_z_value(k, _colcurr->first, val);
           }
         }
@@ -813,15 +806,18 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
       // vector double temp
       std::vector<double> temp(numdof);
       for (int dim = 0; dim < numdof; ++dim)
-        temp[dim] = -maxtantrac / (magnitude * magnitude) * trailtraction[dim];
+        temp[dim] = -maxtantrac /
+                    (magnitude_trial_tangential_traction * magnitude_trial_tangential_traction) *
+                    trial_tangential_traction[dim];
 
       // loop over dimensions
       for (int dimout = 0; dimout < numdof; ++dimout)
       {
         double traction = 0;
         for (int dim = 0; dim < numdof; ++dim)
-          traction += tanplane(dimout, dim) *
-                      (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * kappa * pptan);
+          traction +=
+              tangential_projection_matrix(dimout, dim) *
+              (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * kappa * penalty_param_tangential);
 
         for (int dim = 0; dim < numdof; ++dim)
         {
@@ -829,8 +825,8 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (colcurr = derivjump[dim].begin(); colcurr != derivjump[dim].end(); ++colcurr)
           {
             int col = colcurr->first;
-            double val =
-                tanplane(dimout, dim) * pptan * kappa * (colcurr->second) * traction / magnitude;
+            double val = tangential_projection_matrix(dimout, dim) * penalty_param_tangential *
+                         kappa * (colcurr->second) * traction / magnitude_trial_tangential_traction;
 
             for (int dimrow = 0; dimrow < numdof; ++dimrow)
             {
@@ -846,8 +842,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
       {
         double traction = 0;
         for (int dim = 0; dim < numdof; ++dim)
-          traction += tanplane(dimout, dim) *
-                      (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * kappa * pptan);
+          traction +=
+              tangential_projection_matrix(dimout, dim) *
+              (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * kappa * penalty_param_tangential);
 
         // loop over all entries of the current derivative map
         for (_colcurr = derivn[dimout].begin(); _colcurr != derivn[dimout].end(); ++_colcurr)
@@ -857,8 +854,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           for (int dim = 0; dim < numdof; ++dim)
           {
             double val = -_colcurr->second * n[dim] *
-                         (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * pptan * kappa) *
-                         traction / magnitude;
+                         (lmuzawa(dim, 0) +
+                             cnode->fri_data().jump()[dim] * penalty_param_tangential * kappa) *
+                         traction / magnitude_trial_tangential_traction;
             for (int dimrow = 0; dimrow < numdof; ++dimrow)
             {
               double val1 = val * temp[dimrow];
@@ -873,8 +871,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
       {
         double traction = 0;
         for (int dim = 0; dim < numdof; ++dim)
-          traction += tanplane(dimout, dim) *
-                      (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * kappa * pptan);
+          traction +=
+              tangential_projection_matrix(dimout, dim) *
+              (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * kappa * penalty_param_tangential);
 
         for (int dim = 0; dim < numdof; ++dim)
         {
@@ -883,8 +882,9 @@ void CONTACT::Interface::assemble_reg_tangent_forces_uzawa()
           {
             int col = _colcurr->first;
             double val = -_colcurr->second * n[dimout] *
-                         (lmuzawa(dim, 0) + cnode->fri_data().jump()[dim] * pptan * kappa) *
-                         traction / magnitude;
+                         (lmuzawa(dim, 0) +
+                             cnode->fri_data().jump()[dim] * penalty_param_tangential * kappa) *
+                         traction / magnitude_trial_tangential_traction;
 
             for (int dimrow = 0; dimrow < numdof; ++dimrow)
             {
