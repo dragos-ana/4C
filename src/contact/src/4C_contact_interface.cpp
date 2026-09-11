@@ -7501,9 +7501,9 @@ void CONTACT::Interface::store_to_old(Mortar::StrategyBase::QuantityType type)
         dynamic_cast<FriNode*>(node)->store_dm_old();
         break;
       }
-      case Mortar::StrategyBase::pentrac:
+      case Mortar::StrategyBase::tangential_tractions:
       {
-        // store penalty tractions to old ones
+        // store tangential tractions as the old ones
         dynamic_cast<FriNode*>(node)->store_trac_old();
         break;
       }
