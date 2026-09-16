@@ -67,7 +67,8 @@ namespace CONTACT
 
     void do_read_restart(Core::IO::DiscretizationReader& reader,
         std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-        std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr) override;
+        std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
+        std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm) override;
 
     bool is_saddle_point_system() const override { return false; }
 

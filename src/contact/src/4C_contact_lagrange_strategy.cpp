@@ -3367,9 +3367,13 @@ void CONTACT::LagrangeStrategy::evaluate_force(CONTACT::ParamsInterface& cparams
 
   // evaluate relative movement for friction
   if (cparams.is_predictor())
+  {
     predict_relative_movement();
+  }
   else
+  {
     evaluate_relative_movement();
+  }
 
   // update active set
   const bool firstTimeStepAndPredictor =

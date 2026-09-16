@@ -410,7 +410,11 @@ namespace CONTACT
 
     */
     double constraint_norm() const override { return 0.0; }
-    void predict_relative_movement() override {}
+    void predict_relative_movement() override
+    {
+      // DEBUG
+      std::cout << "CONTACT::LagrangeStrategy::predict_relative_movement called...\n";
+    }
     double initial_penalty() const override { return 0.0; }
     void initialize_uzawa(std::shared_ptr<Core::LinAlg::SparseOperator>& kteff,
         std::shared_ptr<Core::LinAlg::Vector<double>>& feff) override

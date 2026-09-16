@@ -29,9 +29,11 @@
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
 #include "4C_linalg_vector.hpp"
 #include "4C_mortar_defines.hpp"
+#include "4C_mortar_strategy_base.hpp"
 #include "4C_mortar_utils.hpp"
 #include "4C_solver_nonlin_nox_group.hpp"
 #include "4C_structure_new_input.hpp"
+#include "4C_utils_exceptions.hpp"
 #include "4C_utils_parameter_list.hpp"
 
 #include <Teuchos_RCPStdSharedPtrConversions.hpp>
@@ -2017,7 +2019,8 @@ void CONTACT::AbstractStrategy::do_write_restart(
  *----------------------------------------------------------------------*/
 void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& reader,
     std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr)
+    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
 {
   // check whether this is a restart with contact of a previously
   // non-contact simulation run (if yes, we have to be careful not
@@ -2026,15 +2029,71 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
   // initialize the restart active and slip sets as being empty)
   bool restartwithcontact = params().get<bool>("RESTART_WITH_CONTACT");
 
+  // TODO: do this in a new function
+  bool old_is_set = false;
+  if (dis_nm)
+  {
+    // initialize old matrices using the old displacement state
+    set_state(Mortar::state_new_displacement, *dis_nm);
+    set_state(Mortar::state_old_displacement, *dis_nm);
+
+    initialize_mortar();
+    initialize_and_evaluate_interface(cparams_ptr);
+    assemble_mortar();
+
+    store_dm("old");
+
+    if (friction_)
+    {
+      store_to_old(Mortar::StrategyBase::dm);
+    }
+
+    old_is_set = true;
+  }
+
   // set restart displacement state
+  // TODO: set old displacement to dis_nm -> does that suffice to make the procedure consistent,
+  // i.e, are the correct D_old and M_old calculated?
   set_state(Mortar::state_new_displacement, *dis);
-  set_state(Mortar::state_old_displacement, *dis);
+  if (dis_nm)
+    set_state(Mortar::state_old_displacement, *dis_nm);
+  else
+    set_state(Mortar::state_old_displacement, *dis);
 
   // evaluate interface and restart mortar quantities
   // in the case of SELF CONTACT, also re-setup target/source maps
   initialize_mortar();
   initialize_and_evaluate_interface(cparams_ptr);
   assemble_mortar();
+
+  //----------------------------------------------------------------------
+  // CHECK IF WE NEED TRANSFORMATION MATRICES FOR SOURCE DISPLACEMENT DOFS
+  //----------------------------------------------------------------------
+  // Concretely, we apply the following transformations:
+  // D         ---->   D * T^(-1)
+  //----------------------------------------------------------------------
+  if (is_dual_quad_source_trafo())
+  {
+    // modify dmatrix_
+    std::shared_ptr<Core::LinAlg::SparseMatrix> temp =
+        Core::LinAlg::matrix_multiply(*dmatrix_, false, *invtrafo_, false, false, false, true);
+    dmatrix_ = temp;
+  }
+
+  // DEBUG
+  std::cout << "after assemble_mortar(): \n";
+  std::cout << "dold_: \n";
+  if (dold_)
+    dold_->print(std::cout);
+  else
+    std::cout << "nullptr \n";
+  std::cout << "dmatrix_: " << std::endl;
+  if (dmatrix_)
+    dmatrix_->print(std::cout);
+  else
+    std::cout << "nullptr \n";
+
+
 
   //----------------------------------------------------------------------
   // CHECK IF WE NEED TRANSFORMATION MATRICES FOR SOURCE DISPLACEMENT DOFS
@@ -2138,12 +2197,14 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
   }
 
   // store restart Mortar quantities
-  store_dm("old");
+  // TODO: here the setting current <- old takes place -> here and in the next check, make sure that
+  // old really means old, and current is current!
+  if (!old_is_set) store_dm("old");
 
   if (friction_)
   {
     store_nodal_quantities(Mortar::StrategyBase::activeold);
-    store_to_old(Mortar::StrategyBase::dm);
+    if (!old_is_set) store_to_old(Mortar::StrategyBase::dm);
     store_to_old(Mortar::StrategyBase::tangential_tractions);
   }
 
@@ -2181,6 +2242,9 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
     wasincontactlts_ = true;
   }
 
+  // DEBUG
+  std::cout << "CONTACT::AbstractStrategy::do_read_restart: before evaluating relative movement \n";
+
   // evaluate relative movement (jump)
   // needed because it is not called in the predictor of the
   // lagrange multiplier strategy
@@ -2190,6 +2254,20 @@ void CONTACT::AbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& 
   // (during restart the interface has been evaluated once)
   unbalanceEvaluationTime_.resize(0);
   unbalanceNumSourceElements_.resize(0);
+
+
+  // DEBUG: here the mortar matrices have to be set old <- current
+  if (old_is_set)
+  {
+    store_dm("old");
+    if (is_friction())
+    {
+      store_to_old(Mortar::StrategyBase::dm);
+    }
+  }
+
+  // DEBUG
+  std::cout << "CONTACT::AbstractStrategy::do_read_restart: finished reading restart \n";
 }
 
 /*----------------------------------------------------------------------*
