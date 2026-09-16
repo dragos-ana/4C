@@ -24,6 +24,10 @@
 #include "4C_structure_new_model_evaluator_manager.hpp"
 #include "4C_structure_new_timint_base.hpp"
 #include "4C_structure_new_timint_basedataio_runtime_vtk_output.hpp"
+#include "4C_utils_exceptions.hpp"
+
+#include <memory>
+#include <utility>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -100,6 +104,20 @@ void Solid::ModelEvaluator::Contact::setup()
                 Global::Problem::instance()->io_params().sublist("RUNTIME VTK OUTPUT"),
                 *Global::Problem::instance()->output_control_file(), global_state().get_time_n()),
             use_all_elements, discretization->name() + "-contact");
+  }
+
+
+  // For frictional contact, we want to also write the displacements at time \f$ t_{n-1} \f$ out
+  // during restarts,  to ensure that the relative movement can be predicted based on the
+  // timestep prior to the restart
+  if (strategy().is_friction())
+  {
+    const Core::LinAlg::Map* dofrowmap_ptr = global_state().dof_row_map_view();
+    std::pair<int, int> step_past_and_future = global_state().get_multi_dis().get_steps();
+    if (step_past_and_future.first > -1)
+    {
+      global_state().get_multi_dis().resize(-1, step_past_and_future.second, dofrowmap_ptr, false);
+    }
   }
 
   issetup_ = true;
@@ -372,6 +390,13 @@ void Solid::ModelEvaluator::Contact::write_restart(
   if (strategy().lagrange_multiplier_n(true) != nullptr)
     iowriter.write_vector("lagrmultold", strategy().lagrange_multiplier_n(true));
 
+  //  in case of frictional contact, also write the displacements at time \f$ t_{n-1} \f$ out to
+  //  enable re-establishing the previous relative movement after restart
+  if (strategy().is_friction())
+  {
+    iowriter.write_vector("displacement_nm", global_state().get_dis_nm());
+  }
+
   // since the global output_step_state() routine is not called, if the
   // restart is written, we have to do it here manually.
   output_step_state(iowriter);
@@ -382,8 +407,21 @@ void Solid::ModelEvaluator::Contact::write_restart(
 void Solid::ModelEvaluator::Contact::read_restart(Core::IO::DiscretizationReader& ioreader)
 {
   eval_contact().set_action_type(Mortar::eval_force_stiff);
+
   // reader strategy specific stuff
-  strategy().do_read_restart(ioreader, global_state().get_dis_n(), eval_data().contact_ptr());
+  if (strategy().is_friction())
+  {
+    auto dis_nm =
+        std::make_shared<Core::LinAlg::Vector<double>>(global_state().get_dis_n()->get_map());
+    ioreader.read_vector(dis_nm, "displacement_nm");
+    strategy().do_read_restart(
+        ioreader, global_state().get_dis_n(), eval_data().contact_ptr(), dis_nm);
+  }
+  else
+  {
+    strategy().do_read_restart(
+        ioreader, global_state().get_dis_n(), eval_data().contact_ptr(), nullptr);
+  }
 }
 
 /*----------------------------------------------------------------------*

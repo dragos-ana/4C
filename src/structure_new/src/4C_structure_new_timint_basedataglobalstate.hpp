@@ -418,6 +418,13 @@ namespace Solid
         return dis_(0);
       }
 
+      /// Return displacements \f$D_{n-1}\f$
+      [[nodiscard]] std::shared_ptr<const Core::LinAlg::Vector<double>> get_dis_nm() const
+      {
+        check_init_setup();
+        return dis_(-1);
+      }
+
       /// Return velocities \f$V_{n+1}\f$
       std::shared_ptr<const Core::LinAlg::Vector<double>> get_vel_np() const
       {
@@ -432,7 +439,7 @@ namespace Solid
         return vel_(0);
       }
 
-      /// Return velocities \f$V_{n}\f$
+      /// Return velocities \f$V_{n-1}\f$
       std::shared_ptr<const Core::LinAlg::Vector<double>> get_vel_nm() const
       {
         check_init_setup();
@@ -713,6 +720,14 @@ namespace Solid
         check_init_setup();
         return dis_;
       }
+
+      [[nodiscard]] const TimeStepping::TimIntMStep<Core::LinAlg::Vector<double>>& get_multi_dis()
+          const
+      {
+        check_init_setup();
+        return dis_;
+      }
+
 
       /// Return velocities \f$V_{n+1}\f$
       std::shared_ptr<Core::LinAlg::Vector<double>>& get_vel_np()

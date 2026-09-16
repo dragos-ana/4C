@@ -1069,11 +1069,12 @@ void CONTACT::LagrangeStrategyTsi::do_write_restart(
  *----------------------------------------------------------------------*/
 void CONTACT::LagrangeStrategyTsi::do_read_restart(Core::IO::DiscretizationReader& reader,
     std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr)
+    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
 {
   const bool restartwithcontact = params().get<bool>("RESTART_WITH_CONTACT");
 
-  CONTACT::AbstractStrategy::do_read_restart(reader, dis);
+  CONTACT::AbstractStrategy::do_read_restart(reader, dis, dis_nm);
   fscn_ = std::make_shared<Core::LinAlg::Vector<double>>(*gstdofrowmap_);
   if (!restartwithcontact) reader.read_vector(fscn_, "last_contact_force");
 

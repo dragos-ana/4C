@@ -14,10 +14,13 @@
 #include "4C_contact_input.hpp"
 #include "4C_contact_paramsinterface.hpp"
 #include "4C_contact_utils.hpp"
+#include "4C_linalg_vector.hpp"
 #include "4C_mortar_input.hpp"
 #include "4C_mortar_strategy_base.hpp"
 
 #include <Teuchos_StandardParameterEntryValidators.hpp>
+
+#include <memory>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -852,21 +855,24 @@ namespace CONTACT
     @param dis Displacement vector of the solid field
     */
     void do_read_restart(Core::IO::DiscretizationReader& reader,
-        std::shared_ptr<const Core::LinAlg::Vector<double>> dis) override
+        std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
+        std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm) override
     {
-      do_read_restart(reader, dis, nullptr);
+      do_read_restart(reader, dis, nullptr, dis_nm);
     };
 
     /*!
     \brief Read restart data from disk
 
     @param reader discretization reader to be used for reading the restart data
-    @param dis Displacement vector of the solid field
+    @param dis Displacement vector of the solid field at time \f$ t_n \f$
     @param cparams_ptr ??
+    @param dis_nm Displacement vector of the solid field at time \f$ t_{n-1} \f$
     */
     virtual void do_read_restart(Core::IO::DiscretizationReader& reader,
         std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-        std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr);
+        std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
+        std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm);
 
     //!@}
 

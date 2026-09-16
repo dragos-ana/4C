@@ -52,7 +52,8 @@ CONTACT::LagrangeStrategyPoro::LagrangeStrategyPoro(
  *----------------------------------------------------------------------*/
 void CONTACT::LagrangeStrategyPoro::do_read_restart(Core::IO::DiscretizationReader& reader,
     std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr)
+    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
 {
   std::shared_ptr<Core::FE::Discretization> discret =
       Global::Problem::instance()->get_dis("structure");
@@ -66,7 +67,7 @@ void CONTACT::LagrangeStrategyPoro::do_read_restart(Core::IO::DiscretizationRead
   set_parent_state(Mortar::StateType::state_new_displacement, *global, *discret);
 
   // Call (nearly absolute)Base Class
-  CONTACT::AbstractStrategy::do_read_restart(reader, dis, cparams_ptr);
+  CONTACT::AbstractStrategy::do_read_restart(reader, dis, cparams_ptr, dis_nm);
 }
 
 /*----------------------------------------------------------------------*

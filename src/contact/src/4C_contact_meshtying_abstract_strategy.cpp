@@ -774,8 +774,9 @@ void CONTACT::MtAbstractStrategy::update(std::shared_ptr<const Core::LinAlg::Vec
 /*----------------------------------------------------------------------*
  |  read restart information for meshtying                    popp 03/08|
  *----------------------------------------------------------------------*/
-void CONTACT::MtAbstractStrategy::do_read_restart(
-    Core::IO::DiscretizationReader& reader, std::shared_ptr<const Core::LinAlg::Vector<double>> dis)
+void CONTACT::MtAbstractStrategy::do_read_restart(Core::IO::DiscretizationReader& reader,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
 {
   // check whether this is a restart with meshtying of a previously
   // non-meshtying simulation run

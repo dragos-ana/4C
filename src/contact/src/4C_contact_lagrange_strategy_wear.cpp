@@ -4777,8 +4777,9 @@ bool Wear::LagrangeStrategyWear::redistribute_contact(
 /*----------------------------------------------------------------------*
  |  read restart information for contact                      popp 03/08|
  *----------------------------------------------------------------------*/
-void Wear::LagrangeStrategyWear::do_read_restart(
-    Core::IO::DiscretizationReader& reader, std::shared_ptr<const Core::LinAlg::Vector<double>> dis)
+void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader& reader,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
 {
   // check whether this is a restart with contact of a previously
   // non-contact simulation run (if yes, we have to be careful not

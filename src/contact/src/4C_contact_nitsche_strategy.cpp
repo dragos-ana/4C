@@ -74,7 +74,8 @@ void CONTACT::NitscheStrategy::apply_force_stiff_cmt(
  *----------------------------------------------------------------------*/
 void CONTACT::NitscheStrategy::do_read_restart(Core::IO::DiscretizationReader& reader,
     std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr)
+    std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
 {
   // check whether this is a restart with contact of a previously
   // non-contact simulation run (if yes, we have to be careful not

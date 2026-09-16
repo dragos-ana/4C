@@ -261,7 +261,8 @@ namespace Mortar
         const = 0;
     virtual std::shared_ptr<const Core::LinAlg::SparseMatrix> d_matrix() const = 0;
     virtual void do_read_restart(Core::IO::DiscretizationReader& reader,
-        std::shared_ptr<const Core::LinAlg::Vector<double>> dis) = 0;
+        std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
+        std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm) = 0;
     virtual void do_write_restart(
         std::map<std::string, std::shared_ptr<Core::LinAlg::Vector<double>>>& restart_vectors,
         bool forcedrestart = false) const = 0;
