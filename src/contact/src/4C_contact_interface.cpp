@@ -6261,17 +6261,6 @@ void CONTACT::Interface::evaluate_relative_movement(
     const std::shared_ptr<Core::LinAlg::SparseMatrix> dmatrixmod,
     const std::shared_ptr<Core::LinAlg::SparseMatrix> doldmod)
 {
-  // DEBUG
-  std::cout << "CONTACT::Interface::evaluate_relative_movement" << std::endl;
-  std::cout << "xsmod: " << std::endl;
-  xsmod->print(std::cout);
-  // std::cout << "dmatrixmod: " << std::endl;
-  // dmatrixmod->print(std::cout);
-  // std::cout << "doldmod: " << std::endl;
-  // doldmod->print(std::cout);
-
-
-
   if (not friction_)
   {
     FOUR_C_THROW(
@@ -6351,20 +6340,8 @@ void CONTACT::Interface::evaluate_relative_movement(
           "Error in Interface::evaluate_relative_movement(): Solution strategy not known!");
     }
 
-    // DEBUG
-    std::cout << "CONTACT::Interface::evaluate_relative_movement: some quantities...\n";
-    std::cout << std::format(
-        "gap = {}, lm = [{}, {}, {}], jump = [{}, {}, {}], activeinfuture ={} \n", gap,
-        cnode->mo_data().lm()[0], cnode->mo_data().lm()[1], cnode->mo_data().lm()[1],
-        cnode->mo_data().lm()[2], jump[0], jump[1], jump[2], std::to_string(activeinfuture));
-
-
     if (activeinfuture)
     {
-      // DEBUG
-      std::cout
-          << "CONTACT::Interface::evaluate_relative_movement: we are in the activefuture block\n";
-
       Core::Gen::Pairedvector<int, double>& dmap = cnode->mo_data().get_d();
       Core::Gen::Pairedvector<int, double>& dmapold = cnode->fri_data().get_d_old();
 
@@ -6444,30 +6421,11 @@ void CONTACT::Interface::evaluate_relative_movement(
 
         std::map<int, double>::iterator t_curr;
 
-        // DEBUG
-        std::cout << std::format(
-            "CONTACT::Interface::evaluate_relative_movement: before calculating jump for node "
-            "{}...\n",
-            gid);
-        std::cout << std::format("mik = {}, mikold = {} \n", mik, mikold);
-        std::cout << std::format("xspatial (target) = [{}, {}, {}] \n",
-            c_target_node->xspatial()[0], c_target_node->xspatial()[1],
-            c_target_node->xspatial()[2]);
-
-
         for (int dim = 0; dim < cnode->num_dof(); ++dim)
         {
           jump[dim] += (mik - mikold) * (c_target_node->xspatial()[dim]);
         }
       }  //  loop over target nodes
-
-      // DEBUG
-      std::cout << std::format(
-          "CONTACT::Interface::evaluate_relative_movement: after calculating jump for node {}...\n",
-          gid);
-      std::cout << std::format("jump = [{}, {}, {}] \n", jump[0], jump[1], jump[2]);
-
-
 
       // write it to nodes
       for (int dim = 0; dim < n_dim(); dim++) cnode->fri_data().jump()[dim] = jump[dim];
@@ -6581,7 +6539,6 @@ void CONTACT::Interface::evaluate_relative_movement(
       std::map<int, std::map<int, double>>& ddmap = cnode->data().get_deriv_d();
       std::map<int, std::map<int, double>>::iterator dscurr;
 
-
       // loop over all source nodes in the DerivM-map of the stick source node
       for (dscurr = ddmap.begin(); dscurr != ddmap.end(); ++dscurr)
       {
@@ -6650,24 +6607,6 @@ void CONTACT::Interface::evaluate_relative_movement(
           }
         }
       }
-
-
-      // DEBUG
-      std::cout << std::format(
-          "CONTACT::Interface::evaluate_relative_movement: after calculating jump derivative for "
-          "node {}...\n",
-          gid);
-      std::string debug_display_deriv_jump = "";
-      for (const auto& dim_comp : cnode->fri_data().get_deriv_jump())
-      {
-        for (auto col_dim_comp = dim_comp.begin(); col_dim_comp != dim_comp.end(); col_dim_comp++)
-        {
-          debug_display_deriv_jump += std::format("{},", col_dim_comp->second);
-        }
-      }
-      std::cout << std::format("jump_deriv = {} \n", debug_display_deriv_jump);
-
-
 
     }  // active nodes
   }  // loop over source nodes

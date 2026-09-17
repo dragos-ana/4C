@@ -855,10 +855,10 @@ namespace CONTACT
     @param dis Displacement vector of the solid field
     */
     void do_read_restart(Core::IO::DiscretizationReader& reader,
-        std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-        std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm) override
+        std::shared_ptr<const Core::LinAlg::Vector<double>> disp_n,
+        std::shared_ptr<const Core::LinAlg::Vector<double>> disp_nm) override
     {
-      do_read_restart(reader, dis, nullptr, dis_nm);
+      do_read_restart(reader, disp_n, nullptr, disp_nm);
     };
 
     /*!
@@ -866,13 +866,14 @@ namespace CONTACT
 
     @param reader discretization reader to be used for reading the restart data
     @param dis Displacement vector of the solid field at time \f$ t_n \f$
-    @param cparams_ptr ??
-    @param dis_nm Displacement vector of the solid field at time \f$ t_{n-1} \f$
+    @param cparams_ptr Contact parameter interface
+    @param dis_nm Displacement vector of the solid field at time \f$ t_{n-1} \f$, required e.g., to
+    re-establish the relative movement from the previous time step in case of frictional contact
     */
     virtual void do_read_restart(Core::IO::DiscretizationReader& reader,
-        std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
+        std::shared_ptr<const Core::LinAlg::Vector<double>> disp_n,
         std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
-        std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm);
+        std::shared_ptr<const Core::LinAlg::Vector<double>> disp_nm = nullptr);
 
     //!@}
 
@@ -1429,6 +1430,25 @@ namespace CONTACT
       if (!data_ptr_) FOUR_C_THROW("The AbstractStrategyDataContainer is not initialized!");
       return *data_ptr_;
     };
+
+    /*!
+     * @brief Computes and stores mortar matrices \f$ \boldsymbol{D} \f$ and \f$
+     * \boldsymbol{M} \f$ based on the current displacement \f$ \boldsymbol{u}  \f$ as "old"
+     * matrices
+     *
+     * @Note Useful during restarts to consistently re-establish the relative movement from the
+     * previous timestep \f$
+     * \left[ t_{n-1}, t_{n} \right] \f$
+     *
+     * @param[in] cparams_ptr Contact parameter interface
+     */
+    void compute_mortar_matrices_and_store_as_old(
+        std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr = nullptr);
+
+    /// updates the mortar matrices: \f$ (\cdot)_{\text{old}}  \gets (\cdot)_{\text{current}} \f$
+    void update_old_mortar_matrices();
+
+
 
    public:
     /*! return the read-only abstract contact data container

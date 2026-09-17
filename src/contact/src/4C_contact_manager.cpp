@@ -1278,8 +1278,9 @@ void CONTACT::Manager::read_restart(Core::IO::DiscretizationReader& reader,
 
   // this is contact, thus we need the displacement state for restart
   // let strategy object do all the work
-  get_strategy().do_read_restart(
-      reader, dis, nullptr);  // TODO: do I also need dis_nm here? Is this exercised?
+  get_strategy().do_read_restart(reader,
+      dis);  // TODO: For the new solid time integration, we also pass the displacement at time
+             // \f$t_{n-1}\f$ for consistent restarts; similar things could be done here
 
   return;
 }

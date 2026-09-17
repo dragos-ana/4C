@@ -2513,6 +2513,8 @@ four_c_test(TEST_FILE weakly_compressible_channel_unsteady_genalpha.4C.yaml NP 2
 four_c_test(TEST_FILE weakly_compressible_fsi_fp_part_ga_ga.4C.yaml NP 2)
 four_c_test(TEST_FILE wear2D_modgap.4C.yaml NP 2)
 four_c_test(TEST_FILE wear3D_modgap.4C.yaml NP 2 LABELS minimal)
+__four_c_test_restart(BASED_ON ${current} SAME_FILE NP 2 RESTART_OUTPUT_PREFIX xxx-restart RESTART_STEP 1 RETURN_AS current_restart)
+__four_c_test_vtk(BASED_ON ${current_restart} PVD_RESULT_FILE xxx-restart-structure.pvd REFERENCE_TEST ${current} PVD_REFERENCE_FILE xxx-structure.pvd TOLERANCE 1e-15 TIME_STEPS 1.0 2.0)
 four_c_test(TEST_FILE xff_beltrami_Div.4C.yaml REQUIRED_DEPENDENCIES Qhull)
 four_c_test(TEST_FILE xff_beltrami_MomMom.4C.yaml REQUIRED_DEPENDENCIES Qhull)
 four_c_test(TEST_FILE xff_beltrami_TesTes_NIT_embedded_evp.4C.yaml NP 2 REQUIRED_DEPENDENCIES Qhull)

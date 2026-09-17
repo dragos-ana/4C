@@ -26,6 +26,7 @@
 #include "4C_linalg_utils_sparse_algebra_math.hpp"
 #include "4C_mortar_utils.hpp"
 #include "4C_structure_new_timint_base.hpp"
+#include "4C_utils_exceptions.hpp"
 
 #include <Teuchos_Time.hpp>
 
@@ -4778,8 +4779,8 @@ bool Wear::LagrangeStrategyWear::redistribute_contact(
  |  read restart information for contact                      popp 03/08|
  *----------------------------------------------------------------------*/
 void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader& reader,
-    std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
-    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
+    std::shared_ptr<const Core::LinAlg::Vector<double>> disp_n,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> disp_nm)
 {
   // check whether this is a restart with contact of a previously
   // non-contact simulation run (if yes, we have to be careful not
@@ -4788,13 +4789,32 @@ void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader&
   // initialize the restart active and slip sets as being empty)
   const bool restartwithcontact = params().get<bool>("RESTART_WITH_CONTACT");
 
-  // set restart displacement state
-  set_state(Mortar::state_new_displacement, *dis);
-  set_state(Mortar::state_old_displacement, *dis);
+  // As in the case of CONTACT::AbstractStrategy::do_read_restart, we try to restart frictional
+  // simulations consistently by evaluating the relative movement as if we were in the time step \f$
+  // \left[ t_{n-1}, t_{n} \right] \f$: further details in the documented implementation
+  // of that function -> However, this function is called nowhere currently, so this may be removed
+  // in the future
 
-  // evaluate interface and restart mortar quantities
-  // in the case of SELF CONTACT, also re-setup target/source maps
-  initialize_mortar();
+  // -> Compute and store the mortar matrices \f$ \boldsymbol{D}_{n-1} \f$ and \f$
+  // \boldsymbol{M}_{n-1}
+  // \f$ if the displacement field $\boldsymbol{u}_{n-1}$ is given
+  if (disp_nm)
+  {
+    set_state(Mortar::state_new_displacement, *disp_nm);
+    set_state(Mortar::state_old_displacement, *disp_nm);
+    compute_mortar_matrices_and_store_as_old();
+  }
+  else
+  {
+    // if no displacement field $\boldsymbol{u}_{n-1}$ is given, take $\boldsymbol{u}_{n}$ as the
+    // "old" displacement as well
+    set_state(Mortar::state_old_displacement, *disp_n);
+  }
+
+  // set the current displacement $\boldsymbol{u}_{n}$ and evaluate the mortar matrices \f$
+  // \boldsymbol{D}_{n} \f$ and \f$ \boldsymbol{M}_{n} \f$ with it
+  set_state(Mortar::state_new_displacement, *disp_n);
+  if (!disp_nm) initialize_mortar();
   initialize_and_evaluate_interface();
   assemble_mortar();
 
@@ -4811,6 +4831,8 @@ void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader&
         Core::LinAlg::matrix_multiply(*dmatrix_, false, *invtrafo_, false, false, false, true);
     dmatrix_ = temp;
   }
+
+  // -> Now read various other restart quantities for $t_n$
 
   // read restart information on active set and slip set (leave sets empty
   // if this is a restart with contact of a non-contact simulation run)
@@ -4900,13 +4922,13 @@ void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader&
     store_nodal_quantities(Mortar::StrategyBase::lmuzawa);
   }
 
-  // store restart Mortar quantities
-  store_dm("old");
-
+  // in the case that there is no \f$ \boldsymbol{u}_{n-1} \f$ given: store "old" mortar matrices
+  // (specifically: they are then the same as the current ones)
+  if (!disp_nm) store_dm("old");
   if (friction_)
   {
     store_nodal_quantities(Mortar::StrategyBase::activeold);
-    store_to_old(Mortar::StrategyBase::dm);
+    if (!disp_nm) store_to_old(Mortar::StrategyBase::dm);
   }
 
   // (re)setup active global Core::LinAlg::Maps
@@ -4943,9 +4965,9 @@ void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader&
     wasincontactlts_ = true;
   }
 
-  // evaluate relative movement (jump)
-  // needed because it is not called in the predictor of the
-  // lagrange multiplier strategy
+  // -> Evaluate the relative movement using the old and current mortar matrices determined for time
+  // step \f$ \left[ t_{n-1}, t_n \right] \f$ (jump and derivative wrt displacement at each friction
+  // node)
   evaluate_relative_movement();
 
   // reset unbalance factors for redistribution
@@ -4953,7 +4975,12 @@ void Wear::LagrangeStrategyWear::do_read_restart(Core::IO::DiscretizationReader&
   unbalanceEvaluationTime_.resize(0);
   unbalanceNumSourceElements_.resize(0);
 
-  return;
+  // -> Update the mortar matrices, i.e., \f$ (\cdot)_{\text{old}} \gets (\cdot)_{n} \f$ to complete
+  // the restart procedure
+  if (disp_nm)
+  {
+    update_old_mortar_matrices();
+  }
 }
 
 /*----------------------------------------------------------------------*

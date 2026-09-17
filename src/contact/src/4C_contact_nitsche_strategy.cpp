@@ -73,9 +73,9 @@ void CONTACT::NitscheStrategy::apply_force_stiff_cmt(
  |  read restart information for contact                     seitz 10/16|
  *----------------------------------------------------------------------*/
 void CONTACT::NitscheStrategy::do_read_restart(Core::IO::DiscretizationReader& reader,
-    std::shared_ptr<const Core::LinAlg::Vector<double>> dis,
+    std::shared_ptr<const Core::LinAlg::Vector<double>> disp_n,
     std::shared_ptr<CONTACT::ParamsInterface> cparams_ptr,
-    std::shared_ptr<const Core::LinAlg::Vector<double>> dis_nm)
+    std::shared_ptr<const Core::LinAlg::Vector<double>> disp_nm)
 {
   // check whether this is a restart with contact of a previously
   // non-contact simulation run (if yes, we have to be careful not
@@ -86,8 +86,8 @@ void CONTACT::NitscheStrategy::do_read_restart(Core::IO::DiscretizationReader& r
   if (restartwithcontact) FOUR_C_THROW("not supported for nitsche contact");
 
   // set restart displacement state
-  set_state(Mortar::state_new_displacement, *dis);
-  set_state(Mortar::state_old_displacement, *dis);
+  set_state(Mortar::state_new_displacement, *disp_n);
+  set_state(Mortar::state_old_displacement, *disp_n);
 
   // Evaluation for all interfaces
   for (const auto& interface : interface_) interface->initialize();

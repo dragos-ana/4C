@@ -24,10 +24,6 @@
 #include "4C_structure_new_model_evaluator_manager.hpp"
 #include "4C_structure_new_timint_base.hpp"
 #include "4C_structure_new_timint_basedataio_runtime_vtk_output.hpp"
-#include "4C_utils_exceptions.hpp"
-
-#include <memory>
-#include <utility>
 
 FOUR_C_NAMESPACE_OPEN
 
@@ -108,8 +104,9 @@ void Solid::ModelEvaluator::Contact::setup()
 
 
   // For frictional contact, we want to also write the displacements at time \f$ t_{n-1} \f$ out
-  // during restarts,  to ensure that the relative movement can be predicted based on the
-  // timestep prior to the restart
+  // during restarts,  to ensure that we can re-establish the relative movement from the timestep
+  // prior to the restart
+  // --> ensure that this displacement is tracked
   if (strategy().is_friction())
   {
     const Core::LinAlg::Map* dofrowmap_ptr = global_state().dof_row_map_view();
@@ -119,7 +116,6 @@ void Solid::ModelEvaluator::Contact::setup()
       global_state().get_multi_dis().resize(-1, step_past_and_future.second, dofrowmap_ptr, false);
     }
   }
-
   issetup_ = true;
 }
 
@@ -407,20 +403,18 @@ void Solid::ModelEvaluator::Contact::write_restart(
 void Solid::ModelEvaluator::Contact::read_restart(Core::IO::DiscretizationReader& ioreader)
 {
   eval_contact().set_action_type(Mortar::eval_force_stiff);
-
   // reader strategy specific stuff
   if (strategy().is_friction())
   {
-    auto dis_nm =
+    auto disp_nm =
         std::make_shared<Core::LinAlg::Vector<double>>(global_state().get_dis_n()->get_map());
-    ioreader.read_vector(dis_nm, "displacement_nm");
+    ioreader.read_vector(disp_nm, "displacement_nm");
     strategy().do_read_restart(
-        ioreader, global_state().get_dis_n(), eval_data().contact_ptr(), dis_nm);
+        ioreader, global_state().get_dis_n(), eval_data().contact_ptr(), disp_nm);
   }
   else
   {
-    strategy().do_read_restart(
-        ioreader, global_state().get_dis_n(), eval_data().contact_ptr(), nullptr);
+    strategy().do_read_restart(ioreader, global_state().get_dis_n(), eval_data().contact_ptr());
   }
 }
 

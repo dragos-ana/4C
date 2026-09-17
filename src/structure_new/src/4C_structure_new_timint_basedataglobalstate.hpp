@@ -721,13 +721,13 @@ namespace Solid
         return dis_;
       }
 
+      /// \overload
       [[nodiscard]] const TimeStepping::TimIntMStep<Core::LinAlg::Vector<double>>& get_multi_dis()
           const
       {
         check_init_setup();
         return dis_;
       }
-
 
       /// Return velocities \f$V_{n+1}\f$
       std::shared_ptr<Core::LinAlg::Vector<double>>& get_vel_np()
